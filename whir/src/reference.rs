@@ -339,6 +339,14 @@ pub trait Sponge {
     fn observe(&mut self, value: u32);
     fn sample(&mut self) -> u32;
 
+    /// Absorb a constant of the configuration, such as a domain separator.
+    /// The reference absorbs it like any other value; a script verifier
+    /// pushes it as a constant of the locking script instead of reading it
+    /// from the prover's data, so that the prover cannot choose it.
+    fn observe_constant(&mut self, value: u32) {
+        self.observe(value);
+    }
+
     fn observe_ef(&mut self, x: &[u32; 4]) {
         for &c in x {
             self.observe(c);
@@ -435,6 +443,36 @@ pub struct TranscriptConfig {
     pub final_domain_bits: usize,
     pub final_sumcheck_rounds: usize,
     pub final_folding_pow_bits: usize,
+    /// The sub-transcripts' domain separators.
+    pub seeds: Seeds,
+}
+
+/// The domain separators each sub-transcript absorbs before its first
+/// interaction. They are constants of the configuration, never prover
+/// messages: a prover that chose them would choose the challenges.
+///
+/// This crate does not derive them. Whoever builds the configuration fills
+/// them in, and the tests take them from a logged run of Plonky3's verifier.
+/// Plonky3's public API could produce five of the eight kinds: the WHIR run
+/// (`WhirShape::domain_separator`), the commitment
+/// (`commitment_domain_separator`) and the three sumchecks
+/// (`SumcheckShape::domain_separator`). The opening claims, the OOD claims
+/// and the batching challenge come from `OpeningShape`, `VirtualShape` and
+/// `BatchingShape` in `p3-sumcheck`, which are `pub(crate)`, as are the
+/// `LayoutBinding` and `PointSource` they are built from.
+#[derive(Clone, Debug, Default)]
+pub struct Seeds {
+    pub commitment: Vec<u32>,
+    /// One per commitment OOD sample.
+    pub virtual_claims: Vec<Vec<u32>>,
+    /// One per opening claim.
+    pub claims: Vec<Vec<u32>>,
+    pub whir: Vec<u32>,
+    pub batching: Vec<u32>,
+    pub initial_sumcheck: Vec<u32>,
+    /// One per intermediate round: its sumcheck delegate's seed.
+    pub round_sumcheck: Vec<Vec<u32>>,
+    pub final_sumcheck: Vec<u32>,
 }
 
 /// One sumcheck round as sent: `[c0, c_inf]` and, with PoW on, a witness.
@@ -451,24 +489,13 @@ pub struct RoundData {
     pub root: Vec<u32>,
     pub ood_answers: Vec<[u32; 4]>,
     pub pow_witness: u32,
-    /// The round's sumcheck delegate's seed.
-    pub seed_sumcheck: Vec<u32>,
     pub sumcheck: Vec<SumcheckRoundData>,
 }
 
-/// Everything the transcript absorbs: the sub-transcripts' seeds (constants
-/// of the configuration) and the prover's messages.
+/// The prover's messages, everything the transcript absorbs besides the
+/// configuration's seeds.
 #[derive(Clone, Debug)]
 pub struct TranscriptData {
-    pub seed_commitment: Vec<u32>,
-    /// One per commitment OOD sample.
-    pub seed_virtual: Vec<Vec<u32>>,
-    /// One per opening claim.
-    pub seed_claim: Vec<Vec<u32>>,
-    pub seed_whir: Vec<u32>,
-    pub seed_batching: Vec<u32>,
-    pub seed_initial_sumcheck: Vec<u32>,
-    pub seed_final_sumcheck: Vec<u32>,
     pub root: Vec<u32>,
     pub initial_ood_answers: Vec<[u32; 4]>,
     /// Per opening claim, the evaluations in the order they are absorbed.
@@ -537,25 +564,31 @@ pub fn stir_queries<S: Sponge>(s: &mut S, bits: usize, num_queries: usize) -> Ve
 /// Drive `s` through the verifier's transcript and collect what it draws.
 pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &mut S) -> Challenges {
     let mut pow_ok = true;
+    let seeds = &cfg.seeds;
     let observe_all = |s: &mut S, values: &[u32]| {
         for &v in values {
             s.observe(v);
         }
     };
+    let observe_seed = |s: &mut S, values: &[u32]| {
+        for &v in values {
+            s.observe_constant(v);
+        }
+    };
 
     // 1. The commitment's seed, then the root.
-    observe_all(s, &data.seed_commitment);
+    observe_seed(s, &seeds.commitment);
     observe_all(s, &data.root);
 
     // 2. Commitment OOD samples, each its own seeded sub-transcript.
     assert_eq!(data.initial_ood_answers.len(), cfg.commitment_ood_samples);
-    assert_eq!(data.seed_virtual.len(), data.initial_ood_answers.len(), "one seed per OOD claim");
+    assert_eq!(seeds.virtual_claims.len(), data.initial_ood_answers.len(), "one seed per OOD claim");
     let initial_ood_points = data
         .initial_ood_answers
         .iter()
-        .zip(&data.seed_virtual)
+        .zip(&seeds.virtual_claims)
         .map(|(answer, seed)| {
-            observe_all(s, seed);
+            observe_seed(s, seed);
             let point = s.sample_ef();
             s.observe_ef(answer);
             point
@@ -563,13 +596,13 @@ pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &
         .collect();
 
     // 3. Opening claims, likewise.
-    assert_eq!(data.seed_claim.len(), data.openings.len(), "one seed per opening claim");
+    assert_eq!(seeds.claims.len(), data.openings.len(), "one seed per opening claim");
     let opening_points = data
         .openings
         .iter()
-        .zip(&data.seed_claim)
+        .zip(&seeds.claims)
         .map(|(evals, seed)| {
-            observe_all(s, seed);
+            observe_seed(s, seed);
             let point = s.sample_ef();
             for e in evals {
                 s.observe_ef(e);
@@ -579,12 +612,12 @@ pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &
         .collect();
 
     // 4. The WHIR run's seed, then the batching draw's.
-    observe_all(s, &data.seed_whir);
-    observe_all(s, &data.seed_batching);
+    observe_seed(s, &seeds.whir);
+    observe_seed(s, &seeds.batching);
     let alpha = s.sample_ef();
 
     // 5. Initial sumcheck.
-    observe_all(s, &data.seed_initial_sumcheck);
+    observe_seed(s, &seeds.initial_sumcheck);
     let initial_folding = sumcheck_rounds(
         s,
         &data.initial_sumcheck,
@@ -595,11 +628,13 @@ pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &
 
     // 6. Intermediate rounds.
     assert_eq!(data.rounds.len(), cfg.rounds.len(), "round count");
+    assert_eq!(seeds.round_sumcheck.len(), cfg.rounds.len(), "one sumcheck seed per round");
     let rounds = cfg
         .rounds
         .iter()
         .zip(&data.rounds)
-        .map(|(rc, rd)| {
+        .zip(&seeds.round_sumcheck)
+        .map(|((rc, rd), seed_sumcheck)| {
             for &v in &rd.root {
                 s.observe(v);
             }
@@ -616,7 +651,7 @@ pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &
             pow_ok &= s.check_witness(rc.pow_bits, rd.pow_witness);
             let queries = stir_queries(s, rc.domain_bits, rc.num_queries);
             let combination = s.sample_ef();
-            observe_all(s, &rd.seed_sumcheck);
+            observe_seed(s, seed_sumcheck);
             let folding =
                 sumcheck_rounds(s, &rd.sumcheck, rc.folding, rc.folding_pow_bits, &mut pow_ok);
             RoundChallenges { ood_points, queries, combination, folding }
@@ -629,7 +664,7 @@ pub fn transcript<S: Sponge>(cfg: &TranscriptConfig, data: &TranscriptData, s: &
     }
     pow_ok &= s.check_witness(cfg.final_pow_bits, data.final_pow_witness);
     let final_queries = stir_queries(s, cfg.final_domain_bits, cfg.final_queries);
-    observe_all(s, &data.seed_final_sumcheck);
+    observe_seed(s, &seeds.final_sumcheck);
     let final_folding = sumcheck_rounds(
         s,
         &data.final_sumcheck,

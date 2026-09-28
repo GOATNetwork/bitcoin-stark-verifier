@@ -14,15 +14,17 @@
 //! # Stack
 //!
 //! The proof's data is pushed first and stays at the bottom, read by depth:
-//! the transcript's inputs in consumption order (first consumed shallowest),
-//! then the openings. Above it a *kept* region grows: every challenge the
+//! the prover's transcript messages in consumption order (first consumed
+//! shallowest), then the openings. The sub-transcripts' seeds are not data:
+//! they are constants of the configuration, pushed by the script itself. Above it a *kept* region grows: every challenge the
 //! sponge draws is buried there as it is drawn, and every value the arithmetic
 //! wants back later (the running claim, the query indices, the folds, the STIR
 //! points) is left there as it is computed. During the transcript the sponge
 //! state sits on top of the kept region with its pending inputs above; once the
 //! transcript is done the state is dropped and the arithmetic works on top of
 //! the kept region with short-lived temporaries. The builder tracks the size of
-//! each of these so a value's depth is always a computed number.
+//! each of these so a value's depth is always a computed number. At the end
+//! the script drops all of it and leaves the single `1` a spend needs.
 //!
 //! The proof's size makes the stack far larger than Bitcoin's 1000-item limit
 //! allows; a deployment would chunk the verification across transactions. That
@@ -455,7 +457,20 @@ impl Builder {
     }
 }
 
+impl Builder {
+    /// One absorbed value is on top of the pending inputs: count it, and
+    /// duplex at a full rate.
+    fn absorbed(&mut self) {
+        self.available = 0;
+        self.pending += 1;
+        if self.pending == RATE {
+            self.duplex();
+        }
+    }
+}
+
 impl Sponge for Builder {
+    /// A prover message: read from the proof's data.
     fn observe(&mut self, value: u32) {
         assert!(self.state && self.temps == 0);
         self.reference.observe(value);
@@ -463,11 +478,16 @@ impl Sponge for Builder {
         self.data.push(value);
         let d = self.data_depth(i);
         self.emit(script! { { d } OP_PICK });
-        self.available = 0;
-        self.pending += 1;
-        if self.pending == RATE {
-            self.duplex();
-        }
+        self.absorbed();
+    }
+
+    /// A seed: a constant of the locking script, not part of the data, so
+    /// the spender has no say in it.
+    fn observe_constant(&mut self, value: u32) {
+        assert!(self.state && self.temps == 0);
+        self.reference.observe(value);
+        self.emit(script! { { value } });
+        self.absorbed();
     }
 
     fn sample(&mut self) -> u32 {
@@ -526,23 +546,21 @@ fn kept(k: &mut usize, n: usize) -> usize {
 fn layout(cfg: &VerifyConfig, data: &VerifyData, ch: &Challenges, samples: &[u32]) -> Layout {
     let t = &cfg.transcript;
     let d = &data.transcript;
-    let mut s = d.seed_commitment.len();
+    // Seeds are constants of the script, so the stream holds only the
+    // prover's messages.
+    let mut s = 0;
     let mut k = 0;
     let mut l = Layout::default();
     l.root = stream(&mut s, d.root.len());
-    for seed in &d.seed_virtual {
-        stream(&mut s, seed.len());
+    for _ in &d.initial_ood_answers {
         l.k_ood.push(kept(&mut k, 4));
         l.ood_answers.push(stream(&mut s, 4));
     }
-    for (evals, seed) in d.openings.iter().zip(&d.seed_claim) {
-        stream(&mut s, seed.len());
+    for evals in &d.openings {
         l.k_claim.push(kept(&mut k, 4));
         l.evals.push(evals.iter().map(|_| stream(&mut s, 4)).collect());
     }
-    stream(&mut s, d.seed_whir.len() + d.seed_batching.len());
     l.k_alpha = kept(&mut k, 4);
-    stream(&mut s, d.seed_initial_sumcheck.len());
     for _ in 0..d.initial_sumcheck.len() {
         l.initial_sumcheck.push((stream(&mut s, 4), stream(&mut s, 4)));
         l.k_initial_fold.push(kept(&mut k, 4));
@@ -555,7 +573,6 @@ fn layout(cfg: &VerifyConfig, data: &VerifyData, ch: &Challenges, samples: &[u32
         }
         r.k_draws = draw_block(samples, &mut k, rt.domain_bits, rt.num_queries);
         r.k_combination = kept(&mut k, 4);
-        stream(&mut s, rd.seed_sumcheck.len());
         for _ in 0..rd.sumcheck.len() {
             r.sumcheck.push((stream(&mut s, 4), stream(&mut s, 4)));
             r.k_fold.push(kept(&mut k, 4));
@@ -564,7 +581,6 @@ fn layout(cfg: &VerifyConfig, data: &VerifyData, ch: &Challenges, samples: &[u32
     }
     l.final_poly = stream(&mut s, 4 * d.final_poly.len());
     l.k_final_draws = draw_block(samples, &mut k, t.final_domain_bits, t.final_queries);
-    stream(&mut s, d.seed_final_sumcheck.len());
     for _ in 0..d.final_sumcheck.len() {
         l.final_sumcheck.push((stream(&mut s, 4), stream(&mut s, 4)));
         l.k_final_fold.push(kept(&mut k, 4));
@@ -742,6 +758,13 @@ pub fn build(cfg: &VerifyConfig, data: &VerifyData) -> Result<Built, pruned::Err
     b.push_kept(claim, 4);
     b.equal_verify_ef();
     assert_eq!(b.temps, 0);
+
+    // 9. Every check above aborts on failure, so reaching here is the
+    //    verdict. A tapscript spend succeeds only with exactly one true item
+    //    left, so drop the kept region and the proof's data under it, and
+    //    leave `1`.
+    let left = b.kept + b.data.len();
+    b.emit(script! { for _ in 0..left / 2 { OP_2DROP } if left % 2 == 1 { OP_DROP } OP_TRUE });
 
     let data_out = b.data.clone();
     let parts = &b.parts;

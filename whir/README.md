@@ -94,24 +94,30 @@ verifier**, and then verifies the same proof in Bitcoin Script:
 `proof_script::build` emits, for one proof, the script that performs the whole
 verification — the transcript on the script's own sponge, every opened row
 hashed and walked to its root, the folds, the STIR checks, the weights and the
-closing identity — and the test executes it.
+closing identity — and the test executes it. The script ends with exactly one
+true item on the stack, as a tapscript spend must, and the test checks that,
+not only that no opcode failed. It is not a deployable spend: its size and its
+stack are far past Bitcoin's limits (see below).
 
 | proof | script | peak stack | transcript permutations |
 |---|---|---|---|
-| 6 variables, no intermediate round | 198.1 MB | 2,990 | 81 |
-| 8 variables, one intermediate round | 340.9 MB | 4,998 | 93 |
+| 6 variables, no intermediate round | 198.1 MB | 2,596 | 81 |
+| 8 variables, one intermediate round | 340.9 MB | 4,555 | 93 |
 
 These are against Plonky3 0.7, whose transcript is layered: the commitment,
 each out-of-domain claim, each opening claim, the WHIR run, the batching draw
 and every sumcheck delegate seed the sponge with their own domain separator
 (a constant of the configuration) before their first interaction, and the
 STIR queries are a fixed `num_queries` draws with duplicates kept. The seeds
-are what the extra permutations pay for; the test bed reads them off a logged
-run of Plonky3's verifier and cross-checks the WHIR one against
+are what the extra permutations pay for. They belong to the configuration
+(`TranscriptConfig::seeds`), and the script pushes them as constants of the
+locking script; they are not in the spender's data, since a prover that chose
+them would choose the challenges. The test bed reads them off a logged run of
+Plonky3's verifier and cross-checks the WHIR one against
 `WhirShape::domain_separator`.
 
-A wrong final domain generator, a changed opened row and a changed final
-polynomial are each rejected.
+A wrong final domain generator, a changed opened row, a changed final
+polynomial and a script with a different seed are each rejected.
 
 The script mirrors `reference::verify`, the verifier in plain Rust, and that in
 turn is checked against Plonky3 at every layer rather than only at the end:

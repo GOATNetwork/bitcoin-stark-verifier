@@ -12,7 +12,7 @@ use bitcoin_script::{define_pushable, script};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use whir::reference::{
-    self, RoundConfig, RoundData, SumcheckRoundData, TranscriptConfig, TranscriptData,
+    self, RoundConfig, RoundData, Seeds, SumcheckRoundData, TranscriptConfig, TranscriptData,
 };
 use whir::transcript::{self, Mode};
 
@@ -53,6 +53,7 @@ fn six() -> (TranscriptConfig, Shape) {
             final_domain_bits: 6,
             final_sumcheck_rounds: 5,
             final_folding_pow_bits: 0,
+            seeds: Default::default(),
         },
         Shape { pattern_len: 39, openings: vec![1], final_poly_len: 32 },
     )
@@ -77,6 +78,7 @@ fn eight() -> (TranscriptConfig, Shape) {
             final_domain_bits: 7,
             final_sumcheck_rounds: 5,
             final_folding_pow_bits: 0,
+            seeds: Default::default(),
         },
         Shape { pattern_len: 53, openings: vec![1], final_poly_len: 32 },
     )
@@ -114,6 +116,7 @@ fn stress() -> (TranscriptConfig, Shape) {
             final_domain_bits: 4,
             final_sumcheck_rounds: 3,
             final_folding_pow_bits: 1,
+            seeds: Default::default(),
         },
         Shape { pattern_len: 60, openings: vec![2, 1], final_poly_len: 8 },
     )
@@ -137,15 +140,20 @@ fn seed(rng: &mut ChaCha20Rng, n: usize) -> Vec<u32> {
     (0..n).map(|_| field(rng)).collect()
 }
 
-fn synthetic(rng: &mut ChaCha20Rng, cfg: &TranscriptConfig, shape: &Shape) -> TranscriptData {
+/// Random seeds into `cfg`, of the lengths Plonky3's are, and random prover
+/// messages of `shape`.
+fn synthetic(rng: &mut ChaCha20Rng, cfg: &mut TranscriptConfig, shape: &Shape) -> TranscriptData {
+    cfg.seeds = Seeds {
+        commitment: seed(rng, 35),
+        virtual_claims: (0..cfg.commitment_ood_samples).map(|_| seed(rng, 54)).collect(),
+        claims: shape.openings.iter().map(|_| seed(rng, 74)).collect(),
+        whir: seed(rng, shape.pattern_len),
+        batching: seed(rng, 54),
+        initial_sumcheck: seed(rng, 37),
+        round_sumcheck: cfg.rounds.iter().map(|_| seed(rng, 37)).collect(),
+        final_sumcheck: seed(rng, 37),
+    };
     TranscriptData {
-        seed_commitment: seed(rng, 35),
-        seed_virtual: (0..cfg.commitment_ood_samples).map(|_| seed(rng, 54)).collect(),
-        seed_claim: shape.openings.iter().map(|_| seed(rng, 74)).collect(),
-        seed_whir: seed(rng, shape.pattern_len),
-        seed_batching: seed(rng, 54),
-        seed_initial_sumcheck: seed(rng, 37),
-        seed_final_sumcheck: seed(rng, 37),
         root: (0..8).map(|_| field(rng)).collect(),
         initial_ood_answers: (0..cfg.commitment_ood_samples).map(|_| ef(rng)).collect(),
         openings: shape.openings.iter().map(|&n| (0..n).map(|_| ef(rng)).collect()).collect(),
@@ -157,7 +165,6 @@ fn synthetic(rng: &mut ChaCha20Rng, cfg: &TranscriptConfig, shape: &Shape) -> Tr
                 root: (0..8).map(|_| field(rng)).collect(),
                 ood_answers: (0..r.ood_samples).map(|_| ef(rng)).collect(),
                 pow_witness: field(rng),
-                seed_sumcheck: seed(rng, 37),
                 sumcheck: sumcheck(rng, r.folding),
             })
             .collect(),
@@ -179,8 +186,8 @@ fn harness(stream: &[u32], body: bitcoin::ScriptBuf) -> bitcoin::ScriptBuf {
 #[test]
 fn script_transcript_reaches_the_reference_state() {
     let mut rng = ChaCha20Rng::seed_from_u64(91);
-    for (name, (cfg, shape)) in [("six", six()), ("eight", eight()), ("stress", stress())] {
-        let data = synthetic(&mut rng, &cfg, &shape);
+    for (name, (mut cfg, shape)) in [("six", six()), ("eight", eight()), ("stress", stress())] {
+        let data = synthetic(&mut rng, &mut cfg, &shape);
 
         let (emitter, challenges) = transcript::transcript(&cfg, &data, Mode::Check);
         let want = reference::transcript(&cfg, &data, &mut reference::Challenger::new());
@@ -207,13 +214,13 @@ fn script_transcript_reaches_the_reference_state() {
 #[test]
 fn a_wrong_expected_draw_fails_the_script() {
     let mut rng = ChaCha20Rng::seed_from_u64(92);
-    let (cfg, shape) = six();
-    let data = synthetic(&mut rng, &cfg, &shape);
+    let (mut cfg, shape) = six();
+    let data = synthetic(&mut rng, &mut cfg, &shape);
     let (emitter, _) = transcript::transcript(&cfg, &data, Mode::Check);
 
-    // The first draw follows the commitment seed, the root and the first
-    // virtual claim's seed.
-    let first_draw = 35 + 8 + 54;
+    // The first draw follows the root; the seeds around it are constants of
+    // the script, not stream elements.
+    let first_draw = 8;
     let mut stream = emitter.stream.clone();
     stream[first_draw] = (stream[first_draw] + 1) % poseidon2::constants::P;
 
