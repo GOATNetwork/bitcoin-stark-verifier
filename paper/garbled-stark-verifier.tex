@@ -1094,9 +1094,10 @@ input labels on-chain at up to $52.9\%$ less cost than Lamport signatures. Both
 are independent of the garbled circuit; \S\ref{sec:protocol} prices both for our
 million-bit input.
 
-\paragraph{Verifying a STARK in Script.} Our companion work verifies the same kind
-of proof directly in Bitcoin Script, with Poseidon2 over KoalaBear and WHIR and
-without \texttt{OP\_CAT}~\cite{appliedpqcscript}. It needs no garbling and no
+\paragraph{Verifying a STARK in Script.} Our companion work, in the same
+repository as this paper's code, verifies the same kind of proof directly in
+Bitcoin Script, with Poseidon2 over KoalaBear and WHIR and without
+\texttt{OP\_CAT}~\cite{goatscriptverifier}. It needs no garbling and no
 trusted party, but its $2^{20}$ example configuration is 1.24\,GB of script, 309
 blocks, and a standard transaction holds less than one Poseidon2 permutation, so
 it must be split into sub-query steps. Garbling moves that cost off-chain.
