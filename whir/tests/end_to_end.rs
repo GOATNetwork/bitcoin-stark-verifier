@@ -1096,8 +1096,11 @@ fn transcript_inputs(
     }
     assert_eq!(cur.pos, log.len(), "the run ends with the final sumcheck");
 
-    // The seeds are the configuration's, read off Plonky3's run (the WHIR one
-    // checked against its shape's domain separator above).
+    // The seeds are the configuration's, read off Plonky3's run. Only the WHIR
+    // one is checked against Plonky3's own derivation (its shape's domain
+    // separator, above); the others are taken as logged. The opening, OOD and
+    // batching seeds could not be derived here even in principle: their shapes
+    // are `pub(crate)` in `p3-sumcheck` (see `reference::Seeds`).
     cfg.seeds = reference::Seeds {
         commitment: seed_commitment,
         virtual_claims: seed_virtual,

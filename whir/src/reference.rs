@@ -450,6 +450,16 @@ pub struct TranscriptConfig {
 /// The domain separators each sub-transcript absorbs before its first
 /// interaction. They are constants of the configuration, never prover
 /// messages: a prover that chose them would choose the challenges.
+///
+/// This crate does not derive them. Whoever builds the configuration fills
+/// them in, and the tests take them from a logged run of Plonky3's verifier.
+/// Plonky3's public API could produce five of the eight kinds: the WHIR run
+/// (`WhirShape::domain_separator`), the commitment
+/// (`commitment_domain_separator`) and the three sumchecks
+/// (`SumcheckShape::domain_separator`). The opening claims, the OOD claims
+/// and the batching challenge come from `OpeningShape`, `VirtualShape` and
+/// `BatchingShape` in `p3-sumcheck`, which are `pub(crate)`, as are the
+/// `LayoutBinding` and `PointSource` they are built from.
 #[derive(Clone, Debug, Default)]
 pub struct Seeds {
     pub commitment: Vec<u32>,
