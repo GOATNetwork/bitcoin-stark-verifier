@@ -1448,16 +1448,16 @@ fn plonky3_proof_verifies_end_to_end_in_bitcoin_script() {
 
         let built = whir::proof_script::build(&cfg, &data).expect("a valid proof builds");
         let info = run_unbounded(built.script.clone());
+        // `success` is no error *and* exactly one true item left, which is how
+        // a tapscript spend must end. The stack limit is lifted for the run
+        // (see the README), so this is the verdict, not a deployable spend.
         assert!(
-            info.error.is_none(),
-            "{num_vars} vars: the script rejected a valid proof: {:?} at {:?}",
+            info.success,
+            "{num_vars} vars: the script rejected a valid proof: error {:?} at {:?}, {} items left",
             info.error,
-            info.last_opcode
+            info.last_opcode,
+            info.final_stack.len()
         );
-        // Running without error is not a valid spend: tapscript also needs
-        // exactly one true item left.
-        assert!(info.success, "{num_vars} vars: a valid proof must be a valid spend");
-        assert_eq!(info.final_stack.len(), 1, "{num_vars} vars: one item left");
         eprintln!(
             "{num_vars} vars: verified in script; {} bytes, {} data elements, peak stack {}, transcript permutations {}",
             built.script.len(),

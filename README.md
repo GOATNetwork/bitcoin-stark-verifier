@@ -99,8 +99,9 @@ verifier**, and then verifies the same proof in Bitcoin Script:
 verification — the transcript on the script's own sponge, every opened row
 hashed and walked to its root, the folds, the STIR checks, the weights and the
 closing identity — and the test executes it. The script ends with exactly one
-true item on the stack, so a valid proof is a valid tapscript spend, and the
-test checks that, not only that no opcode failed.
+true item on the stack, as a tapscript spend must, and the test checks that,
+not only that no opcode failed. It is not a deployable spend: its size and its
+stack are far past Bitcoin's limits (see below).
 
 | proof | script | peak stack | transcript permutations |
 |---|---|---|---|
