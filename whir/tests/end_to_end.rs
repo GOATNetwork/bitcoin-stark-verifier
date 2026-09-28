@@ -975,7 +975,7 @@ fn transcript_inputs(
 ) -> (reference::TranscriptConfig, reference::TranscriptData) {
     let c: &WhirConfig<EF, F, Logger> = pcs;
     let fr = c.final_round_config();
-    let cfg = reference::TranscriptConfig {
+    let mut cfg = reference::TranscriptConfig {
         commitment_ood_samples: c.commitment_ood_samples(),
         initial_folding: c.round_folding_factor(0),
         initial_folding_pow_bits: c.starting_folding_pow_bits(),
@@ -997,6 +997,7 @@ fn transcript_inputs(
         final_domain_bits: log2_strict(fr.domain_size >> fr.folding_factor),
         final_sumcheck_rounds: c.final_sumcheck_rounds(),
         final_folding_pow_bits: c.final_folding_pow_bits(),
+        seeds: Default::default(),
     };
 
     let w = &proof.whir;
@@ -1056,6 +1057,7 @@ fn transcript_inputs(
         cur.expect_observes(&poly(r), "initial sumcheck round");
         cur.expect_samples(4, "initial folding");
     }
+    let mut seed_round_sumcheck = Vec::new();
     let rounds: Vec<reference::RoundData> = w
         .rounds
         .iter()
@@ -1070,7 +1072,7 @@ fn transcript_inputs(
             }
             // The queries and the combination randomness, one run of draws.
             assert!(cur.samples() >= 4, "round draws");
-            let seed_sumcheck = cur.observes_ending_with(&poly(&sumcheck[0]), "round sumcheck");
+            seed_round_sumcheck.push(cur.observes_ending_with(&poly(&sumcheck[0]), "round sumcheck"));
             cur.expect_samples(4, "round folding");
             for sr in &sumcheck[1..] {
                 cur.expect_observes(&poly(sr), "round sumcheck round");
@@ -1080,7 +1082,6 @@ fn transcript_inputs(
                 root,
                 ood_answers,
                 pow_witness: r.pow_witness.as_canonical_u32(),
-                seed_sumcheck,
                 sumcheck,
             }
         })
@@ -1095,14 +1096,19 @@ fn transcript_inputs(
     }
     assert_eq!(cur.pos, log.len(), "the run ends with the final sumcheck");
 
+    // The seeds are the configuration's, read off Plonky3's run (the WHIR one
+    // checked against its shape's domain separator above).
+    cfg.seeds = reference::Seeds {
+        commitment: seed_commitment,
+        virtual_claims: seed_virtual,
+        claims: seed_claim,
+        whir: seed_whir,
+        batching: seed_batching,
+        initial_sumcheck: seed_initial_sumcheck,
+        round_sumcheck: seed_round_sumcheck,
+        final_sumcheck: seed_final_sumcheck,
+    };
     let data = reference::TranscriptData {
-        seed_commitment,
-        seed_virtual,
-        seed_claim,
-        seed_whir,
-        seed_batching,
-        seed_initial_sumcheck,
-        seed_final_sumcheck,
         root,
         initial_ood_answers,
         openings,
@@ -1448,6 +1454,10 @@ fn plonky3_proof_verifies_end_to_end_in_bitcoin_script() {
             info.error,
             info.last_opcode
         );
+        // Running without error is not a valid spend: tapscript also needs
+        // exactly one true item left.
+        assert!(info.success, "{num_vars} vars: a valid proof must be a valid spend");
+        assert_eq!(info.final_stack.len(), 1, "{num_vars} vars: one item left");
         eprintln!(
             "{num_vars} vars: verified in script; {} bytes, {} data elements, peak stack {}, transcript permutations {}",
             built.script.len(),
@@ -1462,7 +1472,7 @@ fn plonky3_proof_verifies_end_to_end_in_bitcoin_script() {
         // cannot lay out; that counts as a rejection too.
         let rejects = |cfg: &reference::VerifyConfig, data: &reference::VerifyData| -> bool {
             match whir::proof_script::build(cfg, data) {
-                Ok(built) => run_unbounded(built.script).error.is_some(),
+                Ok(built) => !run_unbounded(built.script).success,
                 Err(_) => true,
             }
         };
@@ -1477,5 +1487,27 @@ fn plonky3_proof_verifies_end_to_end_in_bitcoin_script() {
         let mut bad_data = data.clone();
         bad_data.transcript.final_poly[0][0] ^= 1;
         assert!(rejects(&cfg, &bad_data), "{num_vars} vars: changed final polynomial");
+
+        // The seeds are the script's constants, not the spender's data: the
+        // data carries none of them, and a script with a different seed
+        // rejects the proof, whose challenges were drawn under the right one.
+        let seeds = &cfg.transcript.seeds;
+        let seed_len = seeds.commitment.len()
+            + seeds.virtual_claims.iter().map(Vec::len).sum::<usize>()
+            + seeds.claims.iter().map(Vec::len).sum::<usize>()
+            + seeds.whir.len()
+            + seeds.batching.len()
+            + seeds.initial_sumcheck.len()
+            + seeds.round_sumcheck.iter().map(Vec::len).sum::<usize>()
+            + seeds.final_sumcheck.len();
+        assert!(seed_len > 0, "{num_vars} vars: the configuration has seeds");
+        let script_bytes = built.script.as_bytes();
+        let mut wrong = cfg.clone();
+        wrong.transcript.seeds.whir[0] ^= 1;
+        let rebuilt = whir::proof_script::build(&wrong, &data);
+        if let Ok(b) = &rebuilt {
+            assert_ne!(b.script.as_bytes(), script_bytes, "{num_vars} vars: a seed is in the script");
+        }
+        assert!(rejects(&wrong, &data), "{num_vars} vars: a different seed");
     }
 }

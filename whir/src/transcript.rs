@@ -103,6 +103,17 @@ impl Sponge for Emitter {
         }
     }
 
+    /// A seed: pushed as a constant, not taken from the stream.
+    fn observe_constant(&mut self, value: u32) {
+        self.reference.observe(value);
+        self.parts.push(script! { { value } });
+        self.available = 0;
+        self.pending += 1;
+        if self.pending == RATE {
+            self.duplex();
+        }
+    }
+
     /// `DuplexChallenger::sample`: duplex if anything is pending or nothing is
     /// left to read, then take the highest unread rate slot.
     fn sample(&mut self) -> u32 {
