@@ -2122,6 +2122,9 @@ dependencies = [
 name = "whir-gc"
 version = "0.1.0"
 dependencies = [
+ "bitcoin",
+ "bitcoin-script",
+ "bitcoin-scriptexec 0.0.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec/?tag=1.0.0)",
  "blake3",
  "garbled-snark-verifier",
  "p3-air",

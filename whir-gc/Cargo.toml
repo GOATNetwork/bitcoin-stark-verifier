@@ -32,3 +32,6 @@ p3-maybe-rayon = { workspace = true, features = ["parallel"] }
 p3-matrix.workspace = true
 p3-multilinear-util.workspace = true
 postcard = { version = "1", features = ["alloc"] }
+bitcoin.workspace = true
+bitcoin-script.workspace = true
+bitcoin-scriptexec.workspace = true

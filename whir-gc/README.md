@@ -50,7 +50,11 @@ Every test runs in 32 GB of RAM on 8 cores, so a regression kills the test and
 not the machine. The default tests do three things:
 - check the reference against Plonky3's verifier;
 - garble the full circuit at 2^5 and 2^8 rows;
-- print Plonky3's soundness report.
+- print Plonky3's soundness report;
+- run the dispute on a small circuit (`tests/protocol.rs`): a Blake3
+  preimage claim is garbled at setup, its 512 bits are revealed through a
+  Lamport Assert script, the challenger evaluates from the labels alone, and
+  a Disprove hashlock script opens for a false claim and not for a true one.
 
 The ignored tests are:
 

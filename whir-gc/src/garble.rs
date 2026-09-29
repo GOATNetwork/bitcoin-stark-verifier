@@ -92,15 +92,33 @@ pub struct Evaluation {
 /// witness's values. Returns the output's value and label; the label is the
 /// output's true label iff the value is true.
 pub fn evaluate(circuit: &CircuitAdapter, garbled: &Garbled, witness: &[bool]) -> Evaluation {
+    let constants = [garbled.input_label(0, false), garbled.input_label(1, true)];
+    let inputs: Vec<(bool, S)> =
+        witness.iter().enumerate().map(|(i, &bit)| (bit, garbled.input_label(2 + i, bit))).collect();
+    evaluate_labels(circuit, &garbled.ciphertexts, constants, &inputs, garbled.output)
+}
+
+/// The evaluator's side alone: the ciphertexts, the held labels of the two
+/// constant wires (`[label of 0 on wire 0, label of 1 on wire 1]`), and per
+/// input wire its value and the label it was handed. It never sees `Δ` or a
+/// false label it does not hold, so it can only reach the output label of
+/// the value the circuit computes.
+pub fn evaluate_labels(
+    circuit: &CircuitAdapter,
+    ciphertexts: &[S],
+    constants: [S; 2],
+    inputs: &[(bool, S)],
+    output: usize,
+) -> Evaluation {
     let n = circuit.next_wire();
     let mut value = vec![false; n];
     let mut label: Vec<S> = vec![S::from_slice(&[0u8; 16]); n];
     value[1] = true;
-    label[0] = garbled.input_label(0, false);
-    label[1] = garbled.input_label(1, true);
-    for (i, &bit) in witness.iter().enumerate() {
+    label[0] = constants[0];
+    label[1] = constants[1];
+    for (i, &(bit, l)) in inputs.iter().enumerate() {
         value[2 + i] = bit;
-        label[2 + i] = garbled.input_label(2 + i, bit);
+        label[2 + i] = l;
     }
     let mut next_ct = 0;
     for (gid, g) in circuit.get_gates().iter().enumerate() {
@@ -114,7 +132,7 @@ pub fn evaluate(circuit: &CircuitAdapter, garbled: &Garbled, witness: &[bool]) -
             Operation::Mul(d, x, y) | Operation::Or(d, x, y) => {
                 let is_or = matches!(*op, Operation::Or(..));
                 let gate_type = if is_or { GateType::Or } else { GateType::And };
-                let ct = garbled.ciphertexts[next_ct];
+                let ct = ciphertexts[next_ct];
                 next_ct += 1;
                 value[d] = if is_or { value[x] | value[y] } else { value[x] & value[y] };
                 label[d] = gate_evaluate(gate_type, value[x], label[x], label[y], Some(ct), gid, None);
@@ -122,8 +140,8 @@ pub fn evaluate(circuit: &CircuitAdapter, garbled: &Garbled, witness: &[bool]) -
             Operation::Const(..) => panic!("constant gates are not used"),
         }
     }
-    assert_eq!(next_ct, garbled.ciphertexts.len(), "every ciphertext consumed");
-    Evaluation { value: value[garbled.output], label: label[garbled.output] }
+    assert_eq!(next_ct, ciphertexts.len(), "every ciphertext consumed");
+    Evaluation { value: value[output], label: label[output] }
 }
 
 #[cfg(test)]

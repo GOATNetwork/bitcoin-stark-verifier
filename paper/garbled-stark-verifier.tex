@@ -777,6 +777,20 @@ translations agree, as BABE's zero-knowledge soldering~\cite{babe2026} or Glock'
 verifiable secret sharing~\cite{eag25glock} provide for smaller inputs. We have not
 built it for a million input bits, and its cost there is open.
 
+\paragraph{An executed dispute.} We ran the dispute on a small circuit, with its
+on-chain steps executed as Bitcoin Script by \texttt{bitcoin-scriptexec}. The
+statement is knowledge of a 64-byte $x$ with $\blake(x)=h$: one Blake3
+compression, 512 input bits and 10{,}536 non-free gates. The operator garbles it
+at setup, before choosing $x$, and publishes Lamport hashes, translation
+ciphertexts, the labels of the two constant wires and $\mathrm{SHA256}$ of the
+reject label. Its Assert reveal runs through a 25\,KB Lamport script under the
+1{,}000-item stack limit. The challenger derives the input labels from the
+published preimages and evaluates the stored garbling without $\Delta$ or any
+label it was not handed. For a true $x$ it obtains the accept label, which the
+Disprove hashlock script rejects; for $x$ with one bit changed it obtains the
+reject label, which opens it. Assert rejects a preimage outside the committed
+keys. Signatures, timelocks and cut-and-choose are not part of this run.
+
 % =====================================================================
 \section{Evaluation}\label{sec:eval}
 
