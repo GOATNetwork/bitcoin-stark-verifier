@@ -420,6 +420,78 @@ The user asked for garbling efficiency η = |GC| / (rows × committed columns), 
 
 At 2^20 that is 7.5 garbled bits per trace bit, or 38 kB per Keccak-f. Smaller is better. It falls roughly as 1/R, because |GC| grows only with log R.
 
+## 7f. Reducing the on-chain input (2026-09-29)
+
+On-chain cost = input bits × price per bit. Sources and runs for both factors are below.
+
+**Why the cost is per bit.** A garbled circuit needs a *label* per input bit, and only the garbler (the operator) can release it. So making the proof data available is not enough. ESSPI (arXiv 2503.02772) publishes data 1:1 under a Schnorr signature, but that works for BitVMX, where the dispute needs only the data. It does not give labels.
+
+**Fewer bits** (`input_bits_of_candidate_statements` in `whir-gc/tests/keccak_stark.rs`; log in local `data/run-input-bits-candidates.txt`). The model equals the measured count on the measured statement. Smallest input over rates 1/8–1/256, folding 3–5 and grinding up to 48 bits:
+
+| statement | WHIR term | bits, 256-bit digests | bits, 2λ-bit digests |
+|---|---|---|---|
+| Keccak AIR, 1,625 columns, 2^18 rows (measured configuration) | 110 | 1,041,024 | – |
+| same, tuned | 110 | 845,952 | 797,952 |
+| 512 columns, 2^18 rows | 110 | 526,208 | 493,280 |
+| 128 columns, 2^18 rows | 110 | 362,496 | 329,664 |
+| 128 columns, 2^18 rows | 100 | 332,288 | 298,352 |
+| 128 columns, 2^18 rows | 80 | 250,496 | 213,248 |
+| 32 columns, 2^16 rows | 110 | 245,888 | 226,112 |
+
+- Opened values cost 256 bits per column. The zerocheck and ring switch are about 62k bits whatever the statement; 49k of that is the three 128×128 tensors.
+- The narrow statements stand for a recursion AIR that does not exist yet. Its width and height are assumptions.
+- Truncated digests need a Plonky3 change.
+- Only the WHIR terms are set to the target here. The composed soundness of a new AIR is not assessed.
+
+**Cheaper bits.**
+
+| scheme | vB per bit | source | assumption | off-chain |
+|---|---|---|---|---|
+| Lamport | 16.55 | our measurement | hash | 32 B per bit per instance |
+| Antichain Winternitz (4,16) | 8.36 | 2026/1568 Table 1 | hash | 43.8 kB per bit |
+| Winternitz + translation gadget | 7.38 | 2026/1684: Assert of 508 bits is 3,748 vB | hash | table quadratic per chunk; about 1.9 MiB per 127-bit chunk per instance [derived from their 97.93 vs 45.57 MiB over 28 chunk tables] |
+| Schnorr adaptor, 8-bit digits | 2.37 | 2026/933 §8.1 | discrete log | 256 adaptors of 65 B per byte |
+
+**Combined, at 2.2 sat/vB and $95,500:**
+
+| input | Lamport | Winternitz + translation | adaptor |
+|---|---|---|---|
+| 1,041,024 (today) | 17.2 MvB, $36,200 | 7.7 MvB, $16,100 | 2.47 MvB, $5,200 |
+| 845,952 (tuned) | 14.0 MvB | 6.2 MvB, $13,100 | 2.00 MvB, $4,200 |
+| 329,664 (128 col, 110-bit, short digests) | 5.5 MvB | 2.4 MvB, $5,100 | 0.78 MvB, $1,640 |
+| 213,248 (128 col, 80-bit) | 3.5 MvB | 1.6 MvB, $3,300 | 0.51 MvB, $1,060 |
+
+**Not solved.**
+- Revealing only a slice of the proof (chunked sub-circuits) needs the challenger to know which slice is wrong, so it needs the proof data. Script cannot bind raw on-chain data to the signed chunk digests without OP_CAT or an in-script hash. A cheating operator can therefore publish garbage data, and the worst case stays the full reveal.
+- A short on-chain digest with labels derived from it is laconic OT or witness encryption. Known constructions are DDH- or pairing-based, not hash-based.
+
+## 7g. Winternitz reveal: measured cost and the one-transaction goal (2026-09-29)
+
+**Scope.** The user set two constraints: only Winternitz-style input encodings (no recursion, no proof-format change in this repo), and the goal of fitting the input reveal in a single transaction.
+
+**Measured** (`whir-gc/tests/winternitz_cost.rs`; log in local `data/run-winternitz-cost.txt`). The script is the compact form: a hash ladder with every intermediate kept, the digit picking the one compared with the public key, and one checksum per input. It was executed with the stack limit on, and a raised digit is rejected.
+
+| digit bits | chains per input | script B/chain | witness B/chain | WU per bit | bits in 400k WU | bits in 4M WU |
+|---|---|---|---|---|---|---|
+| 2 | 491 + 6 | 38.1 | 22.7 | 31.01 | 12,766 | 128,642 |
+| 3 | 491 + 4 | 48.1 | 22.9 | 23.99 | 16,203 | 166,449 |
+| 4 | 487 + 4 | 68.1 | 22.9 | 23.06 | 15,584 | 173,372 |
+| 5 | 480 + 3 | 109.1 | 23.0 | 26.67 | 14,400 | 148,800 |
+| 6 | 464 + 3 | 189.1 | 23.0 | 35.66 | 11,136 | 111,360 |
+
+**Against the goal.**
+- The best is 4-bit digits at 23.06 WU per bit (5.77 vB). Per chain, 44 B cannot be removed (20-byte key, 20-byte signature, their push bytes, the digit). The ladder costs 2 B per hash step, so larger digits cost more per bit.
+- 1,041,024 bits need 24.0M WU: 6 blocks, or 61 standard transactions.
+- One transaction needs at most 3.84 WU per bit for a block-size transaction, or 0.38 for a standard one.
+- So one transaction holds at most 173,372 bits (consensus limit, non-standard) or 15,584 bits (standard).
+
+**The 2026/1684 layout, measured** (`chunked_winternitz_reveal_cost_per_bit`). Chunks of 32 four-bit message digits, each with a 4-bit and a 5-bit checksum chain (34 chains per 128 bits); 14 chunks per transaction input, peak stack 969.
+- 24.71 WU per bit (6.18 vB). For 1,041,024 bits that is 25.7M WU, 2.68× less than our Lamport measurement (66.2 WU per bit, 68.9M WU).
+- The paper's own Assert is 14,990 WU for 508 bits, 29.5 WU per bit, against 72.8 for its Lamport baseline: 2.47×.
+- Digits from 8 bits up were first counted at 2 witness bytes; values of 128 and above take 3. Fixed; only the 8-bit row moved (87.43 to 87.49 WU per bit).
+- Off-chain tables: about 14.9 GiB per instance at 1,041,024 bits [derived from the paper's 1.87 MiB per chunk].
+- In the paper's BABE integration every kept circuit gets its own on-chain signature (1 + 7 sets). One signature serving all kept instances is the soldering problem, still open for hash-based keys.
+
 ## 8. To fix or check before release
 
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".

@@ -831,6 +831,104 @@ fn input_bits(log_height: usize, whir: &WhirConfig<F, F, Challenger>) -> Vec<(&'
     ]
 }
 
+/// `input_bits` for a statement other than the measured one: an AIR of
+/// `width` columns over `2^log_height` rows, with digests truncated to
+/// `digest_bits`. Used to price recursion into a narrow verifier AIR. The
+/// layout is the measured verifier's, so the counts are what this circuit
+/// would read, not a lower bound over all verifiers.
+fn input_bits_for(log_height: usize, width: usize, whir: &WhirConfig<F, F, Challenger>, digest_bits: usize) -> Vec<(&'static str, usize)> {
+    const E: usize = 128;
+    let scfg = stark::Config { log_height, width, pow_bits: 0, seeds: Default::default() };
+    let packed = scfg.packed_vars();
+    let cap_h = recommended_cap_height(whir);
+    let tensors = stark::DIM * if scfg.sends_successor() { 3 } else { 1 };
+    let sumcheck = |rounds: usize, pow: usize| rounds * (2 + usize::from(pow > 0)) * E;
+    let (mut caps, mut rows, mut paths) = (0, 0, 0);
+    let mut rest = whir.commitment_ood_samples() * E + E + sumcheck(whir.round_folding_factor(0), whir.starting_folding_pow_bits());
+    let mut open = |queries: usize, index_width: usize, folding: usize| {
+        let h = cap_h.min(index_width);
+        caps += (1 << h) * digest_bits;
+        rows += queries * (1 << folding) * E;
+        paths += queries * (index_width - h) * digest_bits;
+    };
+    for (i, r) in whir.round_parameters().iter().enumerate() {
+        open(r.num_queries, r.log_folded_domain_size, whir.round_folding_factor(i));
+        rest += r.ood_samples * E + usize::from(r.pow_bits > 0) * E + sumcheck(whir.round_folding_factor(i + 1), r.folding_pow_bits);
+    }
+    let fr = whir.final_round_config();
+    let last = whir.folding_schedule().len() - 1;
+    open(fr.num_queries, fr.log_folded_domain_size, whir.round_folding_factor(last));
+    rest += (1 << whir.final_sumcheck_rounds()) * E + usize::from(fr.pow_bits > 0) * E + sumcheck(whir.final_sumcheck_rounds(), whir.final_folding_pow_bits());
+    vec![
+        ("opened values", 2 * width * E),
+        ("zerocheck", (1 + 4 * log_height) * E),
+        ("ring switch", (tensors + 2 * packed + 1) * E),
+        ("WHIR caps", caps),
+        ("WHIR leaf rows", rows),
+        ("WHIR Merkle paths", paths),
+        ("WHIR other", rest),
+    ]
+}
+
+/// The smallest input over rates 1/8..1/256, folding 3..5 and grinding
+/// budgets up to 48 bits, for an AIR of `width` columns over `2^log_height`
+/// rows at `term_bits` per WHIR term.
+#[test]
+#[ignore]
+fn input_bits_of_candidate_statements() {
+    // The generalized count is the measured one on the measured statement.
+    let p = params(18);
+    let (_cfg, packed) = config(&p);
+    let whir = whir_config(&p, packed);
+    assert_eq!(input_bits_for(18, NUM_KECCAK_BINARY_COLS, &whir, 256), input_bits(18, &whir));
+
+    for term_bits in [110usize, 100, 80] {
+        for log_height in [12usize, 16, 18, 20] {
+            for width in [32usize, 64, 128, 256, 512, NUM_KECCAK_BINARY_COLS] {
+                let shape = TableShape::new(log_height, width);
+                let (arity, _) = plan_stacked_layout(&[shape]);
+                let packed = arity - stark::ABSORBED;
+                let mut best: Option<(usize, String)> = None;
+                for log_inv_rate in 3..=8 {
+                    for folding in 3..=5 {
+                        for pow in [0usize, 32, 40, 48] {
+                            let p = Params { log_height, log_inv_rate, folding, term_bits };
+                            let whir = if pow == 0 {
+                                BinaryWhirProfile::proven_list_decoding(term_bits, log_inv_rate, folding)
+                                    .config::<F, F, Challenger, _>(packed, &BooleanWhirDomain::default())
+                                    .ok()
+                            } else {
+                                whir_with_budget(&p, packed, pow)
+                            };
+                            let Some(whir) = whir else { continue };
+                            for digest_bits in [256usize, 2 * term_bits.min(104)] {
+                                let parts = input_bits_for(log_height, width, &whir, digest_bits);
+                                let total: usize = parts.iter().map(|(_, b)| b).sum();
+                                let queries: Vec<usize> =
+                                    whir.round_parameters().iter().map(|r| r.num_queries).chain([whir.terminal().num_queries]).collect();
+                                let what = format!(
+                                    "rate 1/{} folding {folding} pow {} digest {digest_bits} queries {queries:?} {parts:?}",
+                                    1 << log_inv_rate,
+                                    whir.max_pow_bits()
+                                );
+                                if digest_bits == 256 {
+                                    if best.as_ref().is_none_or(|(b, _)| total < *b) {
+                                        best = Some((total, what));
+                                    }
+                                } else if best.as_ref().is_some_and(|(_, w)| w.starts_with(&format!("rate 1/{} folding {folding} pow {} ", 1 << log_inv_rate, whir.max_pow_bits()))) {
+                                    eprintln!("    truncated digests ({digest_bits} bits) at the 256-bit optimum so far: {total}");
+                                }
+                            }
+                        }
+                    }
+                }
+                let (total, what) = best.expect("some configuration exists");
+                eprintln!("term {term_bits} rows 2^{log_height} width {width} packed {packed}: {total} bits; {what}");
+            }
+        }
+    }
+}
+
 /// A WHIR schedule with a grinding budget of `pow` bits per round instead of
 /// the profile's minimum: more grinding buys fewer queries.
 fn whir_with_budget(p: &Params, packed: usize, pow: usize) -> Option<WhirConfig<F, F, Challenger>> {
