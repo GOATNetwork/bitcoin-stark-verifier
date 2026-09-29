@@ -789,7 +789,14 @@ published preimages and evaluates the stored garbling without $\Delta$ or any
 label it was not handed. For a true $x$ it obtains the accept label, which the
 Disprove hashlock script rejects; for $x$ with one bit changed it obtains the
 reject label, which opens it. Assert rejects a preimage outside the committed
-keys. Signatures, timelocks and cut-and-choose are not part of this run.
+keys. We then ran the same dispute on the Keccak-$f$ STARK verifier at $2^5$
+rows. Garbled with every input at 0, it reads 586{,}240 input bits, which the
+operator reveals through 588 Assert scripts of at most 998 bits each,
+28.7\,MB of script in all, each executed under the stack limit. The challenger's
+evaluation of the stored garbling from the revealed labels gives the accept label
+on the real proof and the reject label, which opens Disprove, on the proof with
+one opened value changed. Signatures, timelocks and cut-and-choose are not part
+of either run.
 
 % =====================================================================
 \section{Evaluation}\label{sec:eval}

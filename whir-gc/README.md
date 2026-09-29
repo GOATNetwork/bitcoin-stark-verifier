@@ -65,6 +65,7 @@ The ignored tests are:
 | `whir_schedule_of_the_measured_configurations` | queries and grinding per round |
 | `input_bits_of_whir_configurations` | the input-size sweep |
 | `garbled_before_the_proof_evaluates_real_proofs` | garbles with every input at 0, then evaluates the stored garbling on a real proof (label of 1) and on a changed proof (label of 0) |
+| `dispute_over_the_stark_verifier_in_script` | the dispute on the real verifier: garbled with every input at 0, the proof's input bits revealed through Lamport Assert scripts (998 bits each, stack limit on), evaluated from the labels alone; Disprove opens for a changed proof and not for the real one |
 
 ## Layout
 

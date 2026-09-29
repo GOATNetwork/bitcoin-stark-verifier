@@ -9,6 +9,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// The circuit tests hold gigabytes; one at a time.
+mod dispute;
+
 static HEAVY: Mutex<()> = Mutex::new(());
 
 fn heavy() -> MutexGuard<'static, ()> {
@@ -1147,3 +1149,87 @@ fn garbled_before_the_proof_evaluates_real_proofs() {
     let log_height = std::env::var("WHIR_GC_LOG_HEIGHT").ok().map_or(5, |s| s.parse().expect("a log height"));
     garble_then_evaluate(log_height);
 }
+
+/// The paper's dispute on the real verifier: the Keccak-f STARK verifier is
+/// garbled before any proof exists (every input held at 0); the proof's input
+/// bits are revealed through Lamport Assert scripts, `dispute::BITS_PER_SCRIPT`
+/// bits per leaf, each executed by `bitcoin-scriptexec` with the stack limit
+/// on; the challenger turns the revealed preimages into labels through the
+/// translation ciphertexts and evaluates the stored garbling; and the
+/// Disprove hashlock script opens for the proof with one opened value changed,
+/// and not for the real proof. `WHIR_GC_LOG_HEIGHT` sets the trace (2^5 by
+/// default).
+#[test]
+#[ignore]
+fn dispute_over_the_stark_verifier_in_script() {
+    use rand::SeedableRng;
+    let _heavy = heavy();
+    let log_height = std::env::var("WHIR_GC_LOG_HEIGHT").ok().map_or(5, |s| s.parse().expect("a log height"));
+    let p = params(log_height);
+    let run = prove_and_log(&p);
+    let inp = inputs(&p, &run);
+
+    // Setup: garble with every input at 0 and keep the ciphertexts.
+    let t = std::time::Instant::now();
+    let mut plan = Plan::new();
+    build_full(&mut plan, &inp, &inp);
+    let mut g = Blind { inner: Streaming::planned(plan, true), input_label0: Vec::new() };
+    let (shape, _) = build_full(&mut g, &inp, &inp);
+    let delta = g.inner.delta();
+    let reject = g.inner.label0(shape.output);
+    let accept = reject ^ delta;
+    let constants = [g.inner.label0(0), g.inner.label0(1) ^ delta];
+    let ciphertexts = g.inner.ciphertexts().to_vec();
+    let input_label0 = std::mem::take(&mut g.input_label0);
+    drop(g);
+    let bits = input_label0.len();
+    // One Lamport pair per input bit, and the translation ciphertexts.
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(2026);
+    let keys = dispute::Lamport::new(bits, &mut rng);
+    let translation = keys.translation(|i, value| if value { input_label0[i] ^ delta } else { input_label0[i] });
+    drop(input_label0);
+    let setup_time = t.elapsed();
+
+    // The proof's input bits, in the order the circuit allocates them.
+    let witness_of = |proof: &Inputs| -> Vec<bool> {
+        let mut counter = Plan::new();
+        build_full(&mut counter, proof, &inp).1
+    };
+    // Assert, then the challenger's evaluation, holding only public data.
+    let dispute = |proof: &Inputs, what: &str| -> (S, usize, std::time::Duration, std::time::Duration) {
+        let witness = witness_of(proof);
+        assert_eq!(witness.len(), bits, "{what}: one Lamport pair per input bit");
+        let published = keys.publish(&witness);
+        let t = std::time::Instant::now();
+        let (leaves, ok) = dispute::assert_all(&keys.hashes, &published);
+        let assert_time = t.elapsed();
+        assert!(ok, "{what}: every Assert leaf accepts a well-formed reveal");
+        let held: Vec<(bool, S)> = dispute::read_labels(&keys.hashes, &translation, &published);
+        assert!(held.iter().zip(&witness).all(|(&(v, _), &w)| v == w), "{what}: the revealed bits are the proof's");
+        let labels: Vec<S> = held.into_iter().map(|(_, l)| l).collect();
+        let t = std::time::Instant::now();
+        let mut e = Evaluator::new(constants, &labels, &ciphertexts);
+        let (shape, _) = build_full(&mut e, proof, &inp);
+        let eval_time = t.elapsed();
+        (e.label[shape.output], leaves, assert_time, eval_time)
+    };
+
+    let (label, leaves, assert_time, eval_time) = dispute(&inp, "honest");
+    assert_eq!(label, accept, "the real proof evaluates to the accept label");
+    assert!(!dispute::disproves(&label, &reject), "no Disprove on the real proof");
+
+    let mut bad = inp.clone();
+    bad.sdata.values[7] += F::ONE;
+    let (label, _, _, _) = dispute(&bad, "changed");
+    assert_eq!(label, reject, "the changed proof evaluates to the reject label");
+    assert!(dispute::disproves(&label, &reject), "Disprove opens on the changed proof");
+
+    eprintln!(
+        "2^{log_height} rows: {bits} input bits in {leaves} Assert leaves ({} B of script), executed in {assert_time:.1?}; \
+         {} non-free gates garbled with every input at 0 (setup {setup_time:.1?}); evaluated in {eval_time:.1?}; \
+         real proof: no Disprove; changed proof: Disprove opens",
+        keys.hashes.chunks(dispute::BITS_PER_SCRIPT).map(|h| dispute::assert_lock(h).len()).sum::<usize>(),
+        ciphertexts.len()
+    );
+}
+
