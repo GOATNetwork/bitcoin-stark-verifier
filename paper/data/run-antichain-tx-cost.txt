@@ -1,0 +1,32 @@
+Host: ant-5090-2
+Date: 2026-09-30 UTC
+Source SHA256:
+  24470e39f315e13030053c924cb932b383dd57a5c695788a6183c72224998e65  whir-gc/tests/antichain_tx_cost.rs
+Pinned upstream ACW revision: 407893dd0f25dda8564be8eb565b65d098d2b85e
+Command:
+  cargo test --locked --release -p whir-gc --test antichain_tx_cost -- --nocapture
+
+running 2 tests
+test signed_acw_d128_executes_and_rejects_forgery_and_transaction_tampering ... ok
+test signed_acw_d332_capacity_and_full_input_packing ... ok
+
+1041024 bits via safe ACW(2,16): 784 signed P2TR inputs in 131 two-output
+transactions; 47261078 serialized bytes; 47395238 WU; 11848875 vB; max tx
+362762 WU
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+finished in 9.62s
+
+The fixture uses genuine upstream ACW keys, openings, posted coordinates and
+verification scripts. It adds a 64-byte SIGHASH_DEFAULT transaction-binding
+signature, BIP341 NUMS internal key, depth-zero control block, input shell and
+two P2TR outputs per transaction. The D=128 canonical golden is 23,858 WU /
+5,965 vB. D=332 is 60,782 WU / 15,196 vB with peak combined stack 999; D=333
+fails when the public-key push reaches 1,001 stack items. Negative cases mutate
+an opener, try the adjacent-codeword attack, lie about a coordinate, mutate the
+transaction signature, redirect an output and alter the control block.
+
+The 11,848,875-vB aggregate uses the canonical all-nonzero [8,7] codeword and
+is a worst-case serialization. Each zero posted ScriptNum coordinate saves one
+WU; for per-transaction zero counts z_t, the exact total is
+11,848,875 - sum_t floor((z_t + 2) / 4) vB.

@@ -35,3 +35,7 @@ postcard = { version = "1", features = ["alloc"] }
 bitcoin.workspace = true
 bitcoin-script.workspace = true
 bitcoin-scriptexec.workspace = true
+bitvm-scriptexec.workspace = true
+acw = { git = "https://github.com/alpenlabs/antichain-winternitz", rev = "407893dd0f25dda8564be8eb565b65d098d2b85e" }
+rand08 = { package = "rand", version = "0.8" }
+rand_chacha08 = { package = "rand_chacha", version = "0.3" }

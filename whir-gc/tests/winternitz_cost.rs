@@ -1,5 +1,6 @@
-//! What a Winternitz reveal of the verifier's input costs on-chain, and how
-//! many input bits one transaction can hold.
+//! A component model for the authentication script and witness of a Winternitz
+//! reveal, plus an explicit input/transaction envelope used only for capacity
+//! estimates. It is not a serialized dispute graph or total on-chain cost.
 //!
 //! The script is the compact form: per chain, the signature is hashed forward
 //! `W - 1` times with every intermediate value kept, the digit picks the one
@@ -65,9 +66,9 @@ fn witness(sks: &[[u8; 20]], digits: &[usize]) -> (bitcoin::ScriptBuf, usize) {
     (script! { for (s, v) in items.into_iter().rev() { { s } { v } } }, size)
 }
 
-/// Weight of one input besides its script and stack items: the outpoint,
-/// sequence and empty scriptSig at 4 WU per byte, and the witness's item
-/// count, script length and a control block for a tree of depth 1.
+/// Modeled weight of one input besides its authentication script and stack
+/// items: the outpoint, sequence and empty scriptSig at 4 WU per byte, and the
+/// witness's item count, script length and a control block for a tree of depth 1.
 const INPUT_OVERHEAD_WU: usize = 41 * 4 + 3 + 3 + 1 + 65;
 /// The transaction's own fields and one output.
 const TX_OVERHEAD_WU: usize = 10 * 4 + 2 + 43 * 4;
@@ -76,7 +77,7 @@ const TX_OVERHEAD_WU: usize = 10 * 4 + 2 + 43 * 4;
 fn winternitz_reveal_cost_per_bit() {
     let mut rng = ChaCha20Rng::seed_from_u64(7);
     let input_bits = 1_041_024usize;
-    eprintln!("digit | chains per input | script B/chain | witness B/chain | WU per bit | bits in 400k WU | bits in 4M WU | WU for {input_bits} bits");
+    eprintln!("digit | chains per input | script B/chain | witness B/chain | modeled WU per bit | bits in 400k-WU envelope | bits in 4M-WU envelope | component WU for {input_bits} bits");
     for d in 2usize..=8 {
         let w = 1usize << d;
         // As many message chains as the 1000-item limit allows: two witness
@@ -205,4 +206,85 @@ fn chunked_winternitz_reveal_cost_per_bit() {
         input_bits as f64 * per_bit / 1e6,
         input_bits.div_ceil(CHUNK_DIGITS * 4),
     );
+}
+
+/// A chunk of 128 input bits in `d`-bit digits: the message digits, and the
+/// bit widths of its two checksum chains (major first).
+fn chunk_shape(d: usize) -> (usize, [usize; 2]) {
+    let n = 128usize.div_ceil(d);
+    let max = n * ((1 << d) - 1);
+    let bits = (usize::BITS - max.leading_zeros()) as usize;
+    (n, [bits - bits.div_ceil(2), bits.div_ceil(2)])
+}
+
+/// Verify one chunk of `chunk_shape(d)`: `sum(W - 1 - digit) = u 2^minor + v`.
+fn verify_chunk(pks: &[[u8; 20]], d: usize) -> bitcoin::ScriptBuf {
+    let (n, [major, minor]) = chunk_shape(d);
+    script! {
+        for pk in &pks[..n] { { verify_chain(pk, d) } }
+        { verify_chain(&pks[n], major) }
+        { verify_chain(&pks[n + 1], minor) }
+        OP_FROMALTSTACK OP_FROMALTSTACK
+        for _ in 0..minor { OP_DUP OP_ADD }
+        OP_ADD
+        for _ in 0..n { OP_FROMALTSTACK OP_ADD }
+        { (n * ((1 << d) - 1)) as u32 } OP_EQUALVERIFY
+    }
+}
+
+/// The optimistic reveal: the Assert carries the signature values as plain
+/// witness data, 20 bytes per chain packed into 520-byte items, and no
+/// verification script. A chunk is verified in Script only when a challenger
+/// asks for it, in a response transaction. Both costs, per digit width.
+#[test]
+fn unverified_reveal_and_response_on_demand() {
+    let mut rng = ChaCha20Rng::seed_from_u64(9);
+    let input_bits = 1_041_024usize;
+    let chunks = input_bits.div_ceil(128);
+
+    // One input of plain data under the stack limit: 998 items of 520 bytes,
+    // dropped, leaving one true item.
+    let items: Vec<Vec<u8>> = (0..998).map(|_| (0..520).map(|_| rng.random()).collect()).collect();
+    let drop_all = script! { for _ in 0..499 { OP_2DROP } OP_TRUE };
+    let info = bitcoin_scriptexec::execute_script(script! { for i in items { { i } } { drop_all.clone() } });
+    assert!(info.success, "an input of plain data is a valid spend: {:?}", info.error);
+    let per_input_bytes = 998 * 520;
+
+    eprintln!("digit | chains per 128 bits | unverified Assert for {input_bits} bits | verified response WU per chunk | chunks per 400k WU response | everything verified");
+    for d in 4usize..=8 {
+        let (n, cks) = chunk_shape(d);
+        let chains = n + 2;
+        // The Assert: 20 bytes per chain, 3 bytes of length per 520-byte item.
+        let data = chunks * chains * 20;
+        let inputs = data.div_ceil(per_input_bytes);
+        let assert_wu = data + data.div_ceil(520) * 3 + inputs * (INPUT_OVERHEAD_WU + drop_all.len()) + TX_OVERHEAD_WU;
+
+        // A response: the chunk verified in Script, executed.
+        let mut digits: Vec<usize> = (0..n).map(|_| rng.random_range(0..1 << d)).collect();
+        let weight: usize = digits.iter().map(|&v| (1 << d) - 1 - v).sum();
+        digits.extend([weight >> cks[1], weight & ((1 << cks[1]) - 1)]);
+        let widths: Vec<usize> = (0..n).map(|_| d).chain(cks).collect();
+        let sks: Vec<[u8; 20]> = (0..chains).map(|_| rng.random()).collect();
+        let pks: Vec<[u8; 20]> = sks.iter().zip(&widths).map(|(sk, &b)| chain(sk, (1 << b) - 1)).collect();
+        let lock = script! { { verify_chunk(&pks, d) } OP_TRUE };
+        let (wit, wit_size) = witness(&sks, &digits);
+        let info = bitcoin_scriptexec::execute_script(script! { { wit } { lock.clone() } });
+        assert!(info.success, "d = {d}: the chunk verifies: {:?}", info.error);
+        let mut forged = digits.clone();
+        let at = forged[..n].iter().position(|&v| v + 1 < 1 << d).expect("a digit below the maximum");
+        forged[at] += 1;
+        let (bad, _) = witness(&sks, &forged);
+        assert!(!bitcoin_scriptexec::execute_script(script! { { bad } { lock.clone() } }).success, "d = {d}: a raised digit");
+
+        let chunk_wu = lock.len() - 1 + wit_size;
+        let per_response = (400_000 - TX_OVERHEAD_WU - INPUT_OVERHEAD_WU) / chunk_wu;
+        eprintln!(
+            "d = {d} | {n} + 2 ({} and {} bits) | {:.2}M WU in {inputs} inputs ({:.2} WU per bit) | {chunk_wu} | {per_response} | {:.1}M WU",
+            cks[0],
+            cks[1],
+            assert_wu as f64 / 1e6,
+            assert_wu as f64 / input_bits as f64,
+            (chunks * chunk_wu) as f64 / 1e6,
+        );
+    }
 }

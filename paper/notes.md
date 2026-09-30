@@ -362,6 +362,11 @@ The user chose "enforceable protocol + shrink study": the operator garbles, chal
 - **BitVM3 (2026/933).**
   - The operator garbles and the challenger evaluates (§1, §4.1).
   - Inputs are Schnorr adaptor signatures over 8-bit digits (§8.1): "9707 WU, or approximately 2.4 kvB" for a 128-digit (1,024-bit) proof. That is 9.48 WU/bit.
+  - The printed arithmetic is inconsistent: its displayed witness formula gives
+    8,901 witness bytes and 9,451 WU including SegWit marker/flag, not 9,707 WU.
+    The merged 64-byte-SIGHASH_DEFAULT implementation gives 9,323 WU for the
+    same one-input/two-output shell. Keep the reported figure distinct from a
+    corrected implementation-backed estimate.
   - Disprove is "370 WU, or approximately 93 vB".
   - §8.1 puts Lamport at 74 B of script plus a 20 B preimage per bit, and says Lamport must be chunked because of the 1,000-item stack limit.
   - Soldering across the 7 kept instances is by VSSS (§8.2, citing Glock); it is asserted, not constructed.
@@ -389,18 +394,65 @@ The user chose "enforceable protocol + shrink study": the operator garbles, chal
   - Fees are at 2.2 sat/vB and $95,500; BitVM2's unhappy path is $14,211.
 
 **Our measurements:**
-- **Lamport script** (`data/lamport_cost.rs`, `data/run-lamport-cost.txt`). 49 B of script plus 17 B of witness per bit, with a 16-byte preimage. 998 bits fit per input (the stack limit), and wrong preimages are rejected. With about 203 WU of per-input overhead that is 66.2 WU = 16.55 vB per bit.
+- **Lamport script** (`data/lamport_cost.rs`, `data/run-lamport-cost.txt`). 49 B of script plus 17 B of witness per bit, with a 16-byte preimage. 998 bits fit per input (the stack limit), and wrong preimages are rejected. A modeled depth-0 one-leaf P2TR input envelope is 204 WU (base input, witness counts and lengths, and the 33-byte control block), giving 66.2 WU = 16.55 vB per bit. Transaction-global fields and outputs are not included.
+- **Transaction-bound Lamport fixture** (`whir-gc/tests/lamport_tx_cost.rs`,
+  `data/run-lamport-core31-regtest.sh`). Every input adds a real 64-byte
+  BIP341 SIGHASH_DEFAULT signature and CHECKSIGVERIFY, uses a NUMS internal key,
+  and includes the full script-path witness and transaction shell. The 174
+  reveals total 17,265,635 vB (16.585 vB/input bit); full transactions are
+  397,246 WU/99,312 vB and the tail is 338,636 WU/84,659 vB.
+- **Transaction-bound adaptor fixture**
+  (`whir-gc/tests/adaptor_tx_cost.rs`). It reproduces the merged
+  implementation's 128-digit result of 9,323 WU, not BitVM3's printed 9,707
+  WU. Bitcoin Core exposed a false positive in the old executor: it supplied
+  the byte offset of `OP_CODESEPARATOR` as `codesep_pos`, whereas BIP342
+  commits to the opcode position. The fixed fixture uses `0xffffffff` before
+  the first separator and `3*i` for the separator preceding signature `i`,
+  and directly verifies every completed Schnorr signature against that BIP341
+  sighash rather than trusting the old interpreter result. N=998 reaches the
+  exact 1,000-item peak. The global reveal optimum for
+  130,128 eight-bit digits uses 133 inputs in 23 two-output transactions:
+  8,888,837 WU / 2,222,213 vB. Minimizing inputs instead uses 131 inputs/26
+  transactions and is 184 vB larger.
+- **Transaction-bound safe ACW fixture**
+  (`whir-gc/tests/antichain_tx_cost.rs`). It pins upstream at `407893d`, adds a
+  real transaction-binding signature and two P2TR outputs, and executes honest,
+  forged and tampered cases. D=332 is executable with peak stack 999; D=333
+  fails at 1,001. The canonical all-nonzero 1,041,024-bit packing is 784 inputs
+  in 131 transactions: 47,395,238 WU / 11,848,875 vB. Each zero ScriptNum
+  coordinate saves one WU, so the exact data-dependent total can be smaller.
+- **Strict Bitcoin Core 31.1 validation for all three fixtures.** Each fixture
+  was rebound to a real signed funding transaction and replayed on an isolated
+  regtest node with non-standard transactions disabled. Core rejected a reveal
+  while its funding parent was unconfirmed as `too-large-cluster`; after the
+  funding transaction confirmed, it accepted every reveal under strict policy
+  and mined the reveal sets as follows:
+
+  | fixture | signed funding | signed reveals | funding + reveals | reveal blocks |
+  |---|---:|---:|---:|---:|
+  | adaptor | 5,841 vB | 23 tx / 2,222,213 vB | 2,228,054 vB | 3 |
+  | safe ACW (2,16), all-nonzero | 33,836 vB | 131 tx / 11,848,875 vB | 11,882,711 vB | 12 |
+  | Lamport | 45,016 vB | 174 tx / 17,265,635 vB | 17,310,651 vB | 18 |
+
+  Only Lamport currently has a constructed completion transaction. Core
+  rejected its signed 174-parent join while the reveal parents were
+  unconfirmed, then accepted and mined the 13,060-vB join after they confirmed,
+  bringing the tested Lamport funding--reveal--join slice to exactly 17,323,711
+  vB. The adaptor and Antichain completion transactions remain unconstructed.
+  These runs establish staged standard-policy feasibility, not public-P2P
+  propagation, robust fee management or the missing
+  challenge/timeout/Disprove/anchor and soldering graph.
 - **Input bits** (`whir-gc/tests/keccak_stark.rs`: `input_bits_of_whir_configurations`; `data/run-input-bits-sweep.txt`).
   - The analytic count equals the measured inputs at 2^5 through 2^18.
   - At 2^18 the split is: opened values 416,000; zerocheck 9,344; ring switch 54,912; WHIR caps 32,768; leaf rows 163,840; Merkle paths 346,624; WHIR other 17,536.
   - The smallest in the sweep is rate 1/256, folding 4, pow budget 48: queries 16/12/9/8, 845,952 bits, 103.89 bits composed, nothing unassessed.
 - **Costs at 2^18** (2.2 sat/vB, $95,500):
 
-  | scheme | Assert size | transactions | fee | fee, tuned |
-  |---|---|---|---|---|
-  | adaptor | 2.47 MvB | 25 | 0.054 BTC, $5,183 | $4,212 |
-  | ACW (2,16) | 11.77 MvB | 118 | $24,737 | $20,102 |
-  | Lamport | 17.23 MvB | 173 | 0.379 BTC, $36,200 | $29,417 |
+  | scheme | accounted component | serialized transactions | fee equivalent |
+  |---|---|---|---|
+  | adaptor | 2.222213 MvB | 23 | 0.04889 BTC, $4,669 |
+  | safe ACW (2,16), all-nonzero | 11.848875 MvB | 131 | 0.26068 BTC, $24,894 |
+  | Lamport reveals | 17.265635 MvB | 174 | 0.37984 BTC, $36,275 |
 
 - **Translation ciphertexts.** 32 B per input bit per instance, 33 MB per instance at 2^18. Derived, not measured.
 - **Open item.** Hash-based soldering to M kept instances at a million input bits is not built.
@@ -422,7 +474,17 @@ At 2^20 that is 7.5 garbled bits per trace bit, or 38 kB per Keccak-f. Smaller i
 
 ## 7f. Reducing the on-chain input (2026-09-29)
 
-On-chain cost = input bits × price per bit. Sources and runs for both factors are below.
+The input-authentication component is not the total on-chain cost. Total
+on-chain footprint is the serialized virtual size of every transaction in the
+dispute graph, including ordinary signatures, authentication witnesses,
+scripts, controls, transaction I/O, anchors, timeouts and fee management. The
+signed adaptor, safe-Antichain and Lamport funding--reveal slices have all been
+accepted under Bitcoin Core 31.1 strict policy after funding confirmation, but
+the complete graph has not. The three principal comparison rows have executable
+complete signed reveal-transaction fixtures: adaptor and safe Antichain use two
+P2TR outputs per transaction, whereas Lamport uses one. Only Lamport also has a
+constructed and Core-tested join. Source rates remain provenance rather than
+final results.
 
 **Why the cost is per bit.** A garbled circuit needs a *label* per input bit, and only the garbler (the operator) can release it. So making the proof data available is not enough. ESSPI (arXiv 2503.02772) publishes data 1:1 under a Schnorr signature, but that works for BitVMX, where the dispute needs only the data. It does not give labels.
 
@@ -447,19 +509,27 @@ On-chain cost = input bits × price per bit. Sources and runs for both factors a
 
 | scheme | vB per bit | source | assumption | off-chain |
 |---|---|---|---|---|
-| Lamport | 16.55 | our measurement | hash | 32 B per bit per instance |
-| Antichain Winternitz (4,16) | 8.36 | 2026/1568 Table 1 | hash | 43.8 kB per bit |
+| Lamport | 16.59 | Core-tested complete signed 174-reveal set after funding confirmation | hash plus non-PQ tx authorization | 32 B per bit per instance |
+| Antichain Winternitz (2,16) | 11.38 | Core-tested all-nonzero full signed transaction set after funding confirmation | hash plus non-PQ tx authorization | 0.256 kB per bit |
+| Antichain Winternitz (4,16) | 8.36 | 2026/1568 Table 1, marginal rate | hash | 43.8 kB per bit |
 | Winternitz + translation gadget | 7.38 | 2026/1684: Assert of 508 bits is 3,748 vB | hash | table quadratic per chunk; about 1.9 MiB per 127-bit chunk per instance [derived from their 97.93 vs 45.57 MiB over 28 chunk tables] |
-| Schnorr adaptor, 8-bit digits | 2.37 | 2026/933 §8.1 | discrete log | 256 adaptors of 65 B per byte |
+| Schnorr adaptor, 8-bit digits | 2.37 | 2026/933 §8.1, complete 1,024-bit Assert tx rate | discrete log | 256 adaptors of 65 B per byte |
+| Schnorr adaptor, packed fixture | 2.13 | Core-tested 133-input/23-transaction full signed set after funding confirmation | discrete log | one completed adaptor per byte |
 
-**Combined, at 2.2 sat/vB and $95,500:**
+**Input-component projections, at the historical 2.2 sat/vB and $95,500 (not total dispute fees):**
+
+These rows are not like-for-like protocol totals. The Lamport and packed-adaptor
+columns scale complete signed reveal-set measurements, whereas the
+Winternitz-plus-translation column scales a source-reported Assert rate whose
+ordinary transaction authorization and complete graph boundary are not
+normalized to the fixtures here.
 
 | input | Lamport | Winternitz + translation | adaptor |
 |---|---|---|---|
-| 1,041,024 (today) | 17.2 MvB, $36,200 | 7.7 MvB, $16,100 | 2.47 MvB, $5,200 |
-| 845,952 (tuned) | 14.0 MvB | 6.2 MvB, $13,100 | 2.00 MvB, $4,200 |
-| 329,664 (128 col, 110-bit, short digests) | 5.5 MvB | 2.4 MvB, $5,100 | 0.78 MvB, $1,640 |
-| 213,248 (128 col, 80-bit) | 3.5 MvB | 1.6 MvB, $3,300 | 0.51 MvB, $1,060 |
+| 1,041,024 (today) | 17.27 MvB, $36,275 | 7.7 MvB, $16,100 | 2.22 MvB, $4,669 |
+| 845,952 (tuned) | 14.0 MvB | 6.2 MvB, $13,100 | about 1.81 MvB, $3,794 |
+| 329,664 (128 col, 110-bit, short digests) | 5.5 MvB | 2.4 MvB, $5,100 | about 0.70 MvB, $1,479 |
+| 213,248 (128 col, 80-bit) | 3.5 MvB | 1.6 MvB, $3,300 | about 0.46 MvB, $956 |
 
 **Not solved.**
 - Revealing only a slice of the proof (chunked sub-circuits) needs the challenger to know which slice is wrong, so it needs the proof data. Script cannot bind raw on-chain data to the signed chunk digests without OP_CAT or an in-script hash. A cheating operator can therefore publish garbage data, and the worst case stays the full reveal.
@@ -486,11 +556,83 @@ On-chain cost = input bits × price per bit. Sources and runs for both factors a
 - So one transaction holds at most 173,372 bits (consensus limit, non-standard) or 15,584 bits (standard).
 
 **The 2026/1684 layout, measured** (`chunked_winternitz_reveal_cost_per_bit`). Chunks of 32 four-bit message digits, each with a 4-bit and a 5-bit checksum chain (34 chains per 128 bits); 14 chunks per transaction input, peak stack 969.
-- 24.71 WU per bit (6.18 vB). For 1,041,024 bits that is 25.7M WU, 2.68× less than our Lamport measurement (66.2 WU per bit, 68.9M WU).
+- 24.71 WU per bit (6.18 vB). For 1,041,024 bits that is 25.7M WU, 2.68× less than the historical unsigned Lamport envelope model (66.2 WU per bit, 68.9M WU). The current transaction-bound signed fixture is 69,062,194 WU and is reported separately above.
 - The paper's own Assert is 14,990 WU for 508 bits, 29.5 WU per bit, against 72.8 for its Lamport baseline: 2.47×.
 - Digits from 8 bits up were first counted at 2 witness bytes; values of 128 and above take 3. Fixed; only the 8-bit row moved (87.43 to 87.49 WU per bit).
 - Off-chain tables: about 14.9 GiB per instance at 1,041,024 bits [derived from the paper's 1.87 MiB per chunk].
 - In the paper's BABE integration every kept circuit gets its own on-chain signature (1 + 7 sets). One signature serving all kept instances is the soldering problem, still open for hash-based keys.
+
+## 7h. Rejected prototype: unverified witness, verified on demand (corrected 2026-09-30)
+
+The `unverified_reveal_and_response_on_demand` test remains a historical
+capacity model, not a feasible Assert construction. Its earlier conclusion was
+wrong for three independent reasons:
+
+- It passes 998 520-byte values as initial Tapscript witness items. Bitcoin
+  Core 31.1 standard policy limits each such item to 80 bytes, so the modeled
+  spend is non-standard even when its total weight is below the consensus
+  limit.
+- The drop-only script has no transaction authorization. Anyone can replace
+  the witness and redirect the outputs.
+- Adding `CHECKSIG` does not fix the data binding. BIP341 commits to the
+  transaction and tapleaf, not ordinary witness arguments. A third party can
+  replace the dropped payload while preserving the txid and valid signature;
+  a child Script also cannot inspect the parent's witness. The annex is signed
+  but non-standard and does not provide child introspection.
+
+Consequently, a response containing a different valid opening does not merely
+hurt the operator: the first payload can be arbitrary garbage, and no Script
+condition proves that the later response opens the same chunk. The 4--8-bit
+tables in `run-winternitz-cost.txt` measure byte arithmetic only and must not be
+quoted as a standard or secure on-chain protocol.
+
+The current-consensus way to bind bulk data is an ESSPI-style P2TR envelope:
+put the payload in a skipped branch of the revealed tapscript, so the TapLeaf
+hash/P2TR output commits to it, and require a transaction signature. Our exact
+130,128-byte fixture is a 32,850-vB reveal plus a 154-vB wallet-signed commit.
+Strict Core 31.1 accepts the unconfirmed parent-child pair and confirms both in
+one empty-regtest block. The **33,004-vB result is authenticated transport, not
+a complete Assert**: ESSPI's DA-DAG, secondary BitVMX instance, fraud paths,
+bonds, timeouts and settlement remain outside it, and raw proof bytes do not
+provide the selected input labels required by this garbled verifier.
+
+## 7i. Wider adaptor digits and pointlock (2026-09-30)
+
+The exact serialized adaptor sweep for the 1,041,024-bit input is:
+
+| bits/digit | digits | inputs | reveal tx | reveal vB | funding + reveal vB | 65-B choice table/keyset |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 130,128 | 133 | 23 | 2,222,213 | 2,228,054 | 2.165 GB |
+| 10 | 104,103 | 107 | 18 | 1,777,775 | 1,782,498 | 6.929 GB |
+| 11 | 94,639 | 97 | 17 | 1,616,206 | 1,620,499 | 12.598 GB |
+| 12 | 86,752 | 89 | 15 | 1,481,461 | 1,485,410 | 23.097 GB |
+| 16 | 65,064 | 66 | 12 | 1,111,128 | 1,114,088 | 277.162 GB |
+
+The 8/10/11/12/16-bit transaction shapes are exact serialization tests. The
+16-bit row additionally uses real completed BIP340 signatures and passed strict
+Core 31.1 policy: a 2,960-vB funding transaction with 66 protocol P2TR outputs
+plus one wallet-change output, followed by twelve
+reveals, mined in two reveal blocks after funding confirmation. A full reveal
+could not be admitted with the unconfirmed funding parent because their cluster
+exceeded 101 kvB.
+
+This only establishes the on-chain encoding. It does not instantiate all
+`2^16` choices or prove how one digit secret releases exactly the corresponding
+16 binary GC labels. The 277.162-GB figure is one independent keyset's simple
+`digits * 2^16 * 65` table; multiplication by seven is valid only for seven
+independent tables, not an implemented Mosaic-correlated construction. The
+10/11-bit rows are the preferred next implementation points.
+
+For Disprove, the corrected fixture uses this implementation's actual 16-byte
+garbled output label. With the same timeout sibling, a SHA256 hashlock spend is
+386 WU / 97 vB and a false-label-derived Taproot key-path pointlock is 332 WU /
+83 vB. Both passed strict Core 31.1 policy, so the fair saving is 54 WU / 14 vB.
+The pointlock adds a discrete-log assumption, hides the label on chain and does
+not by itself constrain outputs; use a public adaptor presignature or covenant
+if fixed slashing outputs or secret extraction are required.
+
+The complete comparison, evidence levels and soft-fork alternatives are in
+`assert-disprove-reduction-survey.md`.
 
 ## 8. To fix or check before release
 
@@ -545,8 +687,10 @@ On-chain cost = input bits × price per bit. Sources and runs for both factors a
         `garbled_before_the_proof_evaluates_real_proofs`
         (`data/run-garble-then-evaluate.txt`). Evaluation takes 11.5 s at 2^5
         and 17.0 s at 2^8, against 20.6 s and 34.0 s for garbling.
-      - The quantum level of the Lamport keys is ≈64 bits with 16-byte
-        preimages.
+      - A 16-byte Lamport preimage has ≈64-bit quantum strength for one target,
+        but the corrected aggregate bound is ≈54 bits across the roughly
+        $2^{20}$ alternate openings in one key set and ≈52.6 bits across seven
+        independent sets.
       - Citations added: Binius, ring switching, Wiedemann, LFKN, HyperPlonk,
         STIR, Cantor, LCH14, Blake3 and FIPS 202. Their metadata is from memory
         and still needs checking.
@@ -557,4 +701,3 @@ On-chain cost = input bits × price per bit. Sources and runs for both factors a
         PDF had two Type 3 bitmap fonts before.
       - The paper is renamed to `garbled-stark-verifier.tex`.
     - **Open, needs the authors:** the title's "Post-Quantum".
-

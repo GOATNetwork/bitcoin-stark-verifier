@@ -929,6 +929,74 @@ fn input_bits_of_candidate_statements() {
     }
 }
 
+/// A narrower trace must grow taller to represent at least as many committed
+/// cells as the measured 1,625-by-2^18 trace.  This is still only a statement
+/// layout model -- no narrow Keccak AIR is constructed -- but unlike the
+/// fixed-height sweep it does not silently discard most of the trace area.
+#[test]
+#[ignore]
+fn input_bits_of_equal_area_narrow_statements() {
+    const SOURCE_LOG_HEIGHT: usize = 18;
+    const SOURCE_WIDTH: usize = NUM_KECCAK_BINARY_COLS;
+    const TERM_BITS: usize = 110;
+    let source_cells = SOURCE_WIDTH * (1usize << SOURCE_LOG_HEIGHT);
+
+    for width in [512usize, 256, 128, 64, 32] {
+        let rows = source_cells.div_ceil(width).next_power_of_two();
+        let log_height = rows.ilog2() as usize;
+        assert!(width * rows >= source_cells);
+        assert!(width * (rows / 2) < source_cells);
+
+        let shape = TableShape::new(log_height, width);
+        let (arity, _) = plan_stacked_layout(&[shape]);
+        let packed = arity - stark::ABSORBED;
+        let profile = BinaryWhirProfile::proven_list_decoding(TERM_BITS, 5, 4)
+            .config::<F, F, Challenger, _>(packed, &BooleanWhirDomain::default())
+            .expect("the measured WHIR profile supports this statement");
+        let profile_parts = input_bits_for(log_height, width, &profile, 256);
+        let profile_total: usize = profile_parts.iter().map(|(_, bits)| bits).sum();
+        let mut best: Option<(usize, String)> = None;
+        for log_inv_rate in 3..=8 {
+            for folding in 3..=5 {
+                for pow in [0usize, 32, 40, 48] {
+                    let p = Params { log_height, log_inv_rate, folding, term_bits: TERM_BITS };
+                    let whir = if pow == 0 {
+                        BinaryWhirProfile::proven_list_decoding(TERM_BITS, log_inv_rate, folding)
+                            .config::<F, F, Challenger, _>(packed, &BooleanWhirDomain::default())
+                            .ok()
+                    } else {
+                        whir_with_budget(&p, packed, pow)
+                    };
+                    let Some(whir) = whir else { continue };
+                    let parts = input_bits_for(log_height, width, &whir, 256);
+                    let total: usize = parts.iter().map(|(_, bits)| bits).sum();
+                    if best.as_ref().is_none_or(|(bits, _)| total < *bits) {
+                        let queries: Vec<usize> = whir
+                            .round_parameters()
+                            .iter()
+                            .map(|round| round.num_queries)
+                            .chain([whir.terminal().num_queries])
+                            .collect();
+                        best = Some((
+                            total,
+                            format!(
+                                "rate 1/{} folding {folding} pow {} queries {queries:?} {parts:?}",
+                                1 << log_inv_rate,
+                                whir.max_pow_bits(),
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        let (total, what) = best.expect("some configuration exists");
+        eprintln!(
+            "equal-area width {width} rows 2^{log_height} ({:.2}% source cells): current profile {profile_total} input bits {profile_parts:?}; best frontier {total} input bits; {what}",
+            100.0 * (width * rows) as f64 / source_cells as f64,
+        );
+    }
+}
+
 /// A WHIR schedule with a grinding budget of `pow` bits per round instead of
 /// the profile's minimum: more grinding buys fewer queries.
 fn whir_with_budget(p: &Params, packed: usize, pow: usize) -> Option<WhirConfig<F, F, Challenger>> {
@@ -1330,4 +1398,3 @@ fn dispute_over_the_stark_verifier_in_script() {
         ciphertexts.len()
     );
 }
-
