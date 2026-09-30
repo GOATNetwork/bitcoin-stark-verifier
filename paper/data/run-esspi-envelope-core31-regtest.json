@@ -1,0 +1,21 @@
+{
+  "scheme": "esspi-p2tr-envelope-transport",
+  "core_version": "Bitcoin Core daemon version v31.1.0 bitcoind",
+  "strict_standard_policy": true,
+  "work_dir": "/mnt_zkm/stephen/esspi-envelope-core31.rXGAMp",
+  "commit": {
+    "txid": "46d40e3e326e13329eb669503dbdbfd463936246282db805e90eeaf4cef67513",
+    "vsize": 154
+  },
+  "reveal": {
+    "txid": "33054118a4466bbbeafa840e6059ff76b2278c19baf1c81d082a02316ab447f4",
+    "payload_bytes": 130128,
+    "tapscript_bytes": 130917,
+    "weight": 131400,
+    "vsize": 32850,
+    "accepted_with_unconfirmed_parent": true
+  },
+  "commit_plus_reveal_vsize": 33004,
+  "transactions": 2,
+  "confirmation_blocks": 1
+}

@@ -1,0 +1,26 @@
+{
+  "scheme": "disprove-hashlock-vs-pointlock",
+  "core_version": "Bitcoin Core daemon version v31.1.0 bitcoind",
+  "strict_standard_policy": true,
+  "work_dir": "/mnt_zkm/stephen/disprove-pointlock-core31.ZGeo6y",
+  "funding": {
+    "txid": "1a46238809d3f8e663ffba094202f0fbf752e1628b08f428c4fd173f2f1c8a16",
+    "vsize": 197
+  },
+  "false_label_bytes": 16,
+  "hashlock_with_timeout": {
+    "txid": "d0e186c4a2db78a540326fed1223150b2cf2f076a1528d96882dc90657e13773",
+    "weight": 386,
+    "vsize": 97
+  },
+  "pointlock_with_timeout": {
+    "txid": "290df2b58bebcd37bc86236c80334e021a33c2327ac4fb6d5944ce6ac84dd8d1",
+    "weight": 332,
+    "vsize": 83
+  },
+  "pointlock_saving": {
+    "weight": 54,
+    "vsize": 14
+  },
+  "all_confirmed": true
+}

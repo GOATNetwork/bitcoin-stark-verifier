@@ -1,0 +1,8 @@
+equal-area width 512 rows 2^20 (126.03% source cells): current profile 757120 input bits; best frontier 562048 input bits; rate 1/256 folding 4 pow 48 queries [16, 12, 9, 8]
+equal-area width 256 rows 2^21 (126.03% source cells): current profile 692096 input bits; best frontier 497024 input bits; rate 1/256 folding 4 pow 48 queries [16, 12, 9, 8]
+equal-area width 128 rows 2^22 (126.03% source cells): current profile 659840 input bits; best frontier 464768 input bits; rate 1/256 folding 4 pow 48 queries [16, 12, 9, 8]
+equal-area width 64 rows 2^23 (126.03% source cells): current profile 643968 input bits; best frontier 448896 input bits; rate 1/256 folding 4 pow 48 queries [16, 12, 9, 8]
+equal-area width 32 rows 2^24 (126.03% source cells): current profile 636288 input bits; best frontier 441216 input bits; rate 1/256 folding 4 pow 48 queries [16, 12, 9, 8]
+test input_bits_of_equal_area_narrow_statements ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out

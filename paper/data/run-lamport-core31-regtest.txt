@@ -1,0 +1,65 @@
+Host: ant-5090-2
+Date: 2026-09-30 UTC
+Bitcoin Core: v31.1.0
+Policy mode: regtest with -acceptnonstdtxn=0, -maxmempool=300
+Harness: paper/data/run-lamport-core31-regtest.sh
+Harness SHA256:
+  82f5f1f555959c750246e4669270fdd6284038c33df353cd8b180c0477664b7a
+Fixture source SHA256:
+  bae83a8cfce13b2f4035b6c21de7561b2ccabaf9d8e74d71d70bb1029056b08b  whir-gc/tests/lamport_tx_cost.rs
+Preserved remote evidence:
+  /mnt_zkm/stephen/tools/bitcoin-core-31.1/strict-lamport.xmBdZN
+
+The harness ran the transaction-aware Rust fixture a second time after the
+real funding txid was known:
+
+1041024 authenticated bits: 1044 P2TR inputs in 174 transactions; scripts
+51046716 B; serialized 68906116 B; base 52026 B; total 69062194 WU; summed
+vsize 17265635 vB; peak stack 1000; first/full tx 397246 WU (99312 vB);
+final tx 338636 WU (84659 vB)
+finalization: 174 parents, 30679 B serialized, 52240 WU, 13060 vB
+test result: ok. 1 passed; 0 failed; finished in 5.90s
+
+Core v31.1 result:
+
+{
+  "funding": {
+    "txid": "f65324e94ab340017830043fd7c6a9c93d281308cc52c08f2345a332b90ea356",
+    "size": 45097,
+    "weight": 180061,
+    "vsize": 45016
+  },
+  "unconfirmed_funding_reveal_rejection": "too-large-cluster",
+  "reveals": {
+    "count": 174,
+    "full_count": 173,
+    "full_vsize": 99312,
+    "tail_count": 1,
+    "tail_vsize": 84659,
+    "total_vsize": 17265635,
+    "confirmation_blocks": 18
+  },
+  "cluster_limit_vb": 101000,
+  "unconfirmed_finalization_rejection": "too-large-cluster",
+  "finalization": {
+    "txid": "c8455e4bcc53fc3b9f62adbed4b0ef7e450719eeacdaa45b2e63d59543b43031",
+    "size": 30679,
+    "weight": 52240,
+    "vsize": 13060,
+    "confirmed": true
+  },
+  "tested_subgraph_total_vsize": 17323711
+}
+
+Every full reveal input decoded to 1,001 witness items: 998 16-byte Lamport
+preimages, one 64-byte SIGHASH_DEFAULT Schnorr signature, one 48,937-byte
+tapscript and one 33-byte control block. Script and control block are removed
+before execution, so the initial stack has 999 items and the measured transient
+peak is 1,000. Core accepted all 174 reveals simultaneously only after the
+funding transaction confirmed. It accepted the signed 174-input finalization
+only after every reveal confirmed.
+
+This is evidence for staged standard-policy acceptance of the bounded
+funding--reveal--finalization fixture. It is not a public-P2P propagation test,
+a fee-market robustness test, or an implementation of the missing timeout,
+challenge, Disprove, anchor, multi-copy soldering and fee-management graph.
