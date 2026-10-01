@@ -1,0 +1,14 @@
+# Ziren compressed proof of examples/fibonacci (n=500), CPU prover, 8 cores (taskset 0-7), MemoryMax=32G, 2026-10-01
+# Ziren da7e1f2c, Plonky3 4dd0d47a; command: examples/target/release/compressed (bin/compressed.rs), RUST_LOG=info, /usr/bin/time -v
+prove_core: execution report (totals): total_cycles=4788, total_syscall_cycles=24, touched_memory_addresses=13212
+prove_core: execution report (opcode counts):
+prove_core: execution report (syscall counts):
+prove_core: summary: cycles=4788, e2e=29.643469638s, khz=0.16, proofSize=2348977
+compress: close time.busy=144s time.idle=1.59µs
+generated proof
+successfully generated and verified proof for the program!
+	User time (seconds): 1197.46
+	System time (seconds): 74.54
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:33.15
+	Maximum resident set size (kbytes): 20654764
+proof file: compressed-proof-with-pis.bin, 846439 bytes (bincode)

@@ -189,6 +189,22 @@ finalization are reported separately.
   cargo test --locked --release -p whir-gc --test antichain_tx_cost -- --nocapture
   ```
 
+- `run-pq-selector-cost.txt` records the serialization-only hash-based
+  replacement for the per-digit Schnorr adaptor: a pair-complement WOTS
+  selector over 4-bit digits, batched per transaction under a draft BIP360
+  P2MR output, a 0xC2 leaf, one SHRINCS-shaped authorization per transaction
+  and a hypothetical `OP_CHECKBATCHPAIRSELECT`. The n=16 fixture is
+  2,133,778 vB (2,122,693 vB with canonical 11-record blobs) over 23
+  transactions; the n=24 fixture is 3,172,934 vB over 33 transactions. The
+  payload bytes of the n=16 variant equal the adaptor's 130,128 x 65 B
+  exactly. Nothing in it is executable by Bitcoin Core, n=16 is not a
+  post-quantum parameter set, and the digit-to-label delivery layer is not
+  constructed. Reproduce with:
+
+  ```sh
+  cargo test --locked --release -p whir-gc --test pq_selector_cost --test pq_selector_n24_cost -- --nocapture
+  ```
+
 - `run-input-fixtures-core31-regtest.txt` records strict Bitcoin Core 31.1
   validation of the repaired adaptor and safe ACW fixtures. The generic
   `run-input-fixture-core31-regtest.sh` harness accepts `adaptor`, `adaptor16`
@@ -371,6 +387,34 @@ finalization are reported separately.
   drop-only script has no transaction authorization, and adding `CHECKSIG`
   would still not bind ordinary witness arguments. It is retained only as a
   historical capacity model and must not be reported as a safe Assert.
+
+### Ziren compressed proof as the statement
+
+- `run-ziren-compressed-proof-prove.txt`, `run-ziren-compressed-proof-census.txt`
+  and `run-ziren-compress-machine-census.txt` measure what the garbled verifier
+  would have to take if the statement is a Ziren compressed (recursion) proof
+  rather than the Keccak AIR. The proof is of `examples/fibonacci` (n = 500) at
+  Ziren `da7e1f2c`, CPU prover, 4 core shards and 6 recursion shards, 3:33 wall
+  on 8 cores, 20.7 GB peak. Its verifier is Ziren's compress machine: KoalaBear,
+  Poseidon2 Merkle trees, LogUp-GKR, zerocheck and a jagged-over-WHIR opening,
+  which is a different verifier from this repository's binary-field Blake3 WHIR
+  verifier. The census walks the serialized proof: 191,215 base field elements,
+  5,927,665 bits at 31 bits each, of which the WHIR query openings are 169,687
+  elements (124/88/85 queries at depths 20/17/14 with 256-element leaves). The
+  machine census lists the compress machine's eight chips with widths and
+  symbolic constraint counts. `ziren_proof_census.rs` and
+  `ziren_machine_census.rs` are the two binaries, built as extra
+  `[[bin]]` targets of `examples/fibonacci/host` with `serde_json`, `zkm-pcs`,
+  `zkm-recursion-core`, `p3-air` and `p3-uni-stark` added as dependencies.
+  Reproduce with:
+
+  ```sh
+  source ~/.zkm-toolchain/env
+  cd Ziren/examples && cargo build --release -p fibonacci-host --bin compressed
+  ./target/release/compressed   # writes compressed-proof-with-pis.bin
+  ./target/release/census compressed-proof-with-pis.bin
+  ./target/release/machine_census
+  ```
 
 ### Historical context
 

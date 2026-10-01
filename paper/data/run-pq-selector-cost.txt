@@ -1,0 +1,26 @@
+$ cargo test --locked --release -p whir-gc --test pq_selector_cost --test pq_selector_n24_cost -- --nocapture
+# 2026-10-01, source at 090fa30 (whir-gc branch). Serialization-only fixtures:
+# BIP360 P2MR, 0xC2 leaf, SHRINCS placeholders and OP_CHECKBATCHPAIRSELECT are
+# draft or hypothetical; nothing here was replayed on Bitcoin Core.
+     Running tests/pq_selector_cost.rs
+
+running 6 tests
+test endpoint_root_rejects_tampering_reordering_and_cross_context_splices ... ok
+test pair_complement_code_is_an_exhaustive_forward_antichain ... ok
+test canonical_blob_parser_rejects_malleated_record_streams ... ok
+test two_openings_of_one_pair_key_span_the_whole_interval ... ok
+n=16 selector (SERIALIZATION ONLY; NOT PQ-SECURE): 1041024 bits, 16266 x 520-B records, 1 funding/assert + 22 reveals, 8535088 WU = 2133772.0 weight-vB, 2133778 billed vB; max reveal 399587 WU; one tx-level SHRINCS item assumes one key or aggregate
+test pq_selector_exact_funding_and_reveal_cost ... ok
+n=16 selector canonical blobs (SERIALIZATION ONLY; NOT PQ-SECURE): 1041024 bits, 16266 x 520-B records, 11 records/full blob, 1 funding/assert + 22 reveals, 8490707 WU, 2122693 billed vB; max reveal 399589 WU
+test pq_selector_canonical_blob_exact_cost ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s
+
+     Running tests/pq_selector_n24_cost.rs
+
+running 2 tests
+test n24_pair_code_and_canonical_blob_parser_are_binding ... ok
+n=24 selector candidate (HYPOTHETICAL/SERIALIZATION ONLY): 1041024 bits, 10844 x 1164-B records; canonical 5-record blobs: 12691674 WU = 3172918.5 weight-vB, 3172934 billed vB, 33 tx, max reveal 398870 WU; one-record items: 12717688 WU = 3179422 weight-vB, 3179422 billed vB, 33 tx, max reveal 399688 WU; one tx-level signature assumes one authorizer or same-size aggregate
+test pq_selector_n24_exact_funding_reveal_and_maximal_record_aligned_packing_cost ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.96s

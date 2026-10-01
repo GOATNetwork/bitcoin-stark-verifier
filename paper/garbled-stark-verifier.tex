@@ -650,7 +650,8 @@ $T=1{,}041{,}024\approx2^{20}$ alternative preimages, so generic multi-target
 search costs about $2^{128}/T\approx2^{108}$ classically and
 $\sqrt{2^{128}/T}\approx2^{54}$ quantumly. Seven independent sets lower these
 figures to about $2^{105.2}$ and $2^{52.6}$. Hash-chain alternatives have the
-same multi-target issue. Even 20-byte preimages under \texttt{HASH160} are
+same multi-target issue; Table~\ref{tab:pqsel} gives the widths that lift the
+selection itself above this bound. Even 20-byte preimages under \texttt{HASH160} are
 capped near 70 quantum bits for one set, rather than 80, once the target count
 is included.
 The surrounding protocol is not post-quantum as instantiated. Schnorr adaptor
@@ -904,6 +905,163 @@ $\varepsilon_{\mathrm{sol}}$ has no instantiated bound, and the transaction
 graph and ledger-timing assumptions have not been implemented or proved.
 BitVM3~\cite{bitvm3paper} and BABE~\cite{babe2026} analyze their own
 instantiations.
+
+\paragraph{Label selection.} Every input mechanism below is an instance of one
+two-party task, which we state once so that the three baselines and the
+hash-based alternative can be compared on the same terms. The
+\emph{garbler} $\mathsf{G}$ (the operator, who also proves) holds, for every
+input wire $w$ of the kept garblings, the two labels $\ell_w^0,\ell_w^1$. The
+\emph{evaluator} $\mathsf{E}$ (a challenger) will run the garbled verifier on
+the proof $\pi$. Publishing $\pi$ on-chain must therefore (i)~\emph{deliver} to
+$\mathsf{E}$ the label $\ell_w^{\pi_w}$ of every input wire, (ii)~be
+\emph{exclusive}: no party learns $\ell_w^{1-\pi_w}$ for any $w$, since a
+single complementary label breaks authenticity (\S\ref{sec:security}),
+(iii)~be \emph{binding}: $\mathsf{G}$ can publish at most one value per wire,
+and the publication is at the same time the authorization of the spending
+transaction, and (iv)~be \emph{public}: any observer can recover $\pi$ and
+check that the published object is well formed, so that a missing or malformed
+publication is itself a Disprove condition. Lamport achieves (i)--(iv) with one
+preimage per bit, and its cost is the per-bit script. Figure~\ref{fig:adaptorseq}
+is the adaptor construction of BitVM3 and Mosaic~\cite{bitvm3paper,mosaic26},
+which achieves them with one signature per $k$-bit digit and no per-bit script.
+Figure~\ref{fig:hashseq} replaces the signature by a pair of hash-chain
+openings and is the construction behind the Antichain row and the hash-based
+projections of \S\ref{sec:pq}.
+
+\begin{figure}[p]\centering
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=2mm]},
+  actor/.style={draw, rounded corners=2pt, fill=gray!8, inner sep=3pt, text width=3.3cm, align=center},
+  note/.style={draw, fill=white, inner sep=2.5pt, align=left, font=\scriptsize},
+  msg/.style={->, thick},
+  lbl/.style={font=\scriptsize, align=center, fill=white, inner sep=1.5pt},
+  phase/.style={font=\scriptsize\itshape, fill=white, inner sep=1.5pt}]
+\def\xg{0}\def\xc{5.8}\def\xe{11.6}
+\node[actor] (G) at (\xg,0) {garbler / prover $\mathsf{G}$ (operator)\\holds $\ell^0_w,\ell^1_w$ for every input wire; later $\pi$};
+\node[actor] (C) at (\xc,0) {Bitcoin\\Script of the reveal transaction};
+\node[actor] (E) at (\xe,0) {evaluator / challenger $\mathsf{E}$\\holds the key $x$, $X=xG$};
+\foreach \x in {\xg,\xc,\xe} \draw[gray] (\x,-0.85) -- (\x,-12.7);
+\draw[dashed,gray] (-1.75,-1.1) -- (13.35,-1.1); \node[phase] at (\xc,-1.1) {setup, off-chain, before funding};
+\draw[msg] (\xg,-2.4) -- (\xe,-2.4) node[lbl,midway,above=1pt,text width=10.6cm] {choice table, for every digit $i$ and value $v<2^k$:\\ $T_{i,v}=t_{i,v}G$,\quad $c_{i,v,j}=\mathrm{KDF}(t_{i,v},j)\oplus\ell^{\,v_j}_{(i,j)}$ for $j<k$};
+\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-2.6) {opens $N-M$ instances and checks their tables};
+\draw[msg] (\xe,-4.2) -- (\xg,-4.2) node[lbl,midway,above=1pt,text width=10.6cm] {pre-signatures, one per candidate value $v$:\\ $R'_v=rG+T_{i,v}$,\quad $s'_v=r+H(R'_v\,\|\,X\,\|\,m_i)\,x$};
+\node[note, anchor=north west, text width=5.0cm] at (\xg-1.75,-4.4) {checks $s'_vG=R'_v-T_{i,v}+eX$ for all $v$,\\then funds the graph};
+\draw[dashed,gray] (-1.75,-5.7) -- (13.35,-5.7); \node[phase] at (\xc,-5.7) {dispute: Assert};
+\node[note, anchor=north west, text width=5.0cm] at (\xg-1.75,-5.95) {$d\gets$ digit $i$ of $\pi$;\quad $s\gets s'_d+t_{i,d}$};
+\draw[msg] (\xg,-7.4) -- (\xc,-7.4) node[lbl,midway,above=1pt,text width=5cm] {witness $(R'_d,s)$, 64 bytes};
+\node[note, anchor=north, text width=5.4cm] at (\xc,-7.6) {\texttt{<X> CHECKSIG} on $m_i$: $sG=R'_d+eX$;\\one \texttt{CHECKSIG} per digit, each after\\an \texttt{OP\_CODESEPARATOR}};
+\draw[msg] (\xc,-9.9) -- (\xe,-9.9) node[lbl,midway,above=1pt,text width=5cm] {reads $(R'_d,s)$; $d$ is public,\\since $R'_d$ matches one $T_{i,v}$};
+\node[note, anchor=north east, text width=5.9cm] at (\xe+1.75,-10.1) {$t_{i,d}\gets s-s'_d$\\$\ell^{\,d_j}_{(i,j)}\gets c_{i,d,j}\oplus\mathrm{KDF}(t_{i,d},j)$\\evaluates the garbled verifier on all labels};
+\draw[msg] (\xe,-12.5) -- (\xc,-12.5) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell^j_0$,\\if the evaluation rejects};
+\node[note, anchor=north west, fill=gray!5, text width=14.6cm] at (-1.75,-12.9) {\emph{exclusive:} any other label needs $t_{i,v}=\log_G T_{i,v}$. \emph{binding:} $\mathsf{G}$ has no $x$, so the only signatures it can form on $m_i$ are the $2^k$ completions, and one \texttt{CHECKSIG} consumes one. \emph{authorization:} the same signature authorizes the spend.};
+\end{tikzpicture}
+\caption{Schnorr adaptor label selection for one $k$-bit digit position $i$,
+as in BitVM3 and Mosaic~\cite{bitvm3paper,mosaic26}. $m_i$ is the BIP341 message
+seen by the $i$-th \texttt{CHECKSIG}; wire $(i,j)$ is bit $j$ of the digit.
+Everything above the dispute line is off-chain and repeated for every digit and
+every candidate value.}
+\label{fig:adaptorseq}
+\end{figure}
+
+\begin{figure}[p]\centering
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=2mm]},
+  actor/.style={draw, rounded corners=2pt, fill=gray!8, inner sep=3pt, text width=3.3cm, align=center},
+  note/.style={draw, fill=white, inner sep=2.5pt, align=left, font=\scriptsize},
+  msg/.style={->, thick},
+  lbl/.style={font=\scriptsize, align=center, fill=white, inner sep=1.5pt},
+  phase/.style={font=\scriptsize\itshape, fill=white, inner sep=1.5pt}]
+\def\xg{0}\def\xc{5.8}\def\xe{11.6}
+\node[actor] (G) at (\xg,0) {garbler / prover $\mathsf{G}$ (operator)\\holds $\ell^0_w,\ell^1_w$ and the chain seeds; later $\pi$};
+\node[actor] (C) at (\xc,0) {Bitcoin\\Script, or a native batch opcode};
+\node[actor] (E) at (\xe,0) {evaluator / challenger $\mathsf{E}$\\holds no key that the selection needs};
+\foreach \x in {\xg,\xc,\xe} \draw[gray] (\x,-0.85) -- (\x,-12.4);
+\draw[dashed,gray] (-1.75,-1.1) -- (13.35,-1.1); \node[phase] at (\xc,-1.1) {setup, off-chain, before funding};
+\node[note, anchor=north west, text width=9.2cm] at (\xg-1.75,-1.35) {per digit $i$: seeds $a_i,b_i$ and two chains of $L=2^k-1$ steps,\\$A_L\gets a_i$, $A_{j-1}\gets H(i,\mathsf{A},j,A_j)$;\quad $B_L\gets b_i$, $B_{j-1}\gets H(i,\mathsf{B},j,B_j)$};
+\draw[msg] (\xg,-3.6) -- (\xe,-3.6) node[lbl,midway,above=1pt,text width=10.6cm] {endpoints $(A_0,B_0)$ of every digit, or one batch root $\rho$ over them;\\ $c_{i,v,j}=\mathrm{KDF}(A_v\,\|\,B_{L-v},j)\oplus\ell^{\,v_j}_{(i,j)}$ for all $v<2^k$, $j<k$};
+\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-3.8) {opens $N-M$ instances and checks their tables;\\no pre-signature to contribute};
+\node[note, anchor=north west, text width=5.6cm] at (\xg-1.75,-3.8) {funds the graph; the reveal leaves commit $(A_0,B_0)$ or $\rho$\\and a transaction-signature key,\\hash-based for a post-quantum graph};
+\draw[dashed,gray] (-1.75,-5.6) -- (13.35,-5.6); \node[phase] at (\xc,-5.6) {dispute: Assert};
+\node[note, anchor=north west, text width=5.0cm] at (\xg-1.75,-5.85) {$d\gets$ digit $i$ of $\pi$};
+\draw[msg] (\xg,-7.2) -- (\xc,-7.2) node[lbl,midway,above=1pt,text width=5.2cm] {witness $(d,\,A_d,\,B_{L-d})$, $2n$ bytes,\\plus one transaction signature};
+\node[note, anchor=north, text width=5.6cm] at (\xc,-7.4) {hash $A_d$ forward $d$ times and $B_{L-d}$ forward $L-d$ times;\\compare with $(A_0,B_0)$ or recompute $\rho$;\\\texttt{CHECKSIG} on the transaction.\\2 bytes of script per hash step today,\\none with a batch opcode};
+\draw[msg] (\xc,-9.9) -- (\xe,-9.9) node[lbl,midway,above=1pt,text width=5cm] {reads $(d,A_d,B_{L-d})$ from the chain};
+\node[note, anchor=north east, text width=5.9cm] at (\xe+1.75,-10.1) {$\ell^{\,d_j}_{(i,j)}\gets c_{i,d,j}\oplus\mathrm{KDF}(A_d\,\|\,B_{L-d},j)$\\evaluates the garbled verifier on all labels};
+\draw[msg] (\xe,-12.2) -- (\xc,-12.2) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell^j_0$,\\if the evaluation rejects};
+\node[note, anchor=north west, fill=gray!5, text width=14.6cm] at (-1.75,-12.6) {\emph{exclusive:} from $(A_d,B_{L-d})$ one reaches $A_{d'}$ only for $d'\le d$ and $B_{e'}$ only for $e'\le L-d$, and $d'+e'=L$ forces $(d,L-d)$~\cite{antichain26}; any other value needs a preimage of a published node. \emph{one-time:} two openings $a\le b$ of one pair key reach every value in $[a,b]$. \emph{binding:} the separate transaction signature.};
+\end{tikzpicture}
+\caption{Hash-based label selection for one $k$-bit digit position $i$ with
+$n$-byte chain nodes. The selection material is two nodes instead of one
+signature, the evaluator contributes nothing at setup, and the transaction
+binding that the adaptor gets from the same signature must be added separately.
+Verification is a hash ladder, in Script today or in a batch opcode under the
+soft fork of Table~\ref{tab:pqsel}.}
+\label{fig:hashseq}
+\end{figure}
+
+The two protocols publish the same amount of selection material per digit:
+one 64-byte completion for Figure~\ref{fig:adaptorseq}, two $n$-byte nodes for
+Figure~\ref{fig:hashseq}. At $k=8$ and $n=16$ both are 8 bytes of
+witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
+64-bit hash records of our fixtures are both exactly 8{,}458{,}320 bytes. They
+differ in where the remaining cost sits. The adaptor's selection is verified by
+one \texttt{CHECKSIG} per digit, 3 bytes of script, and its binding is the same
+signature; its setup holds $2^k$ secrets and ciphertext bundles per digit, and
+its exclusivity rests on discrete logarithms, which Shor's algorithm removes
+(\S\ref{sec:pq}). The hash-based selection has a two-node setup per digit and
+hash-only exclusivity, but under current consensus every hash step of the
+verification is 2 bytes of script, plus a separate transaction signature. That
+script is what makes the Antichain row 5.3 times the adaptor row in
+Table~\ref{tab:onchain}; the digit-to-label translation table is the same
+object in both protocols and is not on-chain.
+
+\paragraph{A post-quantum instantiation.} Figure~\ref{fig:hashseq} becomes
+a post-quantum replacement for the adaptor under three changes, none of which
+is available on Bitcoin today. First, the forward hashing moves out of Script
+into a native batch verifier: one leaf per transaction carries the batch root
+$\rho$, the first digit index and the count, and an opcode re-derives every
+endpoint from the records on the stack. Second, the transaction-binding
+signature becomes hash-based; the draft P2MR output type and its 0xC2 leaf
+version\footnote{BIP360, \url{https://github.com/bitcoin/bips/blob/master/bip-0360.mediawiki}, and the SHRINCS proposal for a stateful hash-based signature in that leaf; both are drafts and may change.}
+would provide a 548-byte stateful hash-based signature per transaction and
+6{,}000-byte stack items. Third, the node width $n$ must match the quantum
+target: forging a different digit from a published opening is a second-preimage
+search over the roughly $2^{22}$ chain nodes that the whole input makes
+public, so $n=16$ gives about 53 quantum bits, $n=24$ about 85 and $n=32$ about
+117. We serialized this construction exactly with rust-bitcoin for $n=16$ and
+$n=24$ at $k=4$, including the P2MR outputs, 0xC2 leaves, placeholder
+signatures, depth-one control blocks and canonical multi-record stack items,
+and tested the pair code and the batch parser against tampering, reordering,
+cross-batch splicing and padding; nothing in it is executable by Bitcoin Core.
+Table~\ref{tab:pqsel} gives the results together with a projection whose model
+reproduces both serialized fixtures within $0.03\%$. The operative row is
+$n=32$, $k=8$: full-width nodes, about 117 quantum bits for the selection, and
+the same 2.13\,MvB as the Schnorr adaptor, at the price of up to 510 hash
+steps per byte inside the opcode, about $6.6\times10^7$ compressions for the
+input. Its setup is two seeds per digit rather than the adaptor's $2^k$
+secrets, so widening $k$ does not grow the choice table; only the translation
+table grows, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
+$k=8$. The delivery and soldering of that table across the $M$ kept
+garblings is the same open item as for every other row.
+
+\begin{table}[t!]\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{2.5cm}rrrr>{\raggedright\arraybackslash}X}\toprule
+selection & consensus & $n$ & $k$ & vB/bit & component & selection security, quantum\\\midrule
+Schnorr adaptor (Fig.~\ref{fig:adaptorseq}) & current & -- & 8 & 2.14 & 2.23\,MvB & broken (Shor)\\
+Antichain $(2,16)$ in Script (Fig.~\ref{fig:hashseq}) & current & 16 & 4 & 11.38 & 11.88\,MvB & $\approx53$ bits\\
+batched selector, one record per item & P2MR, 0xC2, batch opcode & 16 & 4 & 2.05 & 2.13\,MvB & $\approx53$ bits\\
+batched selector, 11-record items & same & 16 & 4 & 2.04 & 2.12\,MvB & $\approx53$ bits\\
+batched selector, 5-record items & same & 24 & 4 & 3.05 & 3.17\,MvB & $\approx85$ bits\\
+batched selector, projected & same & 32 & 8 & $\approx2.05$ & $\approx2.13$\,MvB & $\approx117$ bits\\\bottomrule
+\end{tabularx}
+\caption{Hash-based label selection against the adaptor baseline for the
+1{,}041{,}024-bit input, funding plus reveals. The first two rows are the
+Core-tested fixtures of Table~\ref{tab:onchain}. The batched-selector rows are
+exact rust-bitcoin serializations of a construction that requires the draft
+P2MR output, a hash-based transaction signature and a hypothetical batch
+verification opcode; the last row is a model projection. The security column
+is the multi-target second-preimage cost of the chain nodes alone; the
+composed protocol remains bound by the proof system (\S\ref{sec:pq}).}
+\label{tab:pqsel}
+\end{table}
 
 \paragraph{Publishing the input.} We evaluate three baseline one-time schemes for carrying the input
 bits, and they trade on-chain size against assumptions.
@@ -1393,26 +1551,43 @@ Boolean-garbled Groth16 verifier. Native-group garbling of
 Groth16~\cite{kflt26native} and witness encryption~\cite{babe2026} produce far smaller
 artifacts, of megabytes, and their proofs need far fewer input bits; both rely
 on pairings and a trusted setup.
+On-chain, the comparison inverts. The Groth16 designs publish 508 to 1{,}019
+input bits and report dispute paths of a few to a few tens of kilobytes, under
+\$60; our dispute publishes a million bits and its accounted input component
+alone is 2.22\,MvB with adaptor signatures or 11.88\,MvB hash-based, about two
+to three orders of magnitude more, before the unconstructed remainder of the
+graph. That is the price of verifying the STARK directly rather than wrapping
+it, and \S\ref{sec:protocol} and \S\ref{sec:discussion} are about reducing it.
 
-\begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.1cm}rr>{\raggedright\arraybackslash}p{3.2cm}}\toprule
-approach & statement & off-chain size & input bits & assumptions\\\midrule
-Boolean garbled verifier~\cite{bit25b} & Groth16 & 42\,GiB & 1{,}019 & pairings, trusted setup\\
-native-group garbling~\cite{kflt26native} & Groth16 & 2.4\,MiB & n/r & pairings, trusted setup\\
-garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & elliptic curves, secret trapdoor\\
-BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & pairings (GGM+RO), trusted setup\\
-partial-binding WE~\cite{goatpbwe} & Groth16, late inputs & $(0.5$--$1.1)\times10^9$ gates$^{\dagger}$ & $508+254|D|$ & BABE + DLog\\
-PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & heuristic\\
-\textbf{this work} & \textbf{STARK over $\F$} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{Blake3/RO; assumed CCR and adaptive authenticity}$^{\ddagger}$\\\bottomrule
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{1.7cm}rr>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.7cm}}\toprule
+approach & statement & off-chain size & input bits & on-chain dispute path, as reported & assumptions\\\midrule
+Boolean garbled verifier~\cite{bit25b} & Groth16 & 42\,GiB & 1{,}019 & Assert 2.4\,kvB and Disprove 93\,vB, about \$5 at 2\,sat/vB~\cite{bitvm3paper}; the published experiment normalized to \$37.65~\cite{babe2026} & pairings, trusted setup\\
+native-group garbling~\cite{kflt26native} & Groth16 & 2.4\,MiB & n/r & n/r & pairings, trusted setup\\\addlinespace[2pt]
+garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & n/r & elliptic curves, secret trapdoor\\\addlinespace[2pt]
+BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & Assert 9{,}240\,vB, ChallengeAssert 17{,}400\,vB, WronglyChallenged 149\,vB: 26.8\,kvB, \$56.90 at 2.2\,sat/vB & pairings (GGM+RO), trusted setup\\\addlinespace[2pt]
+deferred-binding WE~\cite{goatpbwe} & Groth16, late inputs & 0.92\,GiB$^{\dagger}$ & 768 & Assert 2{,}154\,B, ChallengeAssert 14{,}312\,B witness and 109{,}393\,B script, WronglyChallenged 64\,B; about 32\,kvB & BABE + DLog\\\addlinespace[2pt]
+PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & one hash in Assert, one signature in Disprove; no size reported & heuristic\\\addlinespace[2pt]
+\textbf{this work} & \textbf{STARK over $\F$} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{input publication 2.22\,MvB (adaptor, DLog) or 11.88\,MvB (hash-based), about \$4{,}700 or \$24{,}900 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity}$^{\ddagger}$\\\bottomrule
+\\
 \end{tabularx}
-\caption{Comparison of verifier artifacts and dispute inputs. Off-chain artifact
-per instance, in bytes (garbled circuits at 16 bytes per non-free gate), and the
-number of input bits published on-chain at dispute time, as each source reports
-them; n/r: not reported. $^{\dagger}$Gate count as the note reports it, without
-a byte figure. $^{\ddagger}$Verifier assumptions only. A surrounding protocol
-additionally uses discrete-logarithm signatures, or requires the unimplemented
-hash-based multi-copy soldering and a post-quantum transaction-authorization
-mechanism (\S\ref{sec:protocol}). Our figures are for the $2^{18}$-row
+\caption{Comparison of verifier artifacts, dispute inputs and on-chain dispute
+cost. Off-chain artifact per instance, in bytes (garbled circuits at 16 bytes
+per non-free gate); the number of input bits published on-chain at dispute
+time; and the on-chain dispute path, each as its source reports it; n/r: not
+reported. $^{\dagger}$One finalized instance: 59.3M non-free gates across three
+garbled circuits ($r\pi_1$, $Q=x_D L_D+B$ and $rQ$) plus adaptor tables, as the
+implementation report measures it; a 3.83\,GiB circuit artifact is shared by
+all instances. Its on-chain entry is witness and script bytes as reported; the
+kvB figure is our arithmetic.
+$^{\S}$Our on-chain entry is the Core-tested funding-plus-reveal component of
+Table~\ref{tab:onchain} plus the Core-tested reject-label Disprove, for one key
+set; the challenge, completion, timeout and anchor transactions and the
+multi-copy soldering are not constructed (\S\ref{sec:protocol}), so it is a
+lower bound on the dispute path, not a total. $^{\ddagger}$Verifier assumptions
+only. A surrounding protocol additionally uses discrete-logarithm signatures, or
+requires the unimplemented hash-based multi-copy soldering and a post-quantum
+transaction-authorization mechanism. Our figures are for the $2^{18}$-row
 Keccak-$f$ AIR without public values.}
 \label{tab:compare}
 \end{table}
@@ -1482,9 +1657,12 @@ relations~\cite{gkpw24}. It made the one quadratic pairing $e(\pi_1,\pi_2)$ line
 by computing $r\pi_1$ in a small garbled circuit, built from decomposable
 randomized encodings on top of Argo MAC~\cite{el26argo}. The per-instance artifact
 is 22\,MiB, the on-chain cost is comparable to BitVM3, and cut-and-choose setup
-takes seconds. Partial-binding witness encryption~\cite{goatpbwe} extended BABE to
-public inputs known only at dispute time, with a dual-output garbled circuit and
-Lamport-soldered inputs, relying on Groth16's linear public-input aggregation.
+takes seconds. Deferred binding~\cite{goatpbwe} extended BABE to public inputs
+known only at dispute time: a second garbled circuit computes a blinded point
+$Q=x_D L_D+B$ from the late input and a third computes $rQ$, relying on
+Groth16's linear public-input aggregation. Its implementation reports 0.92\,GiB
+per finalized instance, 768 input labels, and an Assert of 2{,}154 bytes with a
+14{,}312-byte ChallengeAssert witness.
 
 \paragraph{Witness encryption for covenants.} Bitcoin PIPEs v2~\cite{pipesv2}
 witness-encrypt a Schnorr signing key under an NP statement to emulate covenants

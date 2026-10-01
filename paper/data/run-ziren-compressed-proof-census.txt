@@ -1,0 +1,115 @@
+file bytes: 846439
+vk numbers: 63
+shard public_values numbers: 231
+jagged_shard_proof numbers (all): 190984
+
+-- numbers per component (prefix depth <= 3) --
+(total)                                                                    190984 numbers        0 arrays
+chip_cumulative_sums                                                          144 numbers        0 arrays
+chip_cumulative_sums/BaseAlu                                                   18 numbers        0 arrays
+chip_cumulative_sums/BaseAlu/global                                            14 numbers        2 arrays
+chip_cumulative_sums/BaseAlu/local                                              4 numbers        1 arrays
+chip_cumulative_sums/Ext2Felt                                                  18 numbers        0 arrays
+chip_cumulative_sums/Ext2Felt/global                                           14 numbers        2 arrays
+chip_cumulative_sums/Ext2Felt/local                                             4 numbers        1 arrays
+chip_cumulative_sums/ExtAlu                                                    18 numbers        0 arrays
+chip_cumulative_sums/ExtAlu/global                                             14 numbers        2 arrays
+chip_cumulative_sums/ExtAlu/local                                               4 numbers        1 arrays
+chip_cumulative_sums/MemoryConst                                               18 numbers        0 arrays
+chip_cumulative_sums/MemoryConst/global                                        14 numbers        2 arrays
+chip_cumulative_sums/MemoryConst/local                                          4 numbers        1 arrays
+chip_cumulative_sums/MemoryVar                                                 18 numbers        0 arrays
+chip_cumulative_sums/MemoryVar/global                                          14 numbers        2 arrays
+chip_cumulative_sums/MemoryVar/local                                            4 numbers        1 arrays
+chip_cumulative_sums/Poseidon2WideDeg3                                         18 numbers        0 arrays
+chip_cumulative_sums/Poseidon2WideDeg3/global                                  14 numbers        2 arrays
+chip_cumulative_sums/Poseidon2WideDeg3/local                                    4 numbers        1 arrays
+chip_cumulative_sums/PublicValues                                              18 numbers        0 arrays
+chip_cumulative_sums/PublicValues/global                                       14 numbers        2 arrays
+chip_cumulative_sums/PublicValues/local                                         4 numbers        1 arrays
+chip_cumulative_sums/Select                                                    18 numbers        0 arrays
+chip_cumulative_sums/Select/global                                             14 numbers        2 arrays
+chip_cumulative_sums/Select/local                                               4 numbers        1 arrays
+chip_heights                                                                    8 numbers        0 arrays
+chip_heights/BaseAlu                                                            1 numbers        0 arrays
+chip_heights/Ext2Felt                                                           1 numbers        0 arrays
+chip_heights/ExtAlu                                                             1 numbers        0 arrays
+chip_heights/MemoryConst                                                        1 numbers        0 arrays
+chip_heights/MemoryVar                                                          1 numbers        0 arrays
+chip_heights/Poseidon2WideDeg3                                                  1 numbers        0 arrays
+chip_heights/PublicValues                                                       1 numbers        0 arrays
+chip_heights/Select                                                             1 numbers        0 arrays
+evaluation_proof                                                           174223 numbers        0 arrays
+evaluation_proof/Bundle                                                    174223 numbers        0 arrays
+evaluation_proof/Bundle/basefold_proof                                          6 numbers        6 arrays
+evaluation_proof/Bundle/commit                                                 12 numbers        4 arrays
+evaluation_proof/Bundle/jagged_eval                                           904 numbers      285 arrays
+evaluation_proof/Bundle/packing                                               726 numbers       24 arrays
+evaluation_proof/Bundle/preceding_commits                                       8 numbers        3 arrays
+evaluation_proof/Bundle/reduction                                             436 numbers      138 arrays
+evaluation_proof/Bundle/whir_proof                                         169687 numbers    16810 arrays
+evaluation_proof/Bundle/y_per_chip                                           2444 numbers      660 arrays
+jagged_original_commitment                                                      8 numbers        1 arrays
+logup_gkr_proof                                                             12525 numbers        0 arrays
+logup_gkr_proof/circuit_output                                               2048 numbers        0 arrays
+logup_gkr_proof/circuit_output/denominator                                   1024 numbers      257 arrays
+logup_gkr_proof/circuit_output/numerator                                     1024 numbers      257 arrays
+logup_gkr_proof/logup_evaluations                                            2412 numbers        0 arrays
+logup_gkr_proof/logup_evaluations/chip_openings                              2324 numbers      595 arrays
+logup_gkr_proof/logup_evaluations/point                                        88 numbers       23 arrays
+logup_gkr_proof/round_proofs                                                 8064 numbers        1 arrays
+logup_gkr_proof/round_proofs/denominator_0                                     84 numbers       21 arrays
+logup_gkr_proof/round_proofs/denominator_1                                     84 numbers       21 arrays
+logup_gkr_proof/round_proofs/numerator_0                                       84 numbers       21 arrays
+logup_gkr_proof/round_proofs/numerator_1                                       84 numbers       21 arrays
+logup_gkr_proof/round_proofs/sumcheck_proof                                  7728 numbers     2373 arrays
+logup_gkr_proof/witness                                                         1 numbers        0 arrays
+main_commitment                                                                 8 numbers        1 arrays
+opened_values                                                                3204 numbers        0 arrays
+opened_values/chips                                                          3204 numbers        1 arrays
+opened_values/chips/global_cumulative_sum                                     112 numbers       16 arrays
+opened_values/chips/local_cumulative_sum                                       32 numbers        8 arrays
+opened_values/chips/log_degree                                                  8 numbers        0 arrays
+opened_values/chips/main                                                     1624 numbers      422 arrays
+opened_values/chips/preprocessed                                              692 numbers      189 arrays
+opened_values/chips/quotient                                                  736 numbers      200 arrays
+padding_column_counts                                                           1 numbers        1 arrays
+padding_row_heights                                                            32 numbers        3 arrays
+preprocessed_original_commitment                                                8 numbers        1 arrays
+preprocessed_row_counts                                                         8 numbers        1 arrays
+public_values                                                                 231 numbers        1 arrays
+row_counts                                                                     48 numbers        2 arrays
+zerocheck_proof                                                               536 numbers        0 arrays
+zerocheck_proof/claimed_sum                                                     4 numbers        0 arrays
+zerocheck_proof/claimed_sum/value                                               4 numbers        1 arrays
+zerocheck_proof/point_and_eval                                                 92 numbers        2 arrays
+zerocheck_proof/point_and_eval/value                                           92 numbers       23 arrays
+zerocheck_proof/univariate_polys                                              440 numbers        1 arrays
+zerocheck_proof/univariate_polys/coefficients                                 440 numbers      132 arrays
+
+-- WHIR --
+round_commitments: 2
+round 0: sumcheck polys 3 (36 numbers)
+round 1: sumcheck polys 6 (72 numbers)
+round 0: ood answers 8 numbers
+round 1: ood answers 8 numbers
+round 0: 248 query leaves, depth 20 siblings each (4960 digests of 8), 256 felts per leaf (63488 felts)
+round 1: 88 query leaves, depth 17 siblings each (1496 digests of 8), 256 felts per leaf (22528 felts)
+round 2: 85 query leaves, depth 14 siblings each (1190 digests of 8), 256 felts per leaf (21760 felts)
+WHIR totals: 421 leaves, 7646 sibling digests (61168 felts), 107776 leaf felts
+final_poly numbers: 256
+final_sumcheck_polys numbers: 72
+batch_evaluations numbers: 256
+
+-- chips (8) --
+BaseAlu: height 103392
+Ext2Felt: height 29760
+ExtAlu: height 168448
+MemoryConst: height 256
+MemoryVar: height 151840
+Poseidon2WideDeg3: height 42624
+PublicValues: height 16
+Select: height 122560
+opened values: main 1624 prep 692 perm 0 quotient 736 (base felts; ext = 4 each)
+
+GC input: 191215 base felts = 5927665 bits at 31 bits each (764860 bytes raw at 4 B)

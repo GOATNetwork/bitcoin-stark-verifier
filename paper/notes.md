@@ -634,6 +634,218 @@ if fixed slashing outputs or secret extraction are required.
 The complete comparison, evidence levels and soft-fork alternatives are in
 `assert-disprove-reduction-survey.md`.
 
+## 7j. A hash-based stand-in for the Schnorr adaptor (2026-10-01)
+
+**Question.** The adaptor rows in §7d/§7i are the cheapest input publication
+but rest on discrete log. `whir-gc/tests/pq_selector_cost.rs` (n=16) and
+`pq_selector_n24_cost.rs` (n=24) model the hash-based replacement: what does
+the adaptor's job cost once secp256k1 is removed, and what does it still need?
+Both were rerun today; log in `data/run-pq-selector-cost.txt`.
+
+**What the fixtures build.** Each 4-bit digit d is encoded as the pair
+(d, 15-d) over two independent 15-step hash chains; a record holds the two
+chain nodes per nibble plus the clear bytes. One record covers 64 bits (n=16,
+520 B) or 96 bits (n=24, 1,164 B). A batch of records is committed by a Merkle
+root over the chain *endpoints* (fixed before the input is known), and one
+94-B (n=16) or 118-B (n=24) leaf per transaction carries a SHRINCS key,
+CHECKSIGVERIFY, the root, the first record index, the count, and a
+hypothetical `OP_CHECKBATCHPAIRSELECT` that re-derives every endpoint from the
+openings. The stack is BIP360 P2MR, leaf 0xC2, 6,000-B items.
+
+| variant | records | tx (funding + reveals) | billed vB | vB/bit | vs 8-bit adaptor 2,228,054 vB |
+|---|---:|---:|---:|---:|---:|
+| n=16, one record per item | 16,266 x 520 B | 1 + 22 | 2,133,778 | 2.050 | -4.23% |
+| n=16, canonical 11-record blobs | same | 1 + 22 | 2,122,693 | 2.039 | -4.73% |
+| n=24, canonical 5-record blobs | 10,844 x 1,164 B | 1 + 32 | 3,172,934 | 3.048 | +42.4% |
+| n=24, one record per item | same | 1 + 32 | 3,179,422 | 3.054 | +42.7% |
+
+- **The n=16 payload is byte-identical to the adaptor's.** 130,128 x 65 B =
+  16,266 x 520 B = 8,458,320 B. Two 16-B nodes per nibble is 8 B/bit; one
+  65-B completion per byte is 8.125 B/bit. The 4.7% saving is the removal of
+  the per-digit scripts (394,507 WU in the adaptor reveal) and the lighter
+  framing (3 B per 520-B record instead of 1 B per 65-B item). Nothing else
+  moves.
+- **Evidence level is E2 for serialization and E4 for consensus.** rust-bitcoin
+  serializes the shells exactly, the pair code, endpoint root and canonical
+  blob parser are tested with negatives (tampering, reordering, cross-batch
+  splices, padding, wrong split), and the 400k-WU packing boundaries are exact
+  (762/763 records at n=16; 341/342 at n=24). But P2MR and 0xC2 are drafts,
+  SHRINCS bytes are placeholders, 0x03 for a custom n=24 SHRINCS is a reserved
+  flag, and the opcode does not exist. No Core replay is possible.
+- **The one-signature-per-transaction assumption is the same as for the
+  adaptor fixture.** A 548-B SHRINCS item instead of a 64-B Schnorr signature
+  costs 23 x 487 WU, about 0.13%. An n-of-n 0xC2 committee would add one such
+  item per member per transaction; the fixtures deliberately exclude it.
+
+**Security of the pair code, as tested.** (d, 15-d) is a constant-sum
+antichain: from the opening of d one can forward-hash to any (d', e') with
+d' <= d and e' <= 15-d, and the only valid codeword in that cone is (d, 15-d).
+So a single opening cannot be re-targeted. It is strictly one-time: two
+openings a <= b of the same pair key let anyone derive every v in [a, b]
+(`two_openings_of_one_pair_key_span_the_whole_interval`). The on-chain layer
+enforces one-time use only because each record index appears once under one
+root; the operator must never reuse a pair key across instances.
+
+**Quantum level of the chain nodes.** Forging a different digit from a
+published opening needs a second preimage of a known chain node. Known nodes
+across the input are about 2^22 (520k chains, roughly 8.5 known nodes each),
+so the multi-target estimate is:
+
+| n | node bits | single-target quantum | multi-target classical / quantum |
+|---:|---:|---:|---|
+| 16 | 128 | 64 | about 2^106 / 2^53 |
+| 24 | 192 | 96 | about 2^170 / 2^85 |
+| 32 | 256 | 128 | about 2^234 / 2^117 |
+
+n=16 sits at the same 53-bit level as the Lamport row in `tab:pq`, which is
+the proof system's own 52-bit bottleneck, so it is "no worse than the rest" but
+not a post-quantum parameter. n=24 is the first width above the 80s; n=32 is
+what the paper's λ_Q = 100 column asks for.
+
+**Projection over (n, k).** A model with payload 2n/k + 1/8 B per bit, 3-B
+framing per 6,000-B item, 1,059 WU plus leaf growth per transaction and the
+measured funding shell reproduces the exact fixtures within 0.03%
+(2,122,619 vs 2,122,693; 3,172,251 vs 3,172,934). Changing the digit width k
+changes the chain length to 2^k - 1:
+
+| n | k | payload B/bit | reveal tx | est. total vB | vs adaptor | hashes per digit, worst case |
+|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 4 | 8.125 | 22 | 2.12 M | -4.7% | 30 |
+| 16 | 8 | 4.125 | 11 | 1.08 M | -51.6% | 510 |
+| 24 | 4 | 12.125 | 32 | 3.17 M | +42.4% | 30 |
+| 24 | 8 | 6.125 | 17 | 1.60 M | -28.0% | 510 |
+| 32 | 4 | 16.125 | 43 | 4.23 M | +89.7% | 30 |
+| 32 | 8 | 8.125 | 22 | 2.13 M | -4.4% | 510 |
+
+The useful row is **n=32, k=8**: full 256-bit nodes, 117 quantum bits
+multi-target, and the same 2.13 MvB as the Schnorr adaptor. The price is
+moved into the opcode: up to 510 hash steps per byte, about 66M SHA-256
+compressions for the whole input and about 3M per full reveal, against about
+7.8M total at k=4. Whether that fits a 0xC2 varops budget is the open
+consensus question; the setup cost is unchanged (one 2-node pair key per
+digit, no 2^k table), which is the structural advantage over the wider
+adaptor's 2^k choice table (§7i).
+
+**What the selector does not do, same as the wider adaptor.** An opening of
+digit d releases a hash node, not GC labels. The evaluator still needs the k
+binary input labels for d and must not be able to obtain any label of the
+complement. The construction that fits is the translation table of §7f and
+2026/1684: for each digit and each of the 2^k values, the operator encrypts
+the k selected labels under KDF(node_A(d) || node_B(15-d)); the antichain
+guarantees only one key is derivable from the on-chain record. At k=4 that is
+16 x 4 x 16 B = 1 KB per digit, 266 MB per instance for 260,256 digits; at
+k=8 it is 256 x 8 x 16 B = 32 KB per digit, 4.3 GB per instance. The tables
+are checked by the cut-and-choose on opened instances and bound to the kept
+ones by the soldering that is still unbuilt (§7d open item). None of this is
+in the fixtures, so the rows above are input-authentication transport, not a
+label-delivery protocol, exactly as the survey says of the 10/11/16-bit
+adaptor rows.
+
+**Against the current-consensus hash-based rows.** The same pair code
+verified in Script instead of a native opcode is the 4-bit Winternitz ladder
+of §7g (23.06 WU per bit, 5.77 vB/bit, about 6.0 MvB) or the safe ACW (2,16)
+fixture (11.38 vB/bit, 11.88 MvB). The opcode removes the 2 B of script per
+hash step, which is 2.8x and 5.5x. That is the entire case for the soft fork
+here: without it a hash-based input costs 2.7 to 5.6 times the adaptor; with
+it the hash-based input costs the same as the adaptor at n=32, k=8.
+
+**Judgement.** The selector fixtures answer the §7f question "is the 2.1 MvB
+adaptor rate reachable without discrete log": yes on paper, at n=32 and k=8,
+under BIP360 plus a new opcode, with the label-delivery table and soldering
+still to build. In the paper they belong in the soft-fork column of the
+survey's table 8 next to MATT and the native verifier, as the row "keep the
+GC, replace only the input authentication". They do not change the
+current-consensus conclusion (10/11-bit adaptor next), and they do not change
+`tab:pq`: the composed protocol stays bound by the 52-bit proof system and by
+pre-signed-graph authorization, which SHRINCS-in-0xC2 would address only once
+it exists.
+
+**In the paper (2026-10-01).** §sec:protocol now opens the input discussion
+with a "Label selection" paragraph (deliver / exclusive / binding / public),
+two TikZ interaction diagrams with lifelines for the garbler/prover, Bitcoin
+Script and the evaluator/challenger: `fig:adaptorseq` (Schnorr adaptor:
+choice table, pre-signatures, completion, CHECKSIG, extraction, Disprove) and
+`fig:hashseq` (pair-complement hash chains with translation ciphertexts; no
+evaluator contribution at setup; separate transaction signature), a paragraph "A post-quantum instantiation" and Table `tab:pqsel`
+with the rows above. The BIP360 URL in the footnote is from memory and must be
+checked; SHRINCS is named without a citation because no stable reference was
+verified.
+
+## 7k. The statement as a Ziren compressed proof: measured (2026-10-01)
+
+The user's position: the deployed statement is a recursion proof, and the
+recursion is prover-side. To replace the assumed narrow-AIR numbers of §7f with
+a real proof, a compressed proof was generated with Ziren (`/data/stephen/Ziren`,
+`da7e1f2c`, Plonky3 `4dd0d47a`) for `examples/fibonacci` (n = 500) on the CPU
+prover: 4 core shards, 6 recursion shards, 3:33 wall on 8 cores, 20.7 GB peak.
+Logs and the two census binaries are in `data/` (`run-ziren-*`,
+`ziren_*_census.rs`).
+
+**The verifier is a different verifier.** A compressed Ziren proof is a shard
+proof of the compress machine: KoalaBear (p = 2^31 - 2^24 + 1), degree-4
+extension, Poseidon2 (width 16, rate 8) Merkle trees and transcript, LogUp-GKR,
+a zerocheck, and a jagged-over-WHIR opening with 124/88/85 queries at rates
+2^-2/2^-5/2^-8 and 22 bits of query grinding. Our whir-gc verifier (F_{2^128},
+Blake3, Plonky3's WHIR) cannot evaluate it. A garbled verifier for it is a new
+circuit; the point of the census is to size that circuit and its input.
+
+**The proof, counted.** 191,215 base field elements, 5,927,665 bits at 31 bits
+each, 846,439 bytes as bincode. That is 5.7 times the 1,041,024-bit input of
+the Keccak verifier, not smaller.
+
+| component | elements | share |
+|---|---:|---:|
+| WHIR query openings: 7,646 sibling digests of 8 plus 421 leaves of 256 | 169,687 | 89% |
+| LogUp-GKR (21 layers, 2,373 sumcheck polynomials, chip openings) | 12,525 | 7% |
+| opened values (main 1,624, preprocessed 692, quotient 736) | 3,204 | 2% |
+| jagged eval, reduction, packing, y per chip | 4,510 | 2% |
+| zerocheck, public values, commitments, heights | about 1,300 | 1% |
+
+The Merkle paths dominate: 248 leaves at depth 20 (two stripe trees times 124
+queries), 88 at depth 17, 85 at depth 14. Each sibling is 8 elements (248
+bits) and each leaf 256 elements (7,936 bits). Query count and leaf width are
+what make this proof large; the recursion AIR's width (579 columns across
+eight chips) contributes only the 3,204 opened values.
+
+**The verifier, counted.** From the proof structure and from the compress
+root's own trace (its chip heights are the cost of verifying its children
+in-circuit: Poseidon2Wide 42,624 rows, ExtAlu 168,448, BaseAlu 103,392, Select
+122,560, MemoryVar 151,840 for two children):
+
+| verifier work | count | AND gates at measured gadget cost |
+|---|---:|---:|
+| Poseidon2 permutations: 7,646 Merkle compressions, 13,472 leaf-row hashes, about 3,800 transcript | about 24,900 | 3.1 x 10^10 at 1,240,747 each |
+| extension multiplications: folds, batch combination, sumchecks, constraint evaluation | about 63,000 | 3.8 x 10^9 at 60,615 each |
+| total | | about 3.5 x 10^10, about 555 GB garbled at 16 B per gate |
+
+The compress machine's constraints are small (410 constraints, 884
+multiplication nodes over 579 columns; `run-ziren-compress-machine-census.txt`)
+and are evaluated once at the zerocheck point, so they are not the cost. The
+cost is Poseidon2 over a prime field in Boolean gates: 120 Blake3 compressions
+per permutation (paper, "Why a binary field"). This is 370 times our 2^18
+Keccak verifier (94.1M non-free gates, 1.5 GB) and matches the paper's earlier
+estimate of 3.1 x 10^9 gates for a single 2^20 KoalaBear WHIR opening, scaled
+by the ten times more Merkle work of three query rounds at 124/88/85 queries.
+
+**On-chain, if published as GC input.** 5.93 Mbit at the measured rates:
+adaptor 12.7 MvB, batch opcode 12.2 MvB, WOTS plus translation 43.7 MvB, ACW
+67.5 MvB, Lamport 98.3 MvB. All worse than the Keccak AIR by 5.7 times.
+
+**Conclusion.** Taking Ziren's compressed proof as the statement does not give
+the 210k-430k-bit input of §7f's narrow-AIR assumption; it gives 5.9 Mbit and a
+verifier 370 times larger than the one we garble. Both come from the proof
+system choices that make Ziren fast on GPUs: a 31-bit prime field with
+Poseidon2 hashing, low-rate codes with 124 queries, and 8-element digests. For
+the garbled verifier the statement must be re-encoded by a final wrap stage,
+prover-side, into the proof system the garbler is built for: binary field,
+Blake3 Merkle trees, high-rate WHIR with few queries, 16-byte digests. Ziren
+already has such a stage for BN254 (shrink then wrap). A "wrap to binary WHIR"
+stage would make the garbled verifier's statement the wrap AIR, whose width and
+height set the input per §7f; that AIR has to verify a KoalaBear Poseidon2
+shrink proof inside F_{2^128}, which is the prover-side cost to measure next.
+What this session established is the size of the alternative: garbling Ziren's
+own compress verifier directly is 555 GB of circuit and 12 MvB of input.
+
 ## 8. To fix or check before release
 
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".
@@ -701,3 +913,29 @@ The complete comparison, evidence levels and soft-fork alternatives are in
         PDF had two Type 3 bitmap fonts before.
       - The paper is renamed to `garbled-stark-verifier.tex`.
     - **Open, needs the authors:** the title's "Post-Quantum".
+13. **Deferred-binding row (2026-10-01).** `tab:compare` now quotes the
+    implementation report "Deferred Binding: Extending BABE for Dynamic Public
+    Inputs in GOAT BitVM3" (bitvm2-gc, branch feat/goat-bitvm3): 0.92 GiB per
+    finalized instance (740,112 + 57,850,911 + 740,112 non-free gates plus
+    31.6 MiB adaptor tables), 3.83 GiB shared artifact, 768 input labels,
+    Assert 2,154 B, ChallengeAssert 14,312 B witness + 109,393 B script,
+    WronglyChallenged 64 B. The "about 32 kvB" is our arithmetic
+    ((2,154 + 14,312 + 109,393 + 64)/4 of witness bytes, no shells). The old
+    "(0.5--1.1)x10^9 gates" figure from the April note is retired. The bib entry
+    needs a stable URL or date for the report itself. Rows in the table now have
+    \addlinespace so the PIPE row's 338 TB no longer sits visually against the
+    deferred-binding row.
+12. **Table `tab:compare` on-chain column (2026-10-01).** Added "on-chain
+    dispute path, as reported": BitVM3's own 2.4 kvB Assert + 93 vB Disprove
+    (2026/933 §8.1, about $5 at 2 sat/vB) and BABE's normalization of the
+    published BitVM3 experiment to $37.65 (2026/065 Fig. 2); BABE's Table 1
+    (9,240 + 17,400 + 149 vB = 26,789 vB, $56.90); PIPEs' one hash / one
+    signature without a size; partial-binding WE as BABE + 254|D| Lamport
+    bits. Our row: 2.22 MvB adaptor or 11.88 MvB hash-based plus 97 vB
+    Disprove, marked as a lower bound on the dispute path. The 2026/2100 and
+    DV-Pari rows are n/r. Check BABE's $37.65 is the right BitVM3 figure to
+    quote next to 2026/933's $5; the two differ by fee normalization and by
+    which transactions are counted.
+11. **Label-selection section (2026-10-01).** Verify the BIP360 footnote URL
+    and find a citable SHRINCS reference; the batch-opcode rows are hypothetical
+    and must stay labelled so.
