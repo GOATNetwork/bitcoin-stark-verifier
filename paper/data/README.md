@@ -416,6 +416,78 @@ finalization are reported separately.
   ./target/release/machine_census
   ```
 
+- `ziren_whir_model.py` and `run-ziren-whir-model.txt` project the size of a
+  Ziren-shaped compressed proof under WHIR parameter changes (decoding regime,
+  grinding, starting rate, folding, digest width) and without LogUp-GKR. The
+  model reproduces the measured WHIR part within 0.1% (169,876 against 169,687
+  elements); every other row is a projection, not a measured proof. Run with
+  `python3 ziren_whir_model.py`.
+
+- `ziren_dump_shrink.rs` dumps Ziren's `shrink` program (the in-circuit
+  verifier of one compressed proof) and its witness for a compressed proof,
+  after running it in Ziren's runtime; `run-ziren-dump-shrink.txt` is its
+  output (1,024,796 instructions, 141,020 witness words). It was built as a
+  temporary `[[bin]]` of `Ziren/examples/fibonacci/host` with `zkm-prover`,
+  `zkm-pcs`, `zkm-recursion-core`, `zkm-recursion-circuit`,
+  `zkm-recursion-compiler`, `p3-field`, `p3-koala-bear` and `p3-symmetric`
+  (Plonky3 `4dd0d47a`) added. `whir-gc/src/ziren.rs` translates the dump into
+  a Boolean circuit. `run-ziren-gc-count-full.txt` is the exact count of the
+  full-path circuit (37,901,356,001 non-free gates, 606.4 GB garbled, 5,763,458
+  input bits); `run-ziren-gc-eval-dedup.txt` builds the Merkle-deduplicated
+  circuit with the evaluating backend (38,339,147,832 non-free gates, 613.4 GB,
+  5,179,170 input bits), accepts the real proof with every written value equal
+  to the native run, and rejects a one-word change. `run-ziren-gc-count-dedup-v1.txt`
+  is the earlier deduplicated count with every extension-read witness word
+  given four limbs and a double-counted routing profile; it is kept for the
+  record, and its total of 41,088,543,889 non-free gates is the builder's own
+  count. `run-ziren-gc-garble-prefix.txt` garbles a 220,000-instruction prefix
+  with the streaming garbler: 1.95 M non-free gates per second per core.
+  Reproduce with the dump at `target/ziren-shrink.bin`:
+
+  ```sh
+  cargo test --release -p whir-gc --test ziren_shrink -- --ignored --nocapture
+  ```
+
+- `run-ziren-binary-stage.txt` is Ziren's binary stage end to end on
+  `feat/binary-whir-blake3` at `3ec37f76` (eigmax): core, compress, a
+  Blake3-committed shrink proof, then the program verifying it proven over
+  GF(2^128) with Boolean WHIR and Blake3. Run on ant-5090-2 with 64 cores and
+  a 300 GB cap; the same code was OOM-killed at 128 GB. Binary program 1,388,441
+  instructions; eleven tables, 15,367 columns, 18.9 Gbit of witness; proof
+  2,247,101 bytes in 663 s, verified in 4.9 s, peak 285 GB.
+
+- The binary stage's verifier as a garbled circuit (notes §7n), translated
+  from Ziren's recorded tape by `whir-gc/src/binary_tape.rs`:
+  - `ziren_dump_binary_tape_v1.rs` and `run-ziren-binary-tape-dump.txt`: at
+    `f30cd48c`, proves fibonacci to the binary stage (2,246,717-byte proof)
+    and dumps its verifier's tape (ZTAP v1: 5,890,991 ops, 702,274 inputs).
+    `run-ziren-binary-tape-{count,eval,garble}-v1.txt` translate it:
+    3,607,895,750 non-free gates, 57.73 GB, 18,148,352 input bits; accepts
+    the real proof with all 9,413,288 values equal to the tape; rejects three
+    single-input changes; garbled by the streaming garbler in 3,519 s.
+  - `ziren_dump_binary_tape.rs` and `run-ziren-narrow-dump.txt`: at
+    `ee5ca380` (local, unpushed), dumps the level-1 tape (ZTAP v2), proves
+    its run on the narrow recursion's tape machine (1,468,673-byte proof,
+    1,033 s on 64 cores, 446 GiB peak; OOM at 300G and 450G caps first) and
+    dumps the tape machine's verifier on it (level 2). Run on ant-5090-2 with
+    a 700G cap and a box-wide 95% memory watchdog.
+  - `run-ziren-binary-tape-{count,eval}-v2.txt`: level 1 at `ee5ca380`,
+    3,371,420,904 non-free gates, 53.94 GB, 18,050,304 input bits; accepts
+    with 0 of 4,914,646 values differing; rejects three changes.
+  - `run-ziren-narrow-tape-gc.txt`: level 2, 757,969,914 non-free gates,
+    12.13 GB, 11,165,056 input bits; accepts with 0 of 1,172,571 values
+    differing; rejects three changes; garbled in 541 s (1.40 M/s, one core).
+  - `run-ziren-narrow-recursion-small.txt`: Ziren's own `narrow_recursion`
+    test on a small synthetic proof: level 1 4.25e7 and level 2 6.14e8 AND
+    by Ziren's estimate, the narrow verifier's floor.
+
+  Reproduce a count with the tape at `target/binary-tape.bin` (or
+  `BINARY_TAPE_DUMP=target/narrow-tape.bin` for level 2):
+
+  ```sh
+  cargo test --release -p whir-gc --test binary_tape -- --ignored --nocapture
+  ```
+
 ### Historical context
 
 - `whir-gc-README-before-trim.md` is a snapshot of the longer measurement

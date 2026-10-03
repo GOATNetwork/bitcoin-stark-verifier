@@ -846,6 +846,224 @@ shrink proof inside F_{2^128}, which is the prover-side cost to measure next.
 What this session established is the size of the alternative: garbling Ziren's
 own compress verifier directly is 555 GB of circuit and 12 MvB of input.
 
+## 7l. Reducing the on-chain data of a recursion-proof statement (2026-10-01)
+
+Starting point: the measured Ziren compressed proof (§7k), 191,215 elements,
+5.93 Mbit, 12.7 MvB with adaptors. `data/ziren_whir_model.py` rebuilds its
+WHIR part from the round structure (lsh 21, folds 3/6/6, final 6, two stripe
+trees of 32 columns in round 0, queries solved for 106 bits per component) and
+matches the measurement within 0.1%. Levers, applied cumulatively:
+
+| change | total elements | bits | adaptor | ACW (2,16) |
+|---|---:|---:|---:|---:|
+| measured: rate 1/4, unique decoding, 22-bit grind | 191,404 | 5.93 M | 12.70 MvB | 67.5 MvB |
+| Johnson-bound list decoding | 113,404 | 3.52 M | 7.52 | 40.0 |
+| + 48-bit query grinding | 85,644 | 2.65 M | 5.68 | 30.2 |
+| + starting rate 1/256 | 44,964 | 1.39 M | 2.98 | 15.9 |
+| + folds 3/4/4/4 | 43,340 | 1.34 M | 2.88 | 15.3 |
+| + 217-bit digests | 41,908 | 1.30 M | 2.78 | 14.8 |
+| + no LogUp-GKR in the wrap | 29,383 | 0.91 M | 1.95 | 10.4 |
+| capacity conjecture instead of Johnson (not cumulative with the GKR row) | 32,978 | 1.02 M | 2.19 | 11.6 |
+
+Findings:
+- The measured size is a prover-speed choice. Ziren works in the unique
+  decoding regime at rate 1/4, where a query is worth 0.68 bits; 124 + 88 + 85
+  queries with 256-element leaves are 89% of the proof. Proven list decoding
+  and rate 1/256 cut the WHIR part from 169,876 to 23,436 elements (7.2x).
+  Those two changes are the bulk of the reduction; folding and digest width are
+  a further 13%.
+- Grinding is weak for a quantum target: 48 bits of grinding are 24 quantum
+  bits. Under the paper's post-quantum framing, the rate change is the lever to
+  rely on, and the grinding row should be read as classical only.
+- After the WHIR changes, the non-WHIR part (21,528 elements, 0.67 Mbit) is
+  half the proof. LogUp-GKR alone is 12,525 elements (21 layers of sumcheck).
+  A final wrap of a fixed-shape proof does not need a lookup argument across
+  chips; without it the proof is 0.91 Mbit. The jagged round-0 leaves (32
+  stripes x 8 positions = 256 elements per leaf, two trees) are the next
+  largest item at 7,680 elements.
+- What is left at 0.91 Mbit is a jagged multi-chip proof. The binary-field
+  narrow-AIR sweep (§7f, `run-input-bits-candidates.txt`) gives 0.25-0.43 Mbit
+  for a single plain AIR of 32-128 columns at the same 110-bit terms. So the
+  last factor of 2-3 comes from making the wrap a single plain AIR, which is
+  also what makes the garbled verifier cheap (binary field, Blake3; §7k).
+- Merkle-path deduplication is not a lever once tree caps are used: the
+  frontier simulation (`run-merkle-frontier-sim.txt`) saves 1.35% of path
+  digests, 0.45% of the input, and a data-dependent multiproof shape does not
+  fit a fixed garbled circuit anyway.
+
+The order of magnitude by stage, for one key set:
+
+| stage | input | adaptor | translation gadget | ACW |
+|---|---:|---:|---:|---:|
+| Ziren compressed proof as is | 5.93 Mbit | 12.7 MvB | 43.7 MvB | 67.5 MvB |
+| re-proved with list decoding, rate 1/256, no GKR | 0.91 Mbit | 1.95 MvB | 6.7 MvB | 10.4 MvB |
+| single plain binary-field wrap AIR, 128 columns, 2^18 | 0.36 Mbit | 0.78 MvB | 2.7 MvB | 4.1 MvB |
+| same at 80-bit terms | 0.25 Mbit | 0.54 MvB | 1.8 MvB | 2.9 MvB |
+
+Multiplied by 7 without soldering in every column. The architectural levers
+(raw envelope at 0.032 vB/bit, interactive segment disputes, MATT-style trace
+commitments) are unchanged from §7f and the survey: each removes the label
+publication only by replacing the garbled-circuit dispute.
+
+## 7m. The Ziren compressed-proof verifier, garbled: measured (2026-10-01)
+
+**What was built.** `whir-gc/src/ziren.rs` translates Ziren's `shrink` recursion
+program, the in-circuit verifier of one compressed proof, into a Boolean
+circuit instruction by instruction. The program was dumped from Ziren
+(`data/ziren_dump_shrink.rs`) for the compressed fibonacci proof of §7k; it
+runs and accepts in Ziren's runtime. 1,024,796 instructions: 579,405 extension
+ALU (247,934 multiplications, 312 inversions), 203,556 base ALU, 141,020
+witness words, 61,280 selects, 23,292 Poseidon2 permutations, 941 bit
+decompositions.
+
+- Semantics follow the AIR, not the runtime: asserting divisions become the
+  check `in2 != 0 or in1 = 0` (no inversion); computing divisions invert by an
+  addition chain (48 squarings, 6 multiplications) and use the norm to
+  `F[y]/(y^2-3)` for the extension; selects use a 31-AND multiplexer when the
+  bit is a decomposition output and the field formula otherwise; constant
+  reads and the 231 committed public values are equality checks; every witness
+  word is checked canonical. The output is the AND of all checks.
+- Multiplicities count constrained reads only: a bit decomposition reads its
+  input unconstrained, so a `mult = 0` result is still computed (found when the
+  first build read an unwritten address).
+- Ziren's Poseidon2 uses its own round constants (`zkm_primitives::RC_16_30`,
+  reduced mod p), not this repo's `poseidon2` crate; they are in
+  `whir-gc/src/ziren_constants.rs` and checked against a test vector from the
+  program's permutation.
+- Witness typing: a word is an extension element only where the honest
+  layout holds one (14,966 of 141,020); base-field words have their upper
+  limbs fixed to zero, a subset of what the AIR accepts. The first count gave
+  every extension-read word four limbs, 11.73 Mbit of input and 40.65 B gates.
+
+**Merkle deduplication, implemented.** The translator finds each Merkle level
+(eight selects on one bit feeding one compression), chains levels into paths
+and groups them by root: five trees, 124 + 124 paths of depth 20, 88 of depth
+17, 85 of depth 14, and the one-path vk allowlist (not deduplicated). For each
+multi-path tree the sibling witnesses are replaced by a fixed frontier
+(mean + 8 sd of the need count for uniform indices: 1,750 / 1,750 / 1,040 /
+750 digests; the real proof needs 1,625 / 1,625 / 939 / 657). Before the first
+path: per pair of paths and level, a "same parent" flag; a need flag per
+(path, level); a prefix count; an LSB-first compaction network on the metadata
+(no collisions in 20,000 random patterns and on the real proof) and its
+reverse on the frontier data. Per level the sibling is the frontier digest if
+needed, otherwise the node or sibling of an earlier path with the same parent.
+Every path is still hashed to its root and compared, so routing affects
+completeness only.
+
+**Measured** (`data/run-ziren-gc-count-full.txt`,
+`data/run-ziren-gc-eval-dedup.txt`; exact counts with the folding rules of
+`CircuitAdapter`/`Streaming`):
+
+| | full paths | deduplicated |
+|---|---:|---:|
+| non-free gates | 37,901,356,001 | 38,339,147,832 (+1.16%) |
+| AND / OR | 35.12 B / 2.78 B | 35.35 B / 2.99 B |
+| XOR | 113.10 B | 113.14 B |
+| wires | 151.0 B | 151.5 B |
+| garbled, 16 B per non-free gate | 606.4 GB | 613.4 GB |
+| input bits | 5,763,458 | 5,179,170 (-10.1%) |
+
+Profile of the full-path circuit: Poseidon2 31.44 B (82.95%, 1.35 M per
+permutation under Ziren's constants), extension multiplication 6.26 B
+(16.52%), everything else 0.53%. Deduplication adds 417 M gates of sibling
+routing and 22 M of prologue, and removes 2,356 sibling digests (584,288 bits).
+
+**Correctness.** The deduplicated circuit was evaluated gate by gate on the
+real proof (151.5 B wires, 5,030 s): output true, and every value written by
+every instruction equals Ziren's runtime semantics (0 mismatches). With witness word 70,510 changed by one, the same
+circuit outputs false. The whole test, honest and tampered, took 2:38:38
+wall on one core with a 16.3 GB peak.
+
+**Garbling.** The pinned streaming garbler needs a byte per wire for its
+liveness plan, 151 GB here, so the whole circuit was counted and evaluated,
+not garbled. A real 220,000-instruction prefix (931.6 M non-free gates) was
+garbled with random Δ and Blake3 half-gates and self-checked in 478 s: 1.95 M
+non-free gates per second per core, peak 7.3 M live wires
+(`data/run-ziren-gc-garble-prefix.txt`). At that rate one instance is about
+5.4 core-hours, and cut-and-choose at (181, 7) is about 980 core-hours, with
+4.3 TB stored by a challenger for the seven kept instances.
+
+**Against the paper's verifier.** 38.3 B against 94.1 M non-free gates for the
+2^18 Keccak WHIR verifier: 407 times larger, 613 GB against 1.5 GB per
+instance, for an input that is 5.0 times larger (5.18 Mbit against 1.04
+Mbit). The cost is Poseidon2 over a prime field in Boolean gates; the
+wrap-to-binary-WHIR stage of §7l is what removes both.
+
+## 7n. Ziren's binary stage and narrow recursion, garbled: measured (2026-10-03)
+
+**The pipeline.** Ziren's `feat/binary-whir-blake3` (eigmax) adds two stages
+after shrink: `shrink_blake3` (the shrink proof committed with Blake3) and
+`shrink_binary`, which proves the recursion program verifying it over
+GF(2^128) with Boolean WHIR and Blake3. `binary-recursion` records the binary
+stage's verifier, Plonky3's own, as a straight-line tape over GF(2^128) (the
+Wiedemann tower, the field of `whir-gc/src/tower.rs`). At `ee5ca380` (local,
+unpushed) it also adds the **narrow recursion**: a five-table `TapeMachine`
+(ledger, arith, rewire, hash, Blake3 rounds) proves a run of a recorded tape
+under the binary stage's own configuration, and that proof's verifier is
+recorded again. Level 1 is the binary stage's verifier; level 2 is the tape
+machine's verifier on the narrow proof of level 1.
+
+**Translation.** `whir-gc/src/binary_tape.rs` translates a tape op by op with
+the semantics of the tape's own `run`: `Add`/`Square`/rewiring are XOR and
+wires, `Mul` is `tower::mul`, `Inv` is a 12-multiplication addition chain plus
+a non-zero check, `Blake3` is bitvm-gc's tree-mode circuit, `MerkleNode` is one
+256-wire multiplexer (the other order is free) plus a compression, selectors
+and Merkle bits are checked to be bits, bytes to be bytes, and the zero
+padding of element-slot hashes is checked. Output = AND of all checks. Inputs
+are typed by use (byte, bit or 128-bit element). Dumps come from
+`data/ziren_dump_binary_tape.rs` (format ZTAP v2) and
+`data/ziren_dump_binary_tape_v1.rs` (v1, at `f30cd48c`).
+
+**Measured** (fibonacci; exact counts; 16 B per non-free gate; one core):
+
+| | level 1 at f30cd48c (v1 tape) | level 1 at ee5ca380 | level 2 (narrow) |
+|---|---:|---:|---:|
+| proof verified | 2,246,717 B | 2,233,803 B | 1,468,673 B |
+| tape ops / variables | 5.89 M / 9.41 M | 3.56 M / 4.91 M | 1.04 M / 1.17 M |
+| non-free gates | 3,607,895,750 | 3,371,420,904 | 757,969,914 |
+| Ziren's own estimate | — | 3.91e9 | 8.06e8 |
+| XOR / wires | 22.49 B / 26.12 B | 21.02 B / 24.41 B | 4.87 B / 5.64 B |
+| garbled | 57.73 GB | 53.94 GB | 12.13 GB |
+| input bits | 18,148,352 | 18,050,304 | 11,165,056 |
+| honest eval | accepts, 0 of 9.41 M values differ | accepts, 0 of 4.91 M | accepts, 0 of 1.17 M |
+| 3 single-input changes | all rejected | all rejected | all rejected |
+| streaming garble | 3,519 s, 1.03 M/s, peak 180.7 M live wires | — | 541 s, 1.40 M/s, peak 90.5 M |
+
+Profiles: level 1 at `ee5ca380` is multiplication 84.8%, Blake3 9.0%, Merkle
+nodes 5.7%; level 2 is multiplication 51.7%, Merkle nodes 28.7%, Blake3 17.4%,
+inversion 1.9%. From v1 to v2 the count fell 6.6%: the tape now records x^2 as
+`Square` (97,863 of them, free in characteristic 2, previously full
+multipliers), and Merkle ordering moved from 1.64 M byte selects into 18,107
+`MerkleNode`s. Ziren's estimate charges 2,187 AND per product (Karatsuba
+3^7); the tower multiplier measures about 1,820, hence the 14% gap at level 1.
+
+**The narrow proof.** Tables: ledger 2^24 x 128, arith 2^23 x 512, rewire 2^14
+x 16,384, hash 2^16 x 2,048, rounds 2^19 x 4,096 (51,473 compressions).
+Proven in 1,033 s on 64 cores (ant-5090-2) with a **446 GiB peak**; OOM-killed
+at 300G and 450G caps first (`data/run-ziren-narrow-dump.txt`). Proof
+1,468,673 B: main WHIR rounds 451 KB, opened main values 428 KB (23,168),
+preprocessed WHIR rounds 358 KB, final openings 157 KB. The binary stage
+itself took 779 s (shrink_binary) in the same run.
+
+**A floor at level 2.** In Ziren's own small test (a 16-triple synthetic table
+at 2^10 rows; `data/run-ziren-narrow-recursion-small.txt`) level 1 is
+4.25e7 AND by Ziren's estimate and level 2 is 6.14e8; on the real proof level
+1 is 92x larger (3.91e9) but level 2 only 31% larger (8.06e8). The narrow
+verifier's cost is set by the tables' widths and the WHIR schedule, not by
+the tape, so a third level would not go below about 6e8-8e8 AND: level 2 is
+already close to the fixed point under this schedule.
+
+**Against the paper's verifier and §7m.** Level 2 is 758 M against 94.1 M
+non-free gates for the 2^18 Keccak WHIR verifier (8.1x), 12.13 GB against 1.5
+GB, with 11.17 Mbit of input against 1.04 Mbit (10.7x). Against the garbled
+compressed-proof verifier of §7m (38.3 B gates, 613 GB) it is 50.6x smaller,
+but its input is 2.2x larger (11.17 against 5.18 Mbit): the narrow proof is
+1.47 MB, and the input is its opened values and WHIR openings. At (181, 7)
+cut-and-choose, garbling is 181 x 541 s, about 27 core-hours, and a
+challenger stores 7 x 12.13 = 85 GB. The input size, not the circuit, is now
+the cost to cut: fewer opened values (narrower tables) and fewer WHIR queries
+(rate, Johnson regime: `ee5ca380`'s `narrow_schedules` tabulates them).
+
 ## 8. To fix or check before release
 
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".

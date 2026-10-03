@@ -1,0 +1,79 @@
+# Ziren feat/binary-whir-blake3 at ee5ca380 (eigmax, local, unpushed) plus paper/data/ziren_dump_binary_tape.rs as crates/prover/tests/dump_binary_tape.rs
+# (dev-deps added in the copy only: zkm-binary-recursion, p3-multi-stark, p3-binary-field, postcard)
+# ant-5090-2, 64 cores (taskset 60-123), nice 19, VERIFY_VK=false, 2026-10-03; box-wide 95% memory watchdog
+# First run (MemoryMax=300G) proved fibonacci to the binary stage and dumped the level-1 tape, then was OOM-killed in the narrow proof; a 450G rerun reusing the saved binary proof was OOM-killed at a 441 GiB peak.
+# This run (MemoryMax=700G) reuses the saved binary proof (2,233,803 B) and level-1 tape: proves the level-1 run on the tape machine, verifies it, records the level-2 verifier, dumps narrow_tape.bin.
+# Level-1 lines below are from the 300G run's log (run-tape-oom300.log); everything after 'tape machine program' is the 700G run.
+# Level-1 stage times in the 300G run: prove_core 3.5 s, compress 47.1 s, shrink_blake3 10.9 s, shrink_binary 779 s. Peaks: 300G run 299 GiB (OOM in the narrow proof), 450G run 441 GiB (OOM), 700G run 446 GiB (below).
+binary proof saved: 2233803 bytes
+level 1 recorded in 0.7 s
+level 1: 3560282 ops, 4914646 variables, 141018 inputs, 3170147 hashed bytes; garbled estimate 3.91e9 AND (3.37e9 products, 5.36e8 hashing, 4.48e6 other)
+level 1 census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [141018, 1678592, 1572424, 476, 2947, 2192, 1456, 659, 2799, 1642, 10223, 29884, 18107, 97863]
+level 1 tape written: 127326474 bytes
+Running scope as unit: run-r299b8fbc394c40278369a385d0bb1a65.scope
+warning: test-artifacts@2.0.0: Program built at 2026-10-03 23:45:38
+warning: test-artifacts@2.0.0: Program built at 2026-10-03 23:45:51
+running 1 test
+level 1 recorded in 0.6 s
+level 1: 3560282 ops, 4914646 variables, 141018 inputs, 3170147 hashed bytes; garbled estimate 3.91e9 AND (3.37e9 products, 5.36e8 hashing, 4.48e6 other)
+level 1 census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [141018, 1678592, 1572424, 476, 2947, 2192, 1456, 659, 2799, 1642, 10223, 29884, 18107, 97863]
+level 1 tape written: 127326474 bytes
+tape machine program: 5993270 cells read 9176905 times; arith 4512234 rows (Add 1678592, Mul 1572424, Square 97863, Inv 2668, Eq 2947, Select 29884, Copy 1127856); rewire 15137 rows; 51473 compressions
+   Ledger: 2^24 rows x 128 + 256 prep
+    Arith: 2^23 rows x 512 + 128 prep
+   Rewire: 2^14 rows x 16384 + 512 prep
+     Hash: 2^16 rows x 2048 + 512 prep
+   Rounds: 2^19 rows x 4096 + 32 prep
+tape machine set up in 52.3 s
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+narrow proof: 1468673 bytes in 1033.1 s
+    commitment                                                   2049 B
+    lookup                                                          1 B
+    indexed                                                         1 B
+    bus                                                         16620 B
+    sumcheck                                                     1846 B
+    main.values (23168 values)                                 427631 B
+    main.reduction.claims (7 claims)                            16797 B
+    main.reduction.sumcheck                                      1014 B
+    main.opening.evals                                             21 B
+    main.opening.whir.initial_sumcheck                            190 B
+    main.opening.whir.rounds (5 rounds)                        451342 B
+    main.opening.whir.final_openings                            78102 B
+    main.opening.whir.final_poly                                   99 B
+    preprocessed.values (1440 values)                           19132 B
+    preprocessed.reduction.claims (6 claims)                    14430 B
+    preprocessed.reduction.sumcheck                               978 B
+    preprocessed.opening.evals                                     21 B
+    preprocessed.opening.whir.initial_sumcheck                    188 B
+    preprocessed.opening.whir.rounds (4 rounds)                358463 B
+    preprocessed.opening.whir.final_openings                    78675 B
+    preprocessed.opening.whir.final_poly                          669 B
+level 2 recorded in 0.2 s
+level 2: 1040039 ops, 1172571 variables, 87227 inputs, 2121603 hashed bytes; garbled estimate 8.06e8 AND (4.50e8 products, 3.53e8 hashing, 3.61e6 other)
+level 2 census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [87227, 463210, 320227, 540, 2955, 1184, 1466, 612, 3320, 1734, 544, 24118, 20619, 112283]
+level 2 tape written: 34055750 bytes
+test dump_binary_stage_verifier_tape ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1092.96s
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 41611.39
+	System time (seconds): 2239.06
+	Percent of CPU this job got: 3984%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 18:20.44
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 467138604
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 661
+	Minor (reclaiming a frame) page faults: 119840362
+	Voluntary context switches: 647194
+	Involuntary context switches: 848429
+	Swaps: 0
+	File system inputs: 217368
+	File system outputs: 318904
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

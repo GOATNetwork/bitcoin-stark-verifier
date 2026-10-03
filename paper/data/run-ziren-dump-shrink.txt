@@ -1,0 +1,16 @@
+instructions 1024796, total_memory 1506316, witness blocks 141020
+  BaseAlu: 203556
+  CommitPublicValues: 1
+  Ext2Felts: 14891
+  ExtAlu: 579405
+  Hint: 141020
+  HintBits: 941
+  MemWrite: 410
+  Poseidon2: 23292
+  Select: 61280
+public values 231
+	Command being timed: "/data/stephen/Ziren/examples/target/release/dump_shrink compressed-proof-with-pis.bin shrink.bin"
+	User time (seconds): 75.98
+	System time (seconds): 32.36
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:33.23
+	Maximum resident set size (kbytes): 12199164

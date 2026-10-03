@@ -1,0 +1,37 @@
+    Finished `release` profile [optimized] target(s) in 0.09s
+     Running tests/ziren_shrink.rs (target-garble/release/build/whir-gc/94619067a346cc96/out/ziren_shrink-94619067a346cc96)
+
+running 1 test
+test deduplicated_circuit_accepts_the_real_proof_and_rejects_a_tampered_one has been running for over 60 seconds
+with Merkle deduplication (evaluated): 38339147832 non-free gates (35348091711 AND, 2991056121 OR), 113144082120 XOR, 151488409124 wires; garbled 613.4 GB at 16 B per non-free gate; inputs 5179170 bits (3867250 witness + 1311920 frontier); built in 5030 s
+  tree depth 20, 124 paths: 2480 digests replaced by 1750
+  tree depth 20, 124 paths: 2480 digests replaced by 1750
+  tree depth 17, 88 paths: 1496 digests replaced by 1040
+  tree depth 14, 85 paths: 1190 digests replaced by 750
+  poseidon2                       31437291301 non-free  82.00%  (23292 instructions)
+  ext mul                          6259936245 non-free  16.33%  (247934 instructions)
+  merkle sibling routing            417426708 non-free   1.09%  (7646 instructions)
+  ext add/sub                        87467261 non-free   0.23%  (314744 instructions)
+  ext div                            57283937 non-free   0.15%  (312 instructions)
+  base mul                           38858640 non-free   0.10%  (74583 instructions)
+  merkle routing prologue            22261331 non-free   0.06%  (4 instructions)
+  base add/sub                        7558640 non-free   0.02%  (90129 instructions)
+  select                              4249936 non-free   0.01%  (61280 instructions)
+  input canonicity                    3867249 non-free   0.01%  (141020 instructions)
+  ext assert                          1957526 non-free   0.01%  (16415 instructions)
+  base assert                          981897 non-free   0.00%  (38844 instructions)
+  public values                          7161 non-free   0.00%  (1 instructions)
+  constants                                 0 non-free   0.00%  (410 instructions)
+  ext to felts                              0 non-free   0.00%  (14891 instructions)
+  bit decomposition                         0 non-free   0.00%  (941 instructions)
+honest proof: output true; 151488409124 wires evaluated in 5030 s; 0 values differ from the native run
+witness word 70510 changed: output false
+test deduplicated_circuit_accepts_the_real_proof_and_rejects_a_tampered_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 9517.81s
+
+	Command being timed: "cargo test --release -p whir-gc --test ziren_shrink deduplicated_circuit -- --ignored --nocapture"
+	User time (seconds): 8891.46
+	System time (seconds): 67.67
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 2:38:38
+	Maximum resident set size (kbytes): 16315784

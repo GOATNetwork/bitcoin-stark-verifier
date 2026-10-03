@@ -195,7 +195,7 @@ fn sub_words<T: CircuitTrait>(b: &mut T, x: &[usize], y: &[usize], width: usize)
     out
 }
 
-fn mux_words<T: CircuitTrait>(b: &mut T, sel: usize, x: &[usize], y: &[usize]) -> Vec<usize> {
+pub fn mux_words<T: CircuitTrait>(b: &mut T, sel: usize, x: &[usize], y: &[usize]) -> Vec<usize> {
     x.iter()
         .zip(y)
         .map(|(&p, &q)| {
@@ -372,6 +372,46 @@ pub fn div_2exp<T: CircuitTrait>(b: &mut T, x: &Fp, k: u32) -> Fp {
     }
 }
 
+/// `x²`: the cross products `x_i x_j` (i < j) once each, doubled by weight,
+/// and the diagonal `x_i x_i = x_i` for free.
+pub fn square<T: CircuitTrait>(b: &mut T, x: &Fp) -> Fp {
+    let mut cols = Cols::default();
+    for i in 0..x.len() {
+        cols.push(2 * i, x[i]);
+        for j in i + 1..x.len() {
+            let w = b.and_wire(x[i], x[j]);
+            cols.push(i + j + 1, w);
+        }
+    }
+    reduce(b, cols, Cols::default())
+}
+
+/// `x^(p-2)`, the inverse of a non-zero `x` (and 0 for 0). The exponent
+/// `p - 2 = (2^6 - 1)·2^25 + 2^24 - 1` by an addition chain: 48 squarings and
+/// 6 multiplications.
+pub fn inverse<T: CircuitTrait>(b: &mut T, x: &Fp) -> Fp {
+    fn sq_n<T: CircuitTrait>(b: &mut T, v: &Fp, n: usize) -> Fp {
+        let mut t = v.clone();
+        for _ in 0..n {
+            t = square(b, &t);
+        }
+        t
+    }
+    let e1 = x.clone();
+    let t = square(b, &e1);
+    let e2 = mul(b, &t, &e1);
+    let t = square(b, &e2);
+    let e3 = mul(b, &t, &e1);
+    let t = sq_n(b, &e3, 3);
+    let e6 = mul(b, &t, &e3);
+    let t = sq_n(b, &e6, 6);
+    let e12 = mul(b, &t, &e6);
+    let t = sq_n(b, &e12, 12);
+    let e24 = mul(b, &t, &e12);
+    let hi = sq_n(b, &e6, 25);
+    mul(b, &hi, &e24)
+}
+
 pub fn sbox<T: CircuitTrait>(b: &mut T, x: &Fp) -> Fp {
     let x2 = mul(b, x, x);
     mul(b, &x2, x)
@@ -457,8 +497,20 @@ pub fn internal_linear<T: CircuitTrait>(b: &mut T, state: &mut [Fp; WIDTH]) {
 
 /// The permutation, as `poseidon2::reference::permute`.
 pub fn permute<T: CircuitTrait>(b: &mut T, state: &mut [Fp; WIDTH]) {
+    permute_with(b, state, &EXTERNAL_INITIAL, &INTERNAL, &EXTERNAL_FINAL);
+}
+
+/// The same permutation structure (4 + 4 full rounds, 20 partial, the
+/// Plonky3 KoalaBear linear layers) under other round constants.
+pub fn permute_with<T: CircuitTrait>(
+    b: &mut T,
+    state: &mut [Fp; WIDTH],
+    external_initial: &[[u32; WIDTH]; 4],
+    internal: &[u32; 20],
+    external_final: &[[u32; WIDTH]; 4],
+) {
     mds_light(b, state);
-    for rc in EXTERNAL_INITIAL.iter() {
+    for rc in external_initial.iter() {
         for (s, &c) in state.iter_mut().zip(rc.iter()) {
             let c = constant(b, c);
             let t = add(b, s, &c);
@@ -466,13 +518,13 @@ pub fn permute<T: CircuitTrait>(b: &mut T, state: &mut [Fp; WIDTH]) {
         }
         mds_light(b, state);
     }
-    for &c in INTERNAL.iter() {
+    for &c in internal.iter() {
         let c = constant(b, c);
         let t = add(b, &state[0], &c);
         state[0] = sbox(b, &t);
         internal_linear(b, state);
     }
-    for rc in EXTERNAL_FINAL.iter() {
+    for rc in external_final.iter() {
         for (s, &c) in state.iter_mut().zip(rc.iter()) {
             let c = constant(b, c);
             let t = add(b, s, &c);

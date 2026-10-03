@@ -1,0 +1,15 @@
+    Finished `release` profile [optimized] target(s) in 0.64s
+     Running tests/ziren_shrink.rs (target-ziren2/release/build/whir-gc/94619067a346cc96/out/ziren_shrink-94619067a346cc96)
+
+running 1 test
+test garbling_throughput_on_a_real_prefix has been running for over 60 seconds
+prefix of 220000 instructions: 931554730 non-free gates garbled and checked in 478.2 s, 1.95 M non-free gates/s on one core; prefix accepted so far: true; peak live wires 7297287
+test garbling_throughput_on_a_real_prefix ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 644.91s
+
+	Command being timed: "cargo test --release -p whir-gc --test ziren_shrink garbling_throughput -- --ignored --nocapture"
+	User time (seconds): 589.23
+	System time (seconds): 13.16
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 10:45.57
+	Maximum resident set size (kbytes): 4027172

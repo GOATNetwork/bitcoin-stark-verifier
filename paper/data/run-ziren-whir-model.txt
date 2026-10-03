@@ -1,0 +1,10 @@
+scenario                                             WHIR felts total felts       bits adaptor MvB  ACW MvB  queries/depth/leaf
+measured Ziren: rate 1/4, UDR, 22-bit grind, folds 3/6/6    169,876     191,404  5,933,524       12.70     67.5  124x2/20/256 88x1/17/256 85x1/14/256
+Johnson-bound list decoding                              91,876     113,404  3,515,524        7.52     40.0  84x2/20/256 34x1/17/256 21x1/14/256
++ 48-bit query grinding                                  64,116      85,644  2,654,964        5.68     30.2  58x2/20/256 24x1/17/256 15x1/14/256
++ starting rate 1/256                                    23,436      44,964  1,393,884        2.98     15.9  15x2/26/256 11x1/23/256 9x1/20/256
++ folds 3/4/4/4 (narrower leaves)                        21,812      43,340  1,343,540        2.88     15.3  15x2/26/256 11x1/25/64 9x1/24/64 7x1/23/64
++ 7-element (217-bit) digests                            20,380      41,908  1,299,148        2.78     14.8  15x2/26/256 11x1/25/64 9x1/24/64 7x1/23/64
+capacity conjecture instead of Johnson                   11,450      32,978  1,022,318        2.19     11.6  8x2/26/256 6x1/25/64 5x1/24/64 4x1/23/64
+same, wrap without LogUp-GKR (non-WHIR minus 12,525)     20,380      29,383    910,873        1.95     10.4
+calibration: measured WHIR felts 169,687; non-WHIR 21528

@@ -1,0 +1,24 @@
+# Ziren feat/binary-whir-blake3 at f30cd48c (eigmax) plus paper/data/ziren_dump_binary_tape_v1.rs as crates/prover/tests/dump_binary_tape.rs
+# (dev-deps added in the copy only: zkm-binary-recursion, p3-multi-stark, p3-binary-field)
+# ant-5090-2, 64 cores (taskset 60-123), nice 19, systemd MemoryMax=300G, VERIFY_VK=false, 2026-10-03
+# Proves fibonacci to the binary stage, records the binary stage's verifier on that proof, replays the tape natively, and dumps it.
+shrink_blake3: close time.busy=10.5s time.idle=2.47µs
+shrink_binary: binary stage program mix: {"BaseAlu": 219599, "Blake3Compress": 17155, "CommitPublicValues": 1, "ExtAlu": 658690, "FeltLimbs": 112363, "Hint": 210643, "HintBits": 1198, "HintExt2Felts": 17699, "Mem": 437, "Select": 150656}
+shrink_binary: binary stage table Ledger: 2^22 rows x 124 bits
+shrink_binary: binary stage table MemoryConst: 2^9 rows x 1 bits
+shrink_binary: binary stage table MemoryVar: 2^19 rows x 124 bits
+shrink_binary: binary stage table BaseAlu: 2^18 rows x 376 bits
+shrink_binary: binary stage table ExtAlu: 2^20 rows x 6621 bits
+shrink_binary: binary stage table Select: 2^18 rows x 155 bits
+shrink_binary: binary stage table Blake3Io: 2^15 rows x 1280 bits
+shrink_binary: binary stage table Blake3Round: 2^17 rows x 4096 bits
+shrink_binary: binary stage table Limbs: 2^17 rows x 31 bits
+shrink_binary: binary stage table PublicValues: 2^6 rows x 31 bits
+shrink_binary: binary stage table Mul: 2^22 rows x 2528 bits
+binary proof saved: 2246717 bytes
+recorded in 0.8 s: 5890991 ops, 9413288 variables, 702274 inputs, 3183331 hashed bytes
+census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select"] [702274, 1691684, 1683965, 476, 32411, 2202, 107639, 522, 2799, 19749, 10319, 1636951]
+tape written: 259654295 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 757.55s
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 15:03.58
+	Maximum resident set size (kbytes): 290164668

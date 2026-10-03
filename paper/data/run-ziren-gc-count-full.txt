@@ -1,0 +1,29 @@
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running tests/ziren_shrink.rs (target-ziren2/release/build/whir-gc/94619067a346cc96/out/ziren_shrink-94619067a346cc96)
+
+running 1 test
+test gate_counts_with_and_without_merkle_deduplication has been running for over 60 seconds
+full Merkle paths: 37901356001 non-free gates (35116821314 AND, 2784534687 OR), 113099955156 XOR, 151007074617 wires; garbled 606.4 GB at 16 B per non-free gate; inputs 5763458 bits (5763458 witness + 0 frontier); built in 2714 s
+  poseidon2                       31437291301 non-free  82.95%  (23292 instructions)
+  ext mul                          6259936245 non-free  16.52%  (247934 instructions)
+  ext add/sub                        87467261 non-free   0.23%  (314744 instructions)
+  ext div                            57283937 non-free   0.15%  (312 instructions)
+  base mul                           38858640 non-free   0.10%  (74583 instructions)
+  base add/sub                        7558640 non-free   0.02%  (90129 instructions)
+  input canonicity                    5763457 non-free   0.02%  (141020 instructions)
+  select                              4249936 non-free   0.01%  (61280 instructions)
+  ext assert                          1957526 non-free   0.01%  (16415 instructions)
+  base assert                          981897 non-free   0.00%  (38844 instructions)
+  public values                          7161 non-free   0.00%  (1 instructions)
+  constants                                 0 non-free   0.00%  (410 instructions)
+  ext to felts                              0 non-free   0.00%  (14891 instructions)
+  bit decomposition                         0 non-free   0.00%  (941 instructions)
+test gate_counts_with_and_without_merkle_deduplication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 2714.03s
+
+	Command being timed: "cargo test --release -p whir-gc --test ziren_shrink gate_counts -- --ignored --nocapture"
+	User time (seconds): 2691.40
+	System time (seconds): 3.44
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 45:14.19
+	Maximum resident set size (kbytes): 1160016

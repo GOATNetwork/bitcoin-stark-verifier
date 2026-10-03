@@ -1,0 +1,52 @@
+# Ziren feat/binary-whir-blake3 at ee5ca380 (eigmax, local, unpushed); local box, systemd MemoryMax=32G, taskset 9-15, 2026-10-03
+# cargo test --release -p zkm-binary-recursion --test narrow_recursion proves_a_recorded -- --nocapture
+# Synthetic 16x(a,b,a&b) table at 2^10 rows; level 1 = its verifier, level 2 = the tape machine's verifier on the narrow proof; 'garbled' lines are Ziren's own AND estimate.
+running 1 test
+narrow schedule: BinarySchedule { regime: UniqueDecoding, log_inv_rate: 5, folding: 4, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 30 } }
+    commitment                                                   2049 B
+    lookup                                                          1 B
+    indexed                                                         1 B
+    bus                                                             1 B
+    sumcheck                                                      555 B
+    main.values (96 values)                                      1797 B
+    main.reduction.claims (1 claims)                             7198 B
+    main.reduction.sumcheck                                       336 B
+    main.opening.evals                                             22 B
+    main.opening.whir.initial_sumcheck                            153 B
+    main.opening.whir.rounds (0 rounds)                             1 B
+    main.opening.whir.final_openings                            44282 B
+    main.opening.whir.final_poly                                  461 B
+level 1 (the binary proof's verifier): 40205 ops, 75123 hashed bytes; input 3446, add 16483, mul 13609, inv 20, assert_eq 351, assert_nonzero 60, to_bytes 270, from_bytes 184, byte_bits 116, blake3 185, transpose 53, select 3832, merkle_node 456, square 1140
+  garbled: 4.25e7 AND (2.93e7 products, 1.26e7 hashing, 5.43e5 other)
+  56939 cells read 97688 times; arith 44711 rows (Add 16483, Mul 13609, Square 1140, Inv 80, Eq 351, Select 3832, Copy 9216); rewire 623 rows; 1212 compressions
+   Ledger: 2^17 rows x 128 + 256 prep
+    Arith: 2^16 rows x 512 + 128 prep
+   Rewire: 2^10 rows x 16384 + 512 prep
+     Hash: 2^11 rows x 2048 + 512 prep
+   Rounds: 2^14 rows x 4096 + 32 prep
+  narrow proof: 1089738 bytes in 392.9 s
+    commitment                                                   2049 B
+    lookup                                                          1 B
+    indexed                                                         1 B
+    bus                                                          9956 B
+    sumcheck                                                     1314 B
+    main.values (23168 values)                                 427649 B
+    main.reduction.claims (10 claims)                           24033 B
+    main.reduction.sumcheck                                       793 B
+    main.opening.evals                                             21 B
+    main.opening.whir.initial_sumcheck                            172 B
+    main.opening.whir.rounds (3 rounds)                        237668 B
+    main.opening.whir.final_openings                            69239 B
+    main.opening.whir.final_poly                                  336 B
+    preprocessed.values (1440 values)                           16335 B
+    preprocessed.reduction.claims (6 claims)                    14382 B
+    preprocessed.reduction.sumcheck                               712 B
+    preprocessed.opening.evals                                     21 B
+    preprocessed.opening.whir.initial_sumcheck                    181 B
+    preprocessed.opening.whir.rounds (3 rounds)                220369 B
+    preprocessed.opening.whir.final_openings                    64034 B
+    preprocessed.opening.whir.final_poly                          116 B
+level 2 (the narrow proof's verifier): 779632 ops, 1445923 hashed bytes; input 64188, add 349820, mul 275523, inv 321, assert_eq 2096, assert_nonzero 770, to_bytes 1128, from_bytes 494, byte_bits 1776, blake3 1328, transpose 496, select 23776, merkle_node 11236, square 46680
+  garbled: 6.14e8 AND (3.68e8 products, 2.42e8 hashing, 3.41e6 other)
+test proves_a_recorded_verification_and_records_its_own ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 405.61s
