@@ -6,6 +6,9 @@
 //! (format ZTAP v2).  Run with `--ignored --nocapture`; `ZIREN_TAPE_OUT`
 //! names the output directory.  A saved binary proof (`binary_proof.bin`,
 //! `binary_program.bin`, `binary_digest.bin`) is reused when present.
+//! `ZIREN_B_SCHEDULE` (as `johnson,3,4`: regime, -log2 rate, folding) sets
+//! the narrow proof's WHIR schedule, with grinding allowed to 40 bits; the
+//! default is the binary stage's own.  Level-2 files then carry the spec.
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -119,7 +122,9 @@ fn dump_binary_stage_verifier_tape() {
     let started = std::time::Instant::now();
     let program = Program::new(&tape, zkm_recursion_core::DIGEST_SIZE);
     eprintln!("tape machine program: {}", program.census());
-    let narrow_machine = TapeMachine::new(program, &schedule).expect("the tape machine");
+    let (narrow_schedule, tag) = narrow_schedule();
+    eprintln!("narrow schedule: {narrow_schedule:?}");
+    let narrow_machine = TapeMachine::new(program, &narrow_schedule).expect("the tape machine");
     for air in narrow_machine.airs() {
         eprintln!(
             "  {:>7}: 2^{} rows x {} + {} prep",
@@ -135,7 +140,7 @@ fn dump_binary_stage_verifier_tape() {
     let narrow = narrow_machine.prove(&tape, &tape.inputs).expect("the tape machine proves the run");
     let narrow_bytes = postcard::to_allocvec(&narrow).expect("serializes");
     eprintln!("narrow proof: {} bytes in {:.1} s", narrow_bytes.len(), started.elapsed().as_secs_f64());
-    std::fs::write(out.join("narrow_proof.bin"), &narrow_bytes).unwrap();
+    std::fs::write(out.join(format!("narrow_proof{tag}.bin")), &narrow_bytes).unwrap();
     narrow_machine.verify(&narrow, &narrow_public).expect("the narrow proof verifies");
     for (part, bytes) in zkm_binary_stark::config::proof_breakdown(&narrow) {
         eprintln!("    {part:<55} {bytes:>9} B");
@@ -158,13 +163,32 @@ fn dump_binary_stage_verifier_tape() {
         &instances,
         &main,
         &preprocessed,
-        &schedule,
+        &narrow_schedule,
         narrow_machine.verifying_key(),
         &narrow,
     );
     verdict.expect("the recorded verifier accepts the narrow proof");
     eprintln!("level 2 recorded in {:.1} s", started.elapsed().as_secs_f64());
-    write_tape("level 2", &own, &out.join("narrow_tape.bin"));
+    write_tape("level 2", &own, &out.join(format!("narrow_tape{tag}.bin")));
+}
+
+/// The narrow proof's schedule and a file-name tag: the stage's default, or
+/// the regime, rate and folding `ZIREN_B_SCHEDULE` names.
+fn narrow_schedule() -> (BinarySchedule, String) {
+    let Ok(spec) = std::env::var("ZIREN_B_SCHEDULE") else { return (BinarySchedule::default(), String::new()) };
+    let parts: Vec<&str> = spec.split(',').collect();
+    let regime = match parts[0] {
+        "johnson" => p3_examples::binary::WhirRegime::Johnson,
+        _ => p3_examples::binary::WhirRegime::UniqueDecoding,
+    };
+    let mut schedule = BinarySchedule {
+        regime,
+        log_inv_rate: parts[1].parse().expect("a rate"),
+        folding: parts[2].parse().expect("a folding factor"),
+        ..BinarySchedule::default()
+    };
+    schedule.budget.max_grinding_bits = 40;
+    (schedule, format!("-{}", spec.replace(',', "-")))
 }
 
 fn write_tape(label: &str, tape: &Tape, path: &std::path::Path) {

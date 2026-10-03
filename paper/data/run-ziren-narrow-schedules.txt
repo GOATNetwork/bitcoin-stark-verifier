@@ -1,0 +1,61 @@
+# Ziren feat/binary-whir-blake3 at ee5ca380 plus paper/data/ziren_real_narrow_schedules.rs as crates/binary-recursion/tests/real_narrow_schedules.rs
+# local box, systemd MemoryMax=32G, taskset 0-7, 2026-10-03; no proving: WHIR configurations derived for the narrow machine's real shapes
+# (main 2^24x128, 2^23x512, 2^14x16384, 2^16x2048, 2^19x4096; prep widths 256, 128, 512, 512, 32). Byte estimates ignore Merkle path pruning:
+# unique,5,4 estimates 1,142,912 B where the real narrow proof's WHIR part is 967,728 B.
+# cargo test --release -p zkm-binary-recursion --test real_narrow_schedules -- --ignored --nocapture
+spec           table: arity, pow bits, queries, digests, opened base/ext, sent base/ext, est bytes
+unique,5,4     main: arity 34, pow 13 bits, 580 queries, 14805 digests, opened 1600/7680, sent 33/63, ~623776 B
+unique,5,4     prep: arity 33, pow 12 bits, 489 queries, 12237 digests, opened 1616/6208, sent 31/117, ~519136 B
+unique,5,4     both: ~1142912 B unpruned
+unique,3,4     main: arity 34, pow 11 bits, 609 queries, 14367 digests, opened 1872/7872, sent 33/63, ~617184 B
+unique,3,4     prep: arity 33, pow 10 bits, 517 queries, 11937 digests, opened 1904/6368, sent 31/117, ~516704 B
+unique,3,4     both: ~1133888 B unpruned
+unique,4,4     main: arity 34, pow 12 bits, 592 queries, 14533 digests, opened 1696/7776, sent 33/63, ~618144 B
+unique,4,4     prep: arity 33, pow 11 bits, 500 queries, 12023 digests, opened 1712/6288, sent 31/117, ~515104 B
+unique,4,4     both: ~1133248 B unpruned
+unique,6,4     main: arity 34, pow 14 bits, 572 queries, 15168 digests, opened 1552/7600, sent 33/63, ~633344 B
+unique,6,4     prep: arity 33, pow 13 bits, 482 queries, 12540 digests, opened 1568/6144, sent 31/117, ~527040 B
+unique,6,4     both: ~1160384 B unpruned
+unique,8,4     main: arity 34, pow 16 bits, 558 queries, 15908 digests, opened 1488/7440, sent 33/63, ~653440 B
+unique,8,4     prep: arity 33, pow 15 bits, 470 queries, 13164 digests, opened 1504/6016, sent 31/117, ~543936 B
+unique,8,4     both: ~1197376 B unpruned
+unique,5,2     main: arity 34, pow 13 bits, 1063 queries, 26616 digests, opened 400/3852, sent 38/87, ~921744 B
+unique,5,2     prep: arity 33, pow 12 bits, 977 queries, 23973 digests, opened 404/3504, sent 36/117, ~832112 B
+unique,5,2     both: ~1753856 B unpruned
+unique,5,3     main: arity 34, pow 13 bits, 677 queries, 17622 digests, opened 800/4616, sent 34/119, ~653008 B
+unique,5,3     prep: arity 33, pow 12 bits, 684 queries, 17120 digests, opened 808/4664, sent 33/85, ~637280 B
+unique,5,3     both: ~1290288 B unpruned
+unique,5,5     main: arity 34, pow 13 bits, 484 queries, 12112 digests, opened 3200/12288, sent 32/59, ~636848 B
+unique,5,5     prep: arity 33, pow 12 bits, 392 queries, 9613 digests, opened 3232/9312, sent 30/117, ~510672 B
+unique,5,5     both: ~1147520 B unpruned
+unique,5,6     main: arity 34, pow 13 bits, 388 queries, 9515 digests, opened 6400/18432, sent 31/63, ~703296 B
+unique,5,6     prep: arity 33, pow 12 bits, 392 queries, 9221 digests, opened 6464/18624, sent 30/57, ~697872 B
+unique,5,6     both: ~1401168 B unpruned
+johnson,3,4    main: arity 34, pow 37 bits, 122 queries, 3002 digests, opened 800/1152, sent 33/75, ~129024 B
+johnson,3,4    prep: arity 33, pow 34 bits, 118 queries, 2815 digests, opened 832/1056, sent 31/127, ~122816 B
+johnson,3,4    both: ~251840 B unpruned
+johnson,4,4    main: arity 34, pow 39 bits, 99 queries, 2520 digests, opened 576/1008, sent 33/75, ~107712 B
+johnson,4,4    prep: arity 33, pow 36 bits, 96 queries, 2373 digests, opened 608/928, sent 31/127, ~103040 B
+johnson,4,4    both: ~210752 B unpruned
+johnson,5,4    main: arity 34, pow 41 bits, 84 queries, 2216 digests, opened 448/896, sent 33/75, ~94144 B
+johnson,5,4    prep: arity 33, pow 38 bits, 80 queries, 2051 digests, opened 464/816, sent 31/127, ~88640 B
+johnson,5,4    both: ~182784 B unpruned
+johnson,6,4    main: arity 34, pow 43 bits, 73 queries, 1991 digests, opened 368/800, sent 33/75, ~84128 B
+johnson,6,4    prep: arity 33, pow 40 bits, 70 queries, 1862 digests, opened 384/736, sent 31/127, ~80032 B
+johnson,6,4    both: ~164160 B unpruned
+johnson,8,4    main: arity 34, pow 47 bits, 58 queries, 1691 digests, opened 256/672, sent 33/75, ~70688 B
+johnson,8,4    prep: arity 33, pow 44 bits, 54 queries, 1540 digests, opened 272/592, sent 31/127, ~65632 B
+johnson,8,4    both: ~136320 B unpruned
+johnson,5,2    main: arity 34, pow 31 bits, 199 queries, 5200 digests, opened 128/668, sent 38/109, ~181488 B
+johnson,5,2    prep: arity 33, pow 30 bits, 191 queries, 4863 digests, opened 132/632, sent 36/137, ~170608 B
+johnson,5,2    both: ~352096 B unpruned
+johnson,5,3    main: arity 34, pow 37 bits, 113 queries, 3034 digests, opened 240/664, sent 34/133, ~114224 B
+johnson,5,3    prep: arity 33, pow 36 bits, 113 queries, 2921 digests, opened 240/664, sent 33/99, ~110048 B
+johnson,5,3    both: ~224272 B unpruned
+johnson,5,5    main: arity 34, pow 43 bits, 68 queries, 1751 digests, opened 864/1312, sent 32/69, ~92464 B
+johnson,5,5    prep: arity 33, pow 39 bits, 65 queries, 1628 digests, opened 928/1152, sent 30/125, ~87856 B
+johnson,5,5    both: ~180320 B unpruned
+johnson,5,6    main: arity 34, pow 43 bits, 57 queries, 1432 digests, opened 1728/1920, sent 31/71, ~105824 B
+johnson,5,6    prep: arity 33, pow 42 bits, 58 queries, 1400 digests, opened 1792/1920, sent 30/65, ~105712 B
+johnson,5,6    both: ~211536 B unpruned
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

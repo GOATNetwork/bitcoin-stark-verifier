@@ -1064,6 +1064,41 @@ challenger stores 7 x 12.13 = 85 GB. The input size, not the circuit, is now
 the cost to cut: fewer opened values (narrower tables) and fewer WHIR queries
 (rate, Johnson regime: `ee5ca380`'s `narrow_schedules` tabulates them).
 
+**The narrow proof's WHIR schedule** (`data/run-ziren-narrow-schedules.txt`,
+derived for the real narrow machine's shapes without proving). Unique
+decoding stays near 500 queries a round at every rate and folding (est.
+1.13-1.75 MB of WHIR data unpruned); the Johnson regime, which Ziren derives
+as proven list decoding up to the Johnson bound (no proximity-gap
+conjecture), cuts queries about 5x at the price of prover grinding: rate
+1/32 fold 2 is 31 bits (-69% WHIR bytes), rate 1/8 fold 4 is 37 bits (-78%),
+rate 1/32 fold 4 is 41 bits (-84%). Rate 1/8 fold 4 was proven
+(`data/run-ziren-narrow-dump-johnson-3-4.txt`) and garbled
+(`data/run-ziren-narrow-tape-gc-johnson-3-4.txt`):
+
+| narrow schedule | unique, 1/32, fold 4 (default) | Johnson, 1/8, fold 4 |
+|---|---:|---:|
+| narrow proof | 1,468,673 B | 727,235 B (-50%) |
+| WHIR rounds / final openings | 810 KB / 157 KB | 212 KB / 14.5 KB |
+| opened values (main + prep) | 447 KB | 447 KB |
+| prove (64 cores) / peak memory | 1,033 s / 446 GiB | 5,821 s / 356 GiB |
+| of which grinding | seconds | 4,948 s (longest 1,310 s) |
+| level-2 tape ops / inputs | 1.04 M / 87,227 | 0.69 M / 41,323 |
+| non-free gates | 757,969,914 | 483,917,940 (-36%) |
+| garbled | 12.13 GB | 7.74 GB |
+| input bits | 11,165,056 | 5,289,344 (-53%) |
+| eval / 3 changes | accepts, 0 of 1.17 M differ / rejected | accepts, 0 of 780,062 differ / rejected |
+| streaming garble, one core | 541 s (1.40 M/s) | 259 s (1.87 M/s) |
+
+Profile under Johnson: multiplication 67.4%, Blake3 19.4%, Merkle nodes
+10.0%, inversion 2.9%. Against the paper's verifier this is 5.1x the gates
+(484 M against 94.1 M) and 5.1x the input (5.29 against 1.04 Mbit); against
+§7m it is 79x fewer gates at the same input (5.29 against 5.18 Mbit). At
+(181, 7), garbling is about 13 core-hours and a challenger stores 54 GB. The
+opened values, one 128-bit element per column of the narrow machine (23,168
+main + 1,440 preprocessed = 3.15 Mbit), are now 60% of the input; only
+narrower tables (a prover-side change in Ziren) remove them. The cost moved
+to the prover: 5.6x the proving time, almost all of it proof of work.
+
 ## 8. To fix or check before release
 
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".

@@ -477,6 +477,16 @@ finalization are reported separately.
   - `run-ziren-narrow-tape-gc.txt`: level 2, 757,969,914 non-free gates,
     12.13 GB, 11,165,056 input bits; accepts with 0 of 1,172,571 values
     differing; rejects three changes; garbled in 541 s (1.40 M/s, one core).
+  - `ziren_real_narrow_schedules.rs` and `run-ziren-narrow-schedules.txt`:
+    the WHIR schedules of the narrow machine at its real shapes, read off
+    the derived configurations without proving (queries, grinding, digests,
+    an unpruned byte estimate) for unique decoding and the Johnson regime.
+  - `run-ziren-narrow-dump-johnson-3-4.txt`: the narrow proof under the
+    Johnson regime at rate 1/8, folding 4 (`ZIREN_B_SCHEDULE=johnson,3,4`):
+    727,235 bytes in 5,821 s (4,948 s of it grinding), 356 GiB peak.
+    `run-ziren-narrow-tape-gc-johnson-3-4.txt` translates its verifier:
+    483,917,940 non-free gates, 7.74 GB, 5,289,344 input bits; accepts with
+    0 of 780,062 values differing; rejects three changes; garbled in 259 s.
   - `run-ziren-narrow-recursion-small.txt`: Ziren's own `narrow_recursion`
     test on a small synthetic proof: level 1 4.25e7 and level 2 6.14e8 AND
     by Ziren's estimate, the narrow verifier's floor.
