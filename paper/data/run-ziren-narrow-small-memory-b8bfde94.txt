@@ -1,0 +1,66 @@
+# Ziren b8bfde94 (unmodified, local checkout), its own narrow_recursion test on the small synthetic proof (16 triples, 2^10 rows); local box, systemd MemoryMax=32G, taskset 0-7, 2026-10-04
+# cargo test --release -p zkm-binary-recursion --test narrow_recursion proves_a_recorded -- --nocapture, every output line timestamped; the test binary's VmRSS sampled every 0.2 s
+# (the narrow machine's shapes are printed at +5 s, after setup; the narrow proof ends at +188 s). Memory timeline: maximum RSS per 15 s window, seconds from the first sample.
++  0s  4.20 GiB
++ 15s  4.45 GiB
++ 30s  4.53 GiB
++ 45s  6.20 GiB
++ 60s  7.14 GiB
++ 75s  7.08 GiB
++ 90s  9.13 GiB
++105s  9.13 GiB
++120s  9.14 GiB
++135s  9.39 GiB
++150s  9.39 GiB
++165s 10.88 GiB
++180s 11.54 GiB
+peak 11.54 GiB at +183 s (728 samples)
+# test output, seconds from the first RSS sample:
++  -1s 1791120943.830 
++  -1s running 1 test
++  -1s narrow schedule: BinarySchedule { regime: UniqueDecoding, log_inv_rate: 5, folding: 4, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 30 } }
++  -1s commitment                                                   2049 B
++  -1s lookup                                                          1 B
++  -1s indexed                                                         1 B
++  -1s bus                                                             1 B
++  -1s sumcheck                                                      555 B
++  -1s main.values (96 values)                                      1797 B
++  -1s main.reduction.claims (1 claims)                             7198 B
++  -1s main.reduction.sumcheck                                       336 B
++  -1s main.opening.evals                                             22 B
++  -1s main.opening.whir.initial_sumcheck                            153 B
++  -1s main.opening.whir.rounds (0 rounds)                             1 B
++  -1s main.opening.whir.final_openings                            44282 B
++  -1s main.opening.whir.final_poly                                  461 B
++  -1s level 1 (the binary proof's verifier): 40205 ops, 75123 hashed bytes; input 3446, add 16483, mul 13609, inv 20, assert_eq 351, assert_nonzero 60, to_bytes 270, from_bytes 184, byte_bits 116, blake3 185, transpose 53, select 3832, merkle_node 456, square 1140
++  -1s garbled: 4.25e7 AND (2.93e7 products, 1.26e7 hashing, 5.43e5 other)
++  -1s 151019 cells read 192224 times; arith 38439 rows (Add 16483, Mul 13609, Square 1140, Inv 80, Eq 351, Select 3832, Copy 2944); rewire 7630 rows; 1212 compressions
++   5s Ledger: 2^18 rows x 128 + 256 prep
++   5s Arith: 2^16 rows x 512 + 128 prep
++   5s Rewire: 2^13 rows x 1024 + 512 prep
++   5s Hash: 2^12 rows x 512 + 256 prep
++   5s Rounds: 2^18 rows x 512 + 64 prep
++  59s test proves_a_recorded_verification_and_records_its_own has been running for over 60 seconds
++ 188s narrow proof: 496957 bytes in 183.3 s
++ 188s commitment                                                   2049 B
++ 188s lookup                                                          1 B
++ 188s indexed                                                         1 B
++ 188s bus                                                         12023 B
++ 188s sumcheck                                                     1393 B
++ 188s main.values (2688 values)                                   46433 B
++ 188s main.reduction.claims (5 claims)                            12029 B
++ 188s main.reduction.sumcheck                                       792 B
++ 188s preprocessed.values (1216 values)                           14533 B
++ 188s preprocessed.reduction.claims (7 claims)                    16303 B
++ 188s preprocessed.reduction.sumcheck                               753 B
++ 188s preprocessed.opening.evals+cross                               93 B
++ 188s preprocessed.opening.whir.initial_sumcheck                    182 B
++ 188s preprocessed.opening.whir.rounds (3 rounds)                320659 B
++ 188s preprocessed.opening.whir.final_openings                    69028 B
++ 188s preprocessed.opening.whir.final_poly                          443 B
++ 188s level 2 (the narrow proof's verifier): 417030 ops, 783827 hashed bytes; input 30495, add 185482, mul 145408, inv 384, assert_eq 1291, assert_nonzero 864, to_bytes 910, from_bytes 488, byte_bits 905, blake3 905, transpose 398, select 14712, merkle_node 7676, square 27112
++ 188s garbled: 3.84e8 AND (2.51e8 products, 1.30e8 hashing, 2.16e6 other)
++ 188s test proves_a_recorded_verification_and_records_its_own ... ok
++ 188s 1791121132.854 
++ 188s test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 189.02s
++ 188s 1791121132.857 

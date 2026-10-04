@@ -1162,12 +1162,40 @@ one field element per bit (`bits::dense`, what `BaseAir::preprocessed_trace`
 returns), 2^33 cells for the ledger's 256 preprocessed columns alone (128
 GiB). Main traces are packed 64 rows to a `u64`, so their 16 B per bit must
 come from the sumcheck phases folding bit columns with GF(2^128) challenges.
-The jump past 697 GiB at `b8bfde94` is not explained by the witness (23 Gbit,
-about 344 GiB at 16 B per bit) and needs a heap profile (`gdb` cannot attach
-on the box; heaptrack by LD_PRELOAD would). Remedies are prover-side: keep
-preprocessed traces packed (a 128x saving on them), stream the
-constraint/bus sumcheck over row chunks, and derive the ledger's address
-columns from the row index instead of storing 256 preprocessed bits a row.
+The jump past 697 GiB at `b8bfde94` is not explained by the witness alone
+(23 Gbit, about 344 GiB at 16 B per bit).
+
+**Where the memory goes, from the code** (Plonky3 `8c629ab` and Ziren
+`b8bfde94`, read and spot-checked; sizes at the real narrow machine, Johnson
+1/8). Three allocations dominate, all prover-side:
+
+| allocation | code | size at real scale | lifetime |
+|---|---|---:|---|
+| bus columns lifted to full-height GF(2^128) polynomials (every column a bus declaration reads, plus selectors and eq per table); folds only truncate | `multi-stark/src/bus/composition.rs:221-282, 400` | ~220 GiB | whole zerocheck |
+| preprocessed traces dense, one field element per bit, kept in the proving key | Ziren `bits::dense` -> `multi-stark/src/keys.rs:207-212` | ~161 GiB | whole proof |
+| the preprocessed prover data cloned for the paired opening (dense tables + its commitment) | `multi-stark/src/prover.rs:651` | ~181 GiB transient | pair opening |
+
+Smaller: two WHIR commitments (~20 GiB each at rate 1/8), the bus product-GKR
+copies (~40 GiB transient, `bus/src/product/prover.rs:77, 121-131`), the AIRs'
+`Vec<u8>` preprocessed bytes (~9 GiB), the zerocheck bit planes including
+all-zero successor planes (~11-16 GiB). The paired opening keeps main data, the
+key's data and the clone alive together, where the unpaired path consumed main
+first. The serial 45 minutes are the product GKR (no rayon), the bus lift
+(a serial iterator over ~14 G cells) and the clone (a serial memcpy). On the
+small test the memory rises through proving and peaks at the very end, at the
+pair opening (`data/run-ziren-narrow-small-memory-b8bfde94.txt`: 4.2 GiB after
+setup, 11.5 GiB peak).
+
+**Remedies, largest first** (for Ziren/Plonky3): (1) do not clone the
+preprocessed prover data, borrow it (-181 GiB transient, a few lines);
+(2) keep preprocessed traces packed in the key (-159 GiB resident); (3) do
+not lift bus columns to GF(2^128) at full height: evaluate from packed bits
+for the first rounds, fold out of place or shrink each round, parallelise
+(-~200 GiB and most of the serial time); (4) product GKR without leaf copies,
+with rayon (-~27 GiB, serial time); (5) drop the `Vec<u8>` copies and the
+zero successor planes (-~15 GiB). (1)-(3) together bring the real narrow
+proof from over 697 GiB to an estimated 150-250 GiB. A lower rate no longer
+helps much: at 1/8 the codewords are about 40 GiB of the total.
 
 **A hashed proof as private input does not remove the per-bit cost.** The
 proposal: one public input h = H(proof), the proof a private input that the
