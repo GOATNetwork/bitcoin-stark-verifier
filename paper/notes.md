@@ -1145,12 +1145,38 @@ preprocessed values (`data/run-ziren-narrow-dump-b8bfde94-oom.txt`; ledger
 2^23 x 512). It needs `ADDR_BITS` and `PERMUTATION_ID_BITS` both raised to 26
 (a new assert ties them). The narrow proof was OOM-killed at 697.5 GiB in its
 constraint/bus phase (about 277 GiB at `cf932a58`), more than the GPU box can
-give. Estimate from the measured `cf932a58` proof: remove 91.6 KB of main
-values and 2.8 KB of preprocessed values, and 60-85% of the preprocessed WHIR
-opening and claims (134.9 KB; eigmax's small test lost about 75%): proof about
-238-281 KB, **input about 1.8-2.1 Mbit (central 1.94)**, on chain 3.8-4.6 MvB
-with adaptors (central 4.1), 3.7-4.4 with the n=16 hash selector, 10-12 with
-4-bit Winternitz. Circuit about 300-350 M non-free gates (5-5.6 GB).
+give. An estimate from the `cf932a58` proof (removing the dropped opened
+values and 60-85% of the preprocessed WHIR opening) gave 1.8-2.1 Mbit; the
+measurement below, once Ziren `f6137ecc` fixed the memory, came in higher.
+
+**Measured at Ziren `f6137ecc`** (the `b8bfde94` design with the memory
+fixes; same 26-bit patches; `data/run-ziren-narrow-dump-f6137ecc-johnson-3-4.txt`,
+`data/run-ziren-narrow-tape-gc-f6137ecc-johnson-3-4.txt`), Johnson 1/8:
+
+| | cf932a58 | f6137ecc |
+|---|---:|---:|
+| narrow proof | 446,677 B | 305,868 B (-32%) |
+| opened values main / prep | 7,808 / 1,440 | 2,688 / 1,218 |
+| WHIR rounds | 220.7 KB (two runs) | 156.9 KB (one paired run, -29%) |
+| claims main / prep | 5 / 7 (28.9 KB) | 5 / 19 (52.8 KB) |
+| prove (64 cores) / peak | 7,930 s / 536 GiB | 5,754 s / 371 GiB |
+| non-free gates | 400,877,039 | 473,888,470 (+18%) |
+| garbled | 6.41 GB | 7.58 GB |
+| input bits | 3,387,648 | **2,356,864 (-30%)** |
+| eval / 3 changes | accepts / rejected | accepts, 0 of 670,581 differ / rejected |
+| streaming garble, one core | 201 s | 240 s (1.97 M/s, peak 33.3 M live wires) |
+
+On chain the input is **5.0 MvB with adaptors** (2.13 vB/bit), 4.8 MvB with the
+n=16 hash selector, 13.6 MvB with 4-bit Winternitz, per key set: 2.3x the
+paper's Keccak verifier (1.04 Mbit). The estimate missed on two counts: the
+pairing cut the WHIR rounds by 29%, not by most of the preprocessed opening,
+and the preprocessed claims grew from 7 to 19. The circuit grew because the
+verifier now combines the two trees' rows at every query and checks more
+claims: 222,706 multiplications against 181,235 (multiplication 80.5% of the
+gates), while hashing fell 28%. Fewer input bits for more gates is the right
+trade, since the input is paid on chain and the gates off chain. One grind of
+the paired opening took 2,950 s (the 37-bit grinds of earlier runs took about
+1,250 s), either chance or a harder grind under pairing.
 
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about

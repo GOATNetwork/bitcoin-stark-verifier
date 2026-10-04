@@ -501,6 +501,14 @@ finalization are reported separately.
     level-1 tape and the narrow machine's shapes (2,688 main values). The
     narrow proof was OOM-killed at 697.5 GiB; its level-2 input is only
     estimated (notes §7n).
+  - `run-ziren-narrow-dump-f6137ecc-johnson-3-4.txt`: Ziren `f6137ecc` (the
+    `b8bfde94` design with packed preprocessed tables, borrowed pair opening
+    and a parallel copy-free bus) plus the two 26-bit patches, reusing the
+    `b8bfde94` binary proof: narrow proof 305,868 bytes in 5,754 s, 371 GiB
+    peak. `run-ziren-narrow-tape-gc-f6137ecc-johnson-3-4.txt` translates its
+    verifier: 473,888,470 non-free gates, 7.58 GB, 2,356,864 input bits;
+    accepts with 0 of 670,581 values differing; rejects three changes;
+    garbled in 240 s.
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB
