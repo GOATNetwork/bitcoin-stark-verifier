@@ -9,6 +9,11 @@
 //! `ZIREN_B_SCHEDULE` (as `johnson,3,4`: regime, -log2 rate, folding) sets
 //! the narrow proof's WHIR schedule, with grinding allowed to 40 bits; the
 //! default is the binary stage's own.  Level-2 files then carry the spec.
+//! `ZIREN_RECURSE_FROM` names a saved tape (ZTAP v2, as this writes them)
+//! instead: the binary stage is skipped, the tape's run is proved on the
+//! tape machine (its first `MAX_PUBLIC` inputs public) and the next level's
+//! verifier is recorded, to `ZIREN_RECURSE_TO` (a file name in the output
+//! directory).
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -68,6 +73,15 @@ fn dump_binary_stage_verifier_tape() {
     setup_logger();
     let out = PathBuf::from(std::env::var("ZIREN_TAPE_OUT").unwrap_or_else(|_| "tape-out".into()));
     std::fs::create_dir_all(&out).unwrap();
+    if let Ok(from) = std::env::var("ZIREN_RECURSE_FROM") {
+        let tape = read_tape(std::path::Path::new(&from));
+        let replay = tape.run(&tape.inputs).expect("the saved tape accepts its own inputs");
+        assert_eq!(replay, tape.values, "the saved tape reproduces its values");
+        eprintln!("recursing from {from}: {} ops, {} inputs", tape.ops.len(), tape.inputs.len());
+        let to = std::env::var("ZIREN_RECURSE_TO").expect("ZIREN_RECURSE_TO names the next level's tape");
+        recurse("next level", &tape, zkm_binary_recursion::machine::ledger::MAX_PUBLIC, &out, &to);
+        return;
+    }
     let (proof_path, program_path, digest_path) =
         (out.join("binary_proof.bin"), out.join("binary_program.bin"), out.join("binary_digest.bin"));
 
@@ -119,10 +133,18 @@ fn dump_binary_stage_verifier_tape() {
     // Level 2: the narrow recursion.  The tape machine proves the run of the
     // level-1 tape, whose first DIGEST_SIZE inputs are public, and its own
     // verifier is recorded on that proof.
+    let (_, tag) = narrow_schedule();
+    recurse("level 2", &tape, zkm_recursion_core::DIGEST_SIZE, &out, &format!("narrow_tape{tag}.bin"));
+}
+
+/// Prove the run of `tape` on the tape machine under the narrow schedule,
+/// its first `num_public` inputs public, verify the proof, record the tape
+/// machine's verifier on it and write that tape to `out/to`.
+fn recurse(label: &str, tape: &Tape, num_public: usize, out: &std::path::Path, to: &str) {
     let started = std::time::Instant::now();
-    let program = Program::new(&tape, zkm_recursion_core::DIGEST_SIZE);
+    let program = Program::new(tape, num_public);
     eprintln!("tape machine program: {}", program.census());
-    let (narrow_schedule, tag) = narrow_schedule();
+    let (narrow_schedule, _) = narrow_schedule();
     eprintln!("narrow schedule: {narrow_schedule:?}");
     let narrow_machine = TapeMachine::new(program, &narrow_schedule).expect("the tape machine");
     for air in narrow_machine.airs() {
@@ -137,10 +159,10 @@ fn dump_binary_stage_verifier_tape() {
     eprintln!("tape machine set up in {:.1} s", started.elapsed().as_secs_f64());
     let started = std::time::Instant::now();
     let narrow_public = narrow_machine.public_values(&tape.inputs);
-    let narrow = narrow_machine.prove(&tape, &tape.inputs).expect("the tape machine proves the run");
+    let narrow = narrow_machine.prove(tape, &tape.inputs).expect("the tape machine proves the run");
     let narrow_bytes = postcard::to_allocvec(&narrow).expect("serializes");
     eprintln!("narrow proof: {} bytes in {:.1} s", narrow_bytes.len(), started.elapsed().as_secs_f64());
-    std::fs::write(out.join(format!("narrow_proof{tag}.bin")), &narrow_bytes).unwrap();
+    std::fs::write(out.join(to.replace("tape", "proof")), &narrow_bytes).unwrap();
     narrow_machine.verify(&narrow, &narrow_public).expect("the narrow proof verifies");
     for (part, bytes) in zkm_binary_stark::config::proof_breakdown(&narrow) {
         eprintln!("    {part:<55} {bytes:>9} B");
@@ -168,8 +190,89 @@ fn dump_binary_stage_verifier_tape() {
         &narrow,
     );
     verdict.expect("the recorded verifier accepts the narrow proof");
-    eprintln!("level 2 recorded in {:.1} s", started.elapsed().as_secs_f64());
-    write_tape("level 2", &own, &out.join(format!("narrow_tape{tag}.bin")));
+    eprintln!("{label} recorded in {:.1} s", started.elapsed().as_secs_f64());
+    write_tape(label, &own, &out.join(to));
+}
+
+/// A tape as `write_tape` wrote it (ZTAP v2).
+fn read_tape(path: &std::path::Path) -> Tape {
+    use zkm_binary_recursion::F;
+    struct R<'a>(&'a [u8], usize);
+    impl R<'_> {
+        fn take(&mut self, n: usize) -> &[u8] {
+            self.1 += n;
+            &self.0[self.1 - n..self.1]
+        }
+        fn u8(&mut self) -> u8 {
+            self.take(1)[0]
+        }
+        fn u32(&mut self) -> u32 {
+            u32::from_le_bytes(self.take(4).try_into().unwrap())
+        }
+        fn u64(&mut self) -> u64 {
+            u64::from_le_bytes(self.take(8).try_into().unwrap())
+        }
+        fn f(&mut self) -> F {
+            F::from_repr(u128::from_le_bytes(self.take(16).try_into().unwrap()))
+        }
+        fn opd(&mut self) -> Operand {
+            match self.u8() {
+                0 => Operand::Var(self.u32()),
+                1 => Operand::Const(self.f()),
+                t => panic!("operand tag {t}"),
+            }
+        }
+        fn opds(&mut self) -> Vec<Operand> {
+            let n = self.u32() as usize;
+            (0..n).map(|_| self.opd()).collect()
+        }
+    }
+    let bytes = std::fs::read(path).unwrap();
+    assert_eq!(&bytes[..4], b"ZTAP", "not a tape");
+    let mut r = R(&bytes, 4);
+    assert_eq!(r.u32(), 2, "tape version");
+    let n = r.u64() as usize;
+    let mut ops = Vec::with_capacity(n);
+    for _ in 0..n {
+        let tag = r.u8();
+        ops.push(match tag {
+            0 => Op::Input(r.u64() as usize),
+            1 => Op::Add(r.opd(), r.opd()),
+            2 => Op::Mul(r.opd(), r.opd()),
+            3 => Op::Inv(r.opd()),
+            4 => Op::AssertEq(r.opd(), r.opd()),
+            5 => Op::AssertNonZero(r.opd()),
+            6 => Op::ToBytes(r.opd()),
+            7 => Op::FromBytes(r.opds()),
+            8 => Op::ByteBits(r.opd()),
+            9 => {
+                let slots = r.opds();
+                Op::Blake3 { slots, len: r.u64() as usize }
+            }
+            10 => Op::Transpose(r.opds()),
+            11 => Op::Select(r.opd(), r.opd(), r.opd()),
+            12 => {
+                let bit = r.opd();
+                let cur = [r.opd(), r.opd()];
+                let sib = [r.opd(), r.opd()];
+                Op::MerkleNode { bit, cur, sib }
+            }
+            13 => Op::Square(r.opd()),
+            t => panic!("op tag {t}"),
+        });
+    }
+    let inputs: Vec<F> = (0..r.u64()).map(|_| r.f()).collect();
+    let values: Vec<F> = (0..r.u64()).map(|_| r.f()).collect();
+    assert_eq!(r.1, bytes.len(), "trailing bytes");
+    let mut defined = Vec::with_capacity(ops.len());
+    let mut next: u32 = 0;
+    for op in &ops {
+        let k = op.defines() as u32;
+        defined.push(if k > 0 { Some(next) } else { None });
+        next += k;
+    }
+    assert_eq!(next as usize, values.len(), "every variable has a value");
+    Tape { ops, values, defined, inputs }
 }
 
 /// The narrow proof's schedule and a file-name tag: the stage's default, or

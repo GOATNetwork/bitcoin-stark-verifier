@@ -1,0 +1,16 @@
+# Ziren feat/binary-whir-blake3 at f6137ecc plus paper/data/ziren_real_narrow_schedules_level3.rs as crates/binary-recursion/tests/real_narrow_schedules.rs (removed afterwards)
+# local box, systemd MemoryMax=32G, taskset 0-7, 2026-10-04; no proving: WHIR configurations for the level-3 narrow machine's shapes
+# (the tape machine proving the f6137ecc level-2 tape: main 2^22x128, 2^19x512, 2^18x1024, 2^15x512, 2^20x512; prep widths 256, 128, 512, 256, 64).
+# Bytes are one commitment, unpruned. Per round: queries / grinding bits. Compare run-ziren-narrow-schedules-f6137ecc.txt (level 2, arity 34): same queries, 5 fewer grinding bits.
+# cargo test --release -p zkm-binary-recursion --test real_narrow_schedules -- --ignored --nocapture
+paired arity 31, packed 24
+sec 100/108 johnson,3,4  pow 32 bits,  122 queries,  2665 digests, opened 864/1088, ~118176 B one commitment unpruned; rounds [54q/31b, 26q/32b, 18q/30b, 13q/32b]
+sec 100/108 johnson,4,4  pow 34 bits,   99 queries,  2250 digests, opened 624/960, ~99008 B one commitment unpruned; rounds [39q/33b, 22q/33b, 16q/32b, 12q/34b]
+sec 100/108 johnson,5,4  pow 36 bits,   83 queries,  1963 digests, opened 480/848, ~85728 B one commitment unpruned; rounds [30q/36b, 19q/34b, 14q/34b, 11q/36b]
+sec 100/108 johnson,6,4  pow 38 bits,   70 queries,  1722 digests, opened 384/736, ~74688 B one commitment unpruned; rounds [24q/38b, 16q/38b, 12q/37b, 10q/38b]
+sec 100/108 johnson,7,4  pow 40 bits,   62 queries,  1583 digests, opened 320/672, ~68192 B one commitment unpruned; rounds [20q/40b, 14q/39b, 11q/38b, 9q/40b]
+sec 100/108 johnson,8,4  pow 42 bits,   55 queries,  1459 digests, opened 272/608, ~62432 B one commitment unpruned; rounds [17q/42b, 13q/38b, 10q/40b, 8q/42b]
+sec 100/108 johnson,6,5  pow 39 bits,   56 queries,  1345 digests, opened 768/1024, ~73328 B one commitment unpruned; rounds [24q/38b, 14q/39b, 10q/39b]
+sec 100/108 johnson,8,5  pow 43 bits,   44 queries,  1141 digests, opened 544/864, ~60656 B one commitment unpruned; rounds [17q/42b, 11q/43b, 9q/43b]
+sec 100/108 johnson,8,6  pow 42 bits,   36 queries,   911 digests, opened 1088/1216, ~68352 B one commitment unpruned; rounds [17q/42b, 11q/42b]
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

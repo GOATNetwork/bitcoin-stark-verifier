@@ -509,6 +509,17 @@ finalization are reported separately.
     verifier: 473,888,470 non-free gates, 7.58 GB, 2,356,864 input bits;
     accepts with 0 of 670,581 values differing; rejects three changes;
     garbled in 240 s.
+  - Schedules and a third recursion level at `f6137ecc`:
+    `run-ziren-narrow-schedules-f6137ecc.txt` (`ziren_real_narrow_schedules_f6137ecc.rs`)
+    and `run-ziren-narrow-schedules-level3.txt` (`ziren_real_narrow_schedules_level3.rs`)
+    tabulate the WHIR schedules at the level-2 and level-3 shapes without
+    proving. `run-ziren-level3-dump-johnson-{3-4,6-4}.txt` prove the saved
+    level-2 tape on the tape machine (the dumper's `ZIREN_RECURSE_FROM`
+    mode) under Johnson 1/8 and 1/64, and
+    `run-ziren-level3-tape-gc-johnson-{3-4,6-4}.txt` translate the level-3
+    verifiers: at 1/64, 392,391,903 non-free gates, 6.28 GB, 1,761,024 input
+    bits; accepts with 0 of 552,659 values differing; rejects three changes;
+    garbled in 205 s.
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB

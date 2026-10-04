@@ -1,0 +1,36 @@
+# whir-gc binary_tape on the level-3 tape (f6137ecc + 26-bit patches, Johnson 1/8; level3_tape-johnson-3-4.bin, ZTAP v2, 16,141,407 B, from run-ziren-level3-dump-johnson-3-4.txt); local box, systemd MemoryMax=32G, taskset 0-7, one core per test, 2026-10-04
+# BINARY_TAPE_DUMP=target/level3-tape-f6137ecc-johnson-3-4.bin, three runs in sequence:
+#   cargo test --release -p whir-gc --test binary_tape -- --ignored --nocapture --test-threads 1 gate_counts input_widths
+#   cargo test --release -p whir-gc --test binary_tape -- --ignored --nocapture accepts_the_real
+#   cargo test --release -p whir-gc --test binary_tape -- --ignored --nocapture garbles_with
+running 2 tests
+test gate_counts ... binary-stage verifier: 413697815 non-free gates (413418288 AND, 279527 OR), 2671801683 XOR, 3087719532 wires; garbled 6.62 GB at 16 B per non-free gate; inputs 2220032 bits (0 byte, 0 bit, 17344 full-width inputs); built in 60 s
+  mul                  330500803 non-free  79.89%  (197518 ops)
+  blake3                36552496 non-free   8.84%  (568 ops)
+  merkle_node           31853351 non-free   7.70%  (3023 ops)
+  inv                   14082648 non-free   3.40%  (534 ops)
+  select                  494408 non-free   0.12%  (4596 ops)
+  assert_nonzero          161280 non-free   0.04%  (1260 ops)
+  assert_eq                52829 non-free   0.01%  (1141 ops)
+  input                        0 non-free   0.00%  (17344 ops)
+  to_bytes                     0 non-free   0.00%  (856 ops)
+  from_bytes                   0 non-free   0.00%  (506 ops)
+  square                       0 non-free   0.00%  (15234 ops)
+  add                          0 non-free   0.00%  (222155 ops)
+  transpose                    0 non-free   0.00%  (822 ops)
+  byte_bits                    0 non-free   0.00%  (457 ops)
+ok
+test input_widths_follow_the_proof_format ... 17344 inputs: 0 bytes, 0 bits, 17344 field elements = 2220032 bits (277504 bytes)
+ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 59.77s
+running 1 test
+honest proof: output true; 3087719532 wires evaluated in 95 s; 0 of 587637 values differ from the tape
+input 5781 changed: output false
+input 11562 changed: output false
+input 17343 changed: output false
+test accepts_the_real_proof_and_rejects_a_tampered_one ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 383.31s
+running 1 test
+streamed: 413697815 non-free gates garbled and checked in 211 s (1.96 M/s, one core), plan 86 s over 3087719532 wires, peak 32050502 live wires; output true
+test garbles_with_the_streaming_garbler ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 297.05s

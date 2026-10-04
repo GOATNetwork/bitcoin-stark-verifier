@@ -1178,6 +1178,49 @@ trade, since the input is paid on chain and the gates off chain. One grind of
 the paired opening took 2,950 s (the 37-bit grinds of earlier runs took about
 1,250 s), either chance or a harder grind under pairing.
 
+**The most aggressive measured point: a third level at Johnson 1/64
+(2026-10-04).** The security target sets only the grinding, never the
+queries (`data/run-ziren-narrow-schedules-f6137ecc.txt`: 100/108 and 80/88
+ask the same queries, 20 grinding bits apart), so lowering it saves proving
+time, not input. Rate is the lever, and its price is grinding: at level 2
+(arity 34) Johnson 1/32 needs 41-bit grinds, out of reach on CPU. A third
+level fixes that: the tape machine proving the level-2 tape is 8x shorter
+(arity 31) and the same schedules grind 5 bits less
+(`data/run-ziren-narrow-schedules-level3.txt`), so 1/64 (38 bits) is a CPU
+job. The dumper's `ZIREN_RECURSE_FROM` mode proves a saved tape on the tape
+machine (`data/run-ziren-level3-dump-johnson-{3-4,6-4}.txt`,
+`data/run-ziren-level3-tape-gc-johnson-{3-4,6-4}.txt`):
+
+| f6137ecc + 26-bit patches | level 2, 1/8 | level 3, 1/8 | level 3, 1/64 |
+|---|---:|---:|---:|
+| narrow proof | 305,868 B | 284,554 B | 227,166 B |
+| WHIR rounds | 156.9 KB (5) | 141.2 KB (4) | 85.4 KB (4) |
+| prove (64 cores) / peak | 5,754 s / 371 GiB | 210 s / 27 GiB | 4,456 s / 62 GiB |
+| grinding (longest) | 2,950 s | 23 s | 861 s |
+| non-free gates | 473,888,470 | 413,697,815 | **392,391,903** |
+| garbled | 7.58 GB | 6.62 GB | **6.28 GB** |
+| input bits | 2,356,864 | 2,220,032 | **1,761,024** |
+| eval / 3 changes | accepts / rejected | accepts / rejected | accepts, 0 of 552,659 differ / rejected |
+| streaming garble, one core | 240 s | 211 s | 205 s |
+
+On chain the measured best is **3.75 MvB with adaptors** (0.083 BTC at 2.2
+sat/vB), 3.59 MvB with the n=16 hash selector, 10.2 MvB with 4-bit Winternitz,
+per key set: 1.7x the paper's Keccak verifier (1.04 Mbit, 2.2 MvB). What is
+left in the proof: WHIR 92.7 KB (41%), opened values 60.5 KB (27%), claims
+52.9 KB (23%, of which 19 preprocessed claims 40.9 KB), bus 16.6 KB (7%).
+
+Modelled from this measured proof, the remaining levers: one batched claim
+per commitment (-47.3 KB; Plonky3 multi-stark), 200-bit Merkle digests
+(-13.9 KB; digest format), Rewire at 512 columns (-8.9 KB; Ziren layout),
+Johnson 1/128 at level 3 (-7.4 KB; 40-bit grinds, about 5 h on CPU): proof
+about 150 KB, **input about 1.16 Mbit, 2.5 MvB with adaptors**, 2.4 with the
+n=16 hash selector, 1.2 with an 8-bit-digit selector, 6.7 with 4-bit
+Winternitz. That is about the paper's own verifier, and close to the floor of
+this design at 100-bit security: 3,906 opened 128-bit values (0.5 Mbit), WHIR
+paths, one claim per commitment and the bus. Beyond it, only the encoding
+(wider selector digits, a consensus change) and soldering (one reveal for the
+7 kept instances instead of 7) cut the on-chain total.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is
