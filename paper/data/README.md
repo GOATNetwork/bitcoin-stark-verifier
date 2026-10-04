@@ -495,6 +495,12 @@ finalization are reported separately.
     verifier: 400,877,039 non-free gates, 6.41 GB, 3,387,648 input bits;
     accepts with 0 of 601,241 values differing; rejects three changes;
     garbled in 201 s.
+  - `run-ziren-narrow-dump-b8bfde94-oom.txt`: Ziren `b8bfde94` (narrower
+    round and hash rows, one paired WHIR opening) with `ADDR_BITS` and
+    `PERMUTATION_ID_BITS` raised to 26: binary proof 2,035,263 bytes, the
+    level-1 tape and the narrow machine's shapes (2,688 main values). The
+    narrow proof was OOM-killed at 697.5 GiB; its level-2 input is only
+    estimated (notes §7n).
   - `run-ziren-narrow-recursion-small.txt`: Ziren's own `narrow_recursion`
     test on a small synthetic proof: level 1 4.25e7 and level 2 6.14e8 AND
     by Ziren's estimate, the narrow verifier's floor.

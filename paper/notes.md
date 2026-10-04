@@ -1135,6 +1135,40 @@ WHIR rounds and final openings about 1.87 Mbit, opened values 1.18 Mbit
 `cf932a58` regressions to report upstream are the 24-bit address limit and
 the 3.3x slower, single-threaded constraint/bus phase.
 
+**Narrower round and hash tables, one paired WHIR opening (Ziren `05fc5742`,
+`b8bfde94`): estimated, not measured.** A round row is now half a
+quarter-round (512 columns), a compression three hash rows, and the main and
+preprocessed commitments are opened by one WHIR run (preprocessed stacked at
+the main arity). On the real tape the machine opens 2,688 main and 1,218
+preprocessed values (`data/run-ziren-narrow-dump-b8bfde94-oom.txt`; ledger
+2^25 x 128, arith 2^22 x 512, rewire 2^21 x 1,024, hash 2^18 x 512, rounds
+2^23 x 512). It needs `ADDR_BITS` and `PERMUTATION_ID_BITS` both raised to 26
+(a new assert ties them). The narrow proof was OOM-killed at 697.5 GiB in its
+constraint/bus phase (about 277 GiB at `cf932a58`), more than the GPU box can
+give. Estimate from the measured `cf932a58` proof: remove 91.6 KB of main
+values and 2.8 KB of preprocessed values, and 60-85% of the preprocessed WHIR
+opening and claims (134.9 KB; eigmax's small test lost about 75%): proof about
+238-281 KB, **input about 1.8-2.1 Mbit (central 1.94)**, on chain 3.8-4.6 MvB
+with adaptors (central 4.1), 3.7-4.4 with the n=16 hash selector, 10-12 with
+4-bit Winternitz. Circuit about 300-350 M non-free gates (5-5.6 GB).
+
+**Why the provers need so much memory.** Every peak measured fits about 16 B
+(one GF(2^128) element) per witness bit, main plus preprocessed, times about
+1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is
+281 GiB); the narrow proof at `ee5ca380` holds 14.4 Gbit (214 GiB at 16 B per
+bit) and peaked at 356 GiB; at `cf932a58` 21 Gbit (314 GiB) and 536 GiB. The
+code shows one source: a preprocessed trace is built as a dense matrix with
+one field element per bit (`bits::dense`, what `BaseAir::preprocessed_trace`
+returns), 2^33 cells for the ledger's 256 preprocessed columns alone (128
+GiB). Main traces are packed 64 rows to a `u64`, so their 16 B per bit must
+come from the sumcheck phases folding bit columns with GF(2^128) challenges.
+The jump past 697 GiB at `b8bfde94` is not explained by the witness (23 Gbit,
+about 344 GiB at 16 B per bit) and needs a heap profile (`gdb` cannot attach
+on the box; heaptrack by LD_PRELOAD would). Remedies are prover-side: keep
+preprocessed traces packed (a 128x saving on them), stream the
+constraint/bus sumcheck over row chunks, and derive the ledger's address
+columns from the row index instead of storing 256 preprocessed bits a row.
+
 **A hashed proof as private input does not remove the per-bit cost.** The
 proposal: one public input h = H(proof), the proof a private input that the
 circuit hashes and checks against h. On chain that is 256 bits; the circuit

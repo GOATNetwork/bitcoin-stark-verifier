@@ -1,0 +1,49 @@
+# Ziren feat/binary-whir-blake3 at b8bfde94 (eigmax, pushed; clean git archive) with TWO LOCAL CHANGES so the real tape fits: ADDR_BITS 24 -> 26 (binary-recursion program.rs) and PERMUTATION_ID_BITS 24 -> 26 (binary bits.rs; b8bfde94 asserts they are equal).
+#   The second widens the Blake3 round tables' preprocessed ids, making two preprocessed widths non-powers of two (about one extra claim each).
+# plus paper/data/ziren_dump_binary_tape.rs as crates/prover/tests/dump_binary_tape.rs; ant-5090-2, 64 cores, nice 19, systemd MemoryMax=700G, VERIFY_VK=false, ZIREN_B_SCHEDULE=johnson,3,4, 95% watchdog, 2026-10-04
+# Measured: fibonacci through the binary stage (binary proof 2,035,263 B), the level-1 tape, and the narrow machine's shapes.
+# NOT measured: the narrow proof was OOM-killed by the 700G cgroup cap (peak 731,375,692 kB = 697.5 GiB) in its constraint/bus phase, before any WHIR grinding;
+#   at cf932a58 that phase peaked near 277 GiB. The box (925 GB, ~130 GiB used by other jobs, 95% watchdog) leaves at most ~685 GiB, so the run cannot complete there.
+Running scope as unit: run-r206ae68f71564818b4115529f5e14000.scope
+running 1 test
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+binary proof saved: 2035263 bytes
+level 1 recorded in 0.8 s
+level 1: 3423834 ops, 4770685 variables, 127851 inputs, 2830547 hashed bytes; garbled estimate 3.82e9 AND (3.34e9 products, 4.80e8 hashing, 3.27e6 other)
+level 1 census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [127851, 1620874, 1553330, 476, 2107, 2202, 1202, 635, 1813, 1206, 10277, 21274, 14054, 66533]
+level 1 tape written: 123201215 bytes
+tape machine program: 22709697 cells read 25808569 times; arith 3276956 rows (Add 1620874, Mul 1553330, Square 66533, Inv 2678, Eq 2107, Select 21274, Copy 10160); rewire 1268609 rows; 46107 compressions
+narrow schedule: BinarySchedule { regime: Johnson, log_inv_rate: 3, folding: 4, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 40 } }
+   Ledger: 2^25 rows x 128 + 256 prep
+    Arith: 2^22 rows x 512 + 128 prep
+   Rewire: 2^21 rows x 1024 + 512 prep
+     Hash: 2^18 rows x 512 + 256 prep
+   Rounds: 2^23 rows x 512 + 66 prep
+tape machine set up in 99.6 s
+error: test failed, to rerun pass `-p zkm-prover --test dump_binary_tape`
+Caused by:
+  process didn't exit successfully: `/mnt_zkm/stephen/ziren-binrun-target/release/deps/dump_binary_tape-eea5c549d9ec905a --ignored --nocapture` (signal: 9, SIGKILL: kill)
+Command exited with non-zero status 101
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 51008.95
+	System time (seconds): 15982.11
+	Percent of CPU this job got: 1807%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:01:47
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 731375692
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 222427
+	Minor (reclaiming a frame) page faults: 662875568
+	Voluntary context switches: 3513799
+	Involuntary context switches: 365410
+	Swaps: 0
+	File system inputs: 2798384
+	File system outputs: 3207088
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 101
