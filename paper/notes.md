@@ -1099,6 +1099,54 @@ main + 1,440 preprocessed = 3.15 Mbit), are now 60% of the input; only
 narrower tables (a prover-side change in Ziren) remove them. The cost moved
 to the prover: 5.6x the proving time, almost all of it proof of work.
 
+**Narrower rewiring rows (Ziren `cf932a58`, 2026-10-04).** The rewiring table
+now holds 128 bytes a row (1,024 columns) instead of a 128 x 128 bit matrix
+(16,384), and a transpose is 128 splits plus 16 gathers: the narrow machine
+opens 7,808 main values instead of 23,168. As committed, `Program::new`
+panics on the real level-1 tape ("the program fits 24-bit addresses"; 25
+also fails): each transpose allocates 128 aligned outputs and a 2,048-cell
+byte block, and the tape has 10,223 transposes. Measured with `ADDR_BITS`
+raised to 26 in a local copy (every table's padding still fits), Johnson
+1/8 fold 4 (`data/run-ziren-narrow-dump-cf932a58-johnson-3-4.txt`,
+`data/run-ziren-narrow-tape-gc-cf932a58-johnson-3-4.txt`):
+
+| Johnson 1/8, fold 4 | ee5ca380 | cf932a58 + ADDR_BITS 26 |
+|---|---:|---:|
+| tables (main) | ledger 2^24, arith 2^23, rewire 2^14 x 16,384 | ledger 2^25, arith 2^22, rewire 2^21 x 1,024 |
+| cells / reads | 6.0 M / 9.2 M | 22.8 M / 25.9 M |
+| narrow proof | 727,235 B | 446,677 B (-39%) |
+| opened main values | 23,168 (427.5 KB) | 7,808 (139.6 KB) |
+| prove (64 cores) / peak | 5,821 s / 356 GiB | 7,930 s / 536 GiB |
+| constraint and bus phase | 13.5 min | 45 min, mostly one thread |
+| non-free gates | 483,917,940 | 400,877,039 (-17%) |
+| garbled | 7.74 GB | 6.41 GB |
+| input bits | 5,289,344 | 3,387,648 (-36%) |
+| eval / 3 changes | accepts / rejected | accepts, 0 of 601,241 differ / rejected |
+| streaming garble, one core | 259 s | 201 s (2.00 M/s, peak 35.7 M live wires) |
+
+Profile: multiplication 69.7%, Blake3 13.1%, Merkle nodes 12.5%, inversion
+4.4%. Against the paper's verifier: 4.3x the gates (401 M against 94.1 M)
+and 3.3x the input (3.39 against 1.04 Mbit). On chain, at the §7f rates,
+the input is 7.2 MvB with adaptors, 6.9 MvB with the n=16 hash selector,
+19.5 MvB with 4-bit Winternitz, per key set. At (181, 7): about 10 core-hours
+of garbling and 45 GB stored by a challenger. What remains in the input:
+WHIR rounds and final openings about 1.87 Mbit, opened values 1.18 Mbit
+(7,808 + 1,440), claims, bus and sumcheck about 0.4 Mbit. The two
+`cf932a58` regressions to report upstream are the 24-bit address limit and
+the 3.3x slower, single-threaded constraint/bus phase.
+
+**A hashed proof as private input does not remove the per-bit cost.** The
+proposal: one public input h = H(proof), the proof a private input that the
+circuit hashes and checks against h. On chain that is 256 bits; the circuit
+grows by at most the hash of the proof (about 70-110 M non-free gates, maybe
+nearly nothing since the Fiat-Shamir transcript already hashes every element
+not bound by a Merkle root). But a private input is the garbler's, and its
+labels reach the challenger off chain: a cheating operator withholds them or
+sends junk, and Bitcoin cannot tell. The hash check stops equivocation, not
+withholding; the per-bit reveal exists to force label release. Labels bound
+to a short digest are laconic OT or witness encryption (§7f), both algebraic
+(DDH/LWE; pairings in BABE and deferred binding), outside the hash-only scope.
+
 ## 8. To fix or check before release
 
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".

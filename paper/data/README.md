@@ -487,6 +487,14 @@ finalization are reported separately.
     `run-ziren-narrow-tape-gc-johnson-3-4.txt` translates its verifier:
     483,917,940 non-free gates, 7.74 GB, 5,289,344 input bits; accepts with
     0 of 780,062 values differing; rejects three changes; garbled in 259 s.
+  - `run-ziren-narrow-dump-cf932a58-johnson-3-4.txt`: the same at Ziren
+    `cf932a58` (narrower rewiring rows) with `ADDR_BITS` raised from 24 to
+    26 in the box copy, since the committed limit does not fit the real
+    tape: 446,677 bytes in 7,930 s, 536 GiB peak.
+    `run-ziren-narrow-tape-gc-cf932a58-johnson-3-4.txt` translates its
+    verifier: 400,877,039 non-free gates, 6.41 GB, 3,387,648 input bits;
+    accepts with 0 of 601,241 values differing; rejects three changes;
+    garbled in 201 s.
   - `run-ziren-narrow-recursion-small.txt`: Ziren's own `narrow_recursion`
     test on a small synthetic proof: level 1 4.25e7 and level 2 6.14e8 AND
     by Ziren's estimate, the narrow verifier's floor.
