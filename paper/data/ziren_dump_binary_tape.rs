@@ -7,7 +7,8 @@
 //! names the output directory.  A saved binary proof (`binary_proof.bin`,
 //! `binary_program.bin`, `binary_digest.bin`) is reused when present.
 //! `ZIREN_B_SCHEDULE` (as `johnson,3,4`: regime, -log2 rate, folding) sets
-//! the narrow proof's WHIR schedule, with grinding allowed to 40 bits; the
+//! the narrow proof's WHIR schedule, with grinding allowed to 40 bits
+//! (`ZIREN_B_MAX_GRIND` raises it); the
 //! default is the binary stage's own.  Level-2 files then carry the spec.
 //! `ZIREN_RECURSE_FROM` names a saved tape (ZTAP v2, as this writes them)
 //! instead: the binary stage is skipped, the tape's run is proved on the
@@ -290,7 +291,8 @@ fn narrow_schedule() -> (BinarySchedule, String) {
         folding: parts[2].parse().expect("a folding factor"),
         ..BinarySchedule::default()
     };
-    schedule.budget.max_grinding_bits = 40;
+    schedule.budget.max_grinding_bits =
+        std::env::var("ZIREN_B_MAX_GRIND").ok().and_then(|v| v.parse().ok()).unwrap_or(40);
     (schedule, format!("-{}", spec.replace(',', "-")))
 }
 

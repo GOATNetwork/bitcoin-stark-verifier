@@ -1221,6 +1221,60 @@ paths, one claim per commitment and the bus. Beyond it, only the encoding
 (wider selector digits, a consensus change) and soldering (one reveal for the
 7 kept instances instead of 7) cut the on-chain total.
 
+**GPU grinding, aligned layouts and a fourth level (2026-10-04/05).** Three
+experiments in a local copy of Ziren `f6137ecc` and Plonky3 `fb5d0d8`
+(`data/run-ziren-align-chain.txt`, `data/run-ziren-align-level4.txt`; code in
+`data/zkm_blake3_grind.cu`, `data/p3_patch_gpu_grind.py`,
+`data/p3_patch_align.py`, `data/ziren_patch_local_plonky3.py`):
+
+- GPU proof of work. `BinaryChallenger::grind` hashes the pending Blake3
+  transcript and a 16-byte candidate. A CUDA kernel absorbs the transcript once
+  on the host (the candidate-independent part of the Blake3 tree) and finishes
+  each candidate on the GPU. It matches the `blake3` crate from 17 to 70,000
+  bytes, every witness is re-checked by `check_witness` on the CPU, and it runs
+  about 4-5e10 candidates/s on four RTX 5090s against about 9e7 on 64 cores.
+  Level-2 grinding fell from about 5,000 s to 22 s, and 43-47-bit grinds are
+  minutes to half an hour, so the rate is no longer bounded by grinding but by
+  memory.
+- Aligned stacked layout. A table opened as one power-of-two block costs one
+  ring-switch claim (128 GF(2^128) elements = 16,384 input bits); a table placed
+  at a misaligned offset splits into several. Starting each table at a multiple
+  of its own block, and padding the Rounds preprocessed row to 128, takes the
+  preprocessed claims from 19 to 5. Aligning every layout broke the binary
+  stage's pair opening (`ColumnBatchValueMismatch`), so only all-power-of-two
+  layouts (the narrow machine's) are aligned; the binary stage is unchanged.
+- Recursion to the fixed point: level 2 at Johnson 1/8, level 3 at 1/512 fold 5,
+  level 4 at 1/1024 fold 5 (arity 30, memory 365 GiB). The level-4 tape (285 k
+  ops) is the size of level 3's (295 k), so a fifth level gains nothing.
+
+| | level 2, 1/8 | level 3, 1/512 f5 | **level 4, 1/1024 f5** |
+|---|---:|---:|---:|
+| narrow proof | 277,714 B | 179,560 B | 170,195 B |
+| claims main / prep | 5 / 5 | 5 / 5 | 5 / 5 |
+| WHIR rounds | 157.7 KB (5) | 66.4 KB (3) | 58.6 KB (3) |
+| prove / peak | 900 s / 372 GiB | 3,612 s / 365 GiB | 9,510 s / 365 GiB |
+| non-free gates | 322,005,166 | 249,989,457 | **242,454,733** |
+| garbled | 5.15 GB | 4.00 GB | **3.88 GB** |
+| input bits | 2,135,424 | 1,387,392 | **1,313,920** |
+| eval / 3 changes / garble | accepts / rejected / 166 s | accepts / rejected / 134 s | accepts, 0 of 345,760 differ / rejected / 130 s |
+
+On chain, per key set at 2.2 sat/vB: **2.80 MvB with adaptors (0.062 BTC)**,
+2.68 MvB with the n=16 hash selector, 1.37 MvB with an 8-bit-digit selector,
+7.58 MvB with 4-bit Winternitz (0.167 BTC), 21.8 MvB with Lamport. Against the
+paper's Keccak verifier: 2.6x the gates (242 M against 94.1 M) and 1.26x the
+input (1.31 against 1.04 Mbit). The claims checks shrank the circuit as much as
+the input: the aligned level 2 has 32% fewer gates than the unaligned one.
+
+What is left of the 10,265 input elements: opened values 3,968 (2,688 main +
+1,280 preprocessed, 39%), WHIR about 3,900 (38%), claims 1,280 (12%), bus,
+sumchecks and root about 1,100. Remaining levers, none an experiment-sized
+change: one tensor per commitment for the claims (about -1,100 elements, but the
+ring switch contracts the tensor along two different legs, so it is a new
+protocol, not a re-weighting); 200-bit Merkle digests (about -6%); a narrower
+rewiring row (-512 elements); then only the encoding (wider selector digits, a
+consensus change) and soldering. At 100-bit security this design is near its
+floor of about 1.1-1.2 Mbit.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

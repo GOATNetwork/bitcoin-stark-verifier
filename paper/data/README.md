@@ -520,6 +520,18 @@ finalization are reported separately.
     verifiers: at 1/64, 392,391,903 non-free gates, 6.28 GB, 1,761,024 input
     bits; accepts with 0 of 552,659 values differing; rejects three changes;
     garbled in 205 s.
+  - GPU grinding, aligned layouts, levels 3 and 4 (notes §7n):
+    `zkm_blake3_grind.cu` is a CUDA proof-of-work grinder for Plonky3's
+    Blake3 `BinaryChallenger`, hooked into `grind` by `p3_patch_gpu_grind.py`;
+    `p3_patch_align.py` aligns each table of an all-power-of-two stacked layout
+    to its own block (one ring-switch claim per table) and pads the Rounds
+    preprocessed row to 128; `ziren_patch_local_plonky3.py` points Ziren at the
+    patched Plonky3 copy. `run-ziren-align-chain.txt` is level 2 (Johnson 1/8)
+    and level 3 (1/512, fold 5) with all of it, `run-ziren-align-level4.txt`
+    level 4 (1/1024, fold 5); `run-ziren-align-level{2,3,4}-tape-gc.txt`
+    translate the verifiers. Level 4: 242,454,733 non-free gates, 3.88 GB,
+    1,313,920 input bits; accepts with 0 of 345,760 values differing; rejects
+    three changes; garbled in 130 s.
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB

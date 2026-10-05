@@ -1,0 +1,33 @@
+# whir-gc binary_tape on the level-2 tape with the aligned stacked layout and GPU grinding (narrow_tape-johnson-3-4.bin of ziren-tape-align, ZTAP v2, 13,045,631 B, from run-ziren-align-chain.txt); local box, systemd MemoryMax=32G, taskset 0-7, one core per test, 2026-10-04
+# BINARY_TAPE_DUMP=target/narrow-tape-align-johnson-3-4.bin, three runs: gate_counts input_widths; accepts_the_real; garbles_with
+running 2 tests
+test gate_counts ... binary-stage verifier: 322005166 non-free gates (321693635 AND, 311531 OR), 2117519700 XOR, 2441660292 wires; garbled 5.15 GB at 16 B per non-free gate; inputs 2135424 bits (0 byte, 0 bit, 16683 full-width inputs); built in 48 s
+  mul                  235657820 non-free  73.18%  (152657 ops)
+  merkle_node           36215669 non-free  11.25%  (3437 ops)
+  blake3                31942518 non-free   9.92%  (623 ops)
+  inv                   17484636 non-free   5.43%  (663 ops)
+  select                  474396 non-free   0.15%  (4292 ops)
+  assert_nonzero          179968 non-free   0.06%  (1406 ops)
+  assert_eq                50159 non-free   0.02%  (1392 ops)
+  input                        0 non-free   0.00%  (16683 ops)
+  to_bytes                     0 non-free   0.00%  (974 ops)
+  from_bytes                   0 non-free   0.00%  (569 ops)
+  square                       0 non-free   0.00%  (19890 ops)
+  add                          0 non-free   0.00%  (182574 ops)
+  transpose                    0 non-free   0.00%  (462 ops)
+  byte_bits                    0 non-free   0.00%  (511 ops)
+ok
+test input_widths_follow_the_proof_format ... 16683 inputs: 0 bytes, 0 bits, 16683 field elements = 2135424 bits (266928 bytes)
+ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 48.37s
+running 1 test
+honest proof: output true; 2441660292 wires evaluated in 77 s; 0 of 464256 values differ from the tape
+input 5561 changed: output false
+input 11122 changed: output false
+input 16682 changed: output false
+test accepts_the_real_proof_and_rejects_a_tampered_one ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 303.82s
+running 1 test
+streamed: 322005166 non-free gates garbled and checked in 166 s (1.94 M/s, one core), plan 69 s over 2441660292 wires, peak 30777121 live wires; output true
+test garbles_with_the_streaming_garbler ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 235.81s
