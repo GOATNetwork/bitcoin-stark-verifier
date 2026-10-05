@@ -1376,6 +1376,44 @@ Winternitz: **0.97x the paper's Keccak verifier input** (1.04 Mbit). Left:
 WHIR about 3,900, main values 1,953, preprocessed values 637, bus about 930,
 claims 256, sumchecks and root about 190.
 
+**Shorter Merkle digests and a narrower first fold (2026-10-05).** The
+recorded verifier takes every query's whole Merkle path as hints (a program
+has one shape, so the pruned multi-proof never enters it): 1,159 sibling
+digests of 256 bits, about 30% of the input. Two changes, both re-proving
+level 4 from the same level-3 tape:
+
+1. Merkle digests are Blake3 truncated to 25 bytes (200 bits): collisions
+   cost `2^100` (birthday), the composed target, and `2^66.7` quantumly
+   (BHT), above the proofs' ~50 quantum bits. Ziren: a truncating hasher in
+   the binary config; the recorder holds a digest as one element plus a
+   9-byte tail, entered byte by byte (72 input bits), hashes nodes over 50
+   bytes (select, Blake3, truncate: wiring) and absorbs caps as 25 bytes.
+2. The first WHIR round folds 3 variables instead of 5 and keeps its folded
+   domain (rates 13, 17, 21 after a starting 1/1024): each first-round query
+   opens 8 elements per tree instead of 32, at the same 46-bit grinding.
+   Scored over first folds 1-6, later folds 3-7 and per-round rate growth
+   (`data/run-ziren-level4-mixed-schedules.txt`); lower starting rates need
+   50-bit grinding and a twice larger codeword. Plonky3: a first-round hook
+   in the WHIR profile (`data/plonky3_first_round_profile.patch`), Ziren:
+   `ZIREN_B_FIRST_ROUND=3,1` (`data/ziren_short_digest_first_round.patch`).
+
+A Merkle cap is already used and pruning cannot help a fixed-shape circuit
+(its worst case is the cap). Level 4 proved in 4.8 h at 501 GiB peak, proof
+139,857 -> 124,678 B (`data/run-ziren-short-level4.txt`,
+`data/run-ziren-short-level4-tape-gc.txt`):
+
+| level 4, known values, merged claims | inputs (bytes / elements) | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| 32-byte digests, fold 5 | 0 / 7,863 | 221,687,835 | 3.55 GB | 1,006,464 |
+| **25-byte digests, first fold 3** | **11,826 / 6,257** | **220,159,322** | **3.52 GB** | **895,504** (-11.0%) |
+
+It accepts the real proof with 0 of 419,620 values differing, rejects three
+changes of read inputs, and garbles in 116 s. On chain, per key set at 2.2
+sat/vB (scaled per bit from the measured encodings): **1.90 MvB with adaptors
+(0.042 BTC)**, 1.83 MvB with the n=16 hash selector, 0.93 MvB with an
+8-bit-digit selector, 5.16 MvB with 4-bit Winternitz: **0.86x the paper's
+Keccak verifier input**.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

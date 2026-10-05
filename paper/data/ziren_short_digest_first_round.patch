@@ -1,0 +1,284 @@
+--- a/crates/binary/src/lib.rs
++++ b/crates/binary/src/lib.rs
+@@ -146,6 +146,10 @@
+     /// The profile of the schedule's commitment at its regime.
+     #[must_use]
+     pub fn profile(&self) -> BinaryWhirProfile {
++        self.profile_constant().with_first_round(FIRST_ROUND.0, FIRST_ROUND.1)
++    }
++
++    fn profile_constant(&self) -> BinaryWhirProfile {
+         match self.regime {
+             WhirRegime::UniqueDecoding => BinaryWhirProfile::unique_decoding(
+                 self.term_security_bits,
+@@ -170,6 +174,17 @@
+     }
+ }
+ 
++/// whir-gc experiment: `ZIREN_B_FIRST_ROUND=f0,bumps` gives the narrow
++/// machine's WHIR a first round folding `f0` variables and keeps the folded
++/// domain in the rounds of the bit mask `bumps`.
++static FIRST_ROUND: std::sync::LazyLock<(usize, u32)> = std::sync::LazyLock::new(|| {
++    std::env::var("ZIREN_B_FIRST_ROUND").map_or((0, 0), |spec| {
++        let mut parts = spec.split(',').map(|part| part.trim().parse::<u64>().expect("ZIREN_B_FIRST_ROUND=f0,bumps"));
++        let f0 = parts.next().expect("a first folding") as usize;
++        (f0, parts.next().unwrap_or(0) as u32)
++    })
++});
++
+ /// A fresh transcript of the stage.
+ #[must_use]
+ pub fn challenger() -> Challenger {
+--- a/crates/binary/src/config.rs
++++ b/crates/binary/src/config.rs
+@@ -21,14 +21,50 @@
+ 
+ use crate::{BinarySchedule, Challenger, F};
+ 
+-/// The Blake3 Merkle tree over bytes, arity 2.
++/// whir-gc experiment: bytes of a Merkle digest, Blake3 truncated.  200
++/// bits keep collisions at `2^100` work, the composed target.
++pub const DIGEST_BYTES: usize = 25;
++
++/// Blake3 truncated to [`DIGEST_BYTES`] bytes.
++#[derive(Clone, Copy, Debug, Default)]
++pub struct Blake3Short;
++
++fn short(digest: [u8; 32]) -> [u8; DIGEST_BYTES] {
++    core::array::from_fn(|i| digest[i])
++}
++
++impl p3_symmetric::CryptographicHasher<u8, [u8; DIGEST_BYTES]> for Blake3Short {
++    const LANES: usize = <Blake3 as p3_symmetric::CryptographicHasher<u8, [u8; 32]>>::LANES;
++
++    fn hash_iter<I: IntoIterator<Item = u8>>(&self, input: I) -> [u8; DIGEST_BYTES] {
++        short(p3_symmetric::CryptographicHasher::<u8, [u8; 32]>::hash_iter(&Blake3, input))
++    }
++
++    fn hash_iter_slices<'a, I: IntoIterator<Item = &'a [u8]>>(&self, input: I) -> [u8; DIGEST_BYTES] {
++        short(p3_symmetric::CryptographicHasher::<u8, [u8; 32]>::hash_iter_slices(&Blake3, input))
++    }
++
++    fn hash_slice(&self, input: &[u8]) -> [u8; DIGEST_BYTES] {
++        short(p3_symmetric::CryptographicHasher::<u8, [u8; 32]>::hash_slice(&Blake3, input))
++    }
++
++    fn hash_many(&self, input: &[u8], out: &mut [[u8; DIGEST_BYTES]]) {
++        let mut full = vec![[0u8; 32]; out.len()];
++        p3_symmetric::CryptographicHasher::<u8, [u8; 32]>::hash_many(&Blake3, input, &mut full);
++        for (out, full) in out.iter_mut().zip(full) {
++            *out = short(full);
++        }
++    }
++}
++
++/// The Blake3 Merkle tree over bytes, arity 2, digests truncated.
+ pub type MerkleMmcs = p3_merkle_tree::MerkleTreeMmcs<
+     F,
+     u8,
+-    SerializingHasher<Blake3>,
+-    CompressionFunctionFromHasher<Blake3, 2, 32>,
++    SerializingHasher<Blake3Short>,
++    CompressionFunctionFromHasher<Blake3Short, 2, DIGEST_BYTES>,
+     2,
+-    32,
++    DIGEST_BYTES,
+ >;
+ 
+ /// The stacked Boolean WHIR commitment of every table of a machine.
+@@ -192,8 +228,8 @@
+     }
+     let cap_height = recommended_cap_height(&whir_config);
+     let merkle = MerkleMmcs::new(
+-        SerializingHasher::new(Blake3),
+-        CompressionFunctionFromHasher::new(Blake3),
++        SerializingHasher::new(Blake3Short),
++        CompressionFunctionFromHasher::new(Blake3Short),
+         cap_height,
+     );
+     let prover = BooleanWhirProver::new(whir_config, domain, merkle);
+--- a/crates/binary-recursion/src/config.rs
++++ b/crates/binary-recursion/src/config.rs
+@@ -10,7 +10,7 @@
+ use p3_binary_pcs::whir::{
+     recommended_cap_height, BooleanWhirPcs, BooleanWhirProver, BooleanWhirTracePcs,
+ };
+-use p3_blake3::Blake3;
++
+ use p3_multi_stark::config::{Commitment, MultiStarkConfig, ProverData};
+ use p3_multi_stark::{MultiStarkProof, VerifyingKey};
+ use p3_sumcheck::layout::Table;
+@@ -67,8 +67,8 @@
+         .map_err(MachineConfigError::Profile)?;
+     let cap_height = recommended_cap_height(&whir_config);
+     let merkle = TracedMmcs::new(MerkleMmcs::new(
+-        SerializingHasher::new(Blake3),
+-        CompressionFunctionFromHasher::new(Blake3),
++        SerializingHasher::new(zkm_binary_stark::config::Blake3Short),
++        CompressionFunctionFromHasher::new(zkm_binary_stark::config::Blake3Short),
+         cap_height,
+     ));
+     let prover = BooleanWhirProver::new(whir_config, domain, merkle);
+--- a/crates/binary-recursion/src/bytes.rs
++++ b/crates/binary-recursion/src/bytes.rs
+@@ -156,6 +156,39 @@
+     )
+ }
+ 
++/// whir-gc experiment: bytes of a Merkle digest past its low element.
++pub const TAIL: usize = zkm_binary_stark::config::DIGEST_BYTES - 16;
++
++/// A Blake3 digest truncated to a Merkle digest: the low element kept, the
++/// high one cut to its first [`TAIL`] bytes, the rest zero.  Wiring only.
++#[must_use]
++pub fn shorten(digest: [Traced; 2]) -> [Traced; 2] {
++    let high = to_bytes(digest[1]);
++    let tail: [Traced; 16] =
++        core::array::from_fn(|i| if i < TAIL { high[i] } else { constant_byte(0) });
++    [digest[0], from_bytes(&tail)]
++}
++
++/// The bytes of a truncated digest, as pieces of a message.
++#[must_use]
++pub fn short_pieces(digest: [Traced; 2]) -> Vec<Piece> {
++    let high = to_bytes(digest[1]);
++    core::iter::once(Piece::Element(digest[0]))
++        .chain(high[..TAIL].iter().map(|&b| Piece::Byte(b)))
++        .collect()
++}
++
++/// One node of a Merkle path over truncated digests: the truncated digest
++/// of `cur ‖ sib` if `bit` is zero, of `sib ‖ cur` if it is one.
++#[must_use]
++pub fn short_node(bit: Traced, cur: [Traced; 2], sib: [Traced; 2]) -> [Traced; 2] {
++    let left: [Traced; 2] = core::array::from_fn(|i| select(bit, cur[i], sib[i]));
++    let right: [Traced; 2] = core::array::from_fn(|i| select(bit, sib[i], cur[i]));
++    let mut pieces = short_pieces(left);
++    pieces.extend(short_pieces(right));
++    shorten(blake3(&pieces))
++}
++
+ /// The thirty-two bytes of a digest held as two elements.
+ #[must_use]
+ pub fn digest_bytes(digest: [Traced; 2]) -> [Traced; 32] {
+--- a/crates/binary-recursion/src/mmcs.rs
++++ b/crates/binary-recursion/src/mmcs.rs
+@@ -16,29 +16,23 @@
+ use core::marker::PhantomData;
+ 
+ use p3_binary_field::{BinaryField128, TowerLevel};
+-use p3_blake3::Blake3;
+ use p3_challenger::CanObserve;
+ use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
+ use p3_matrix::{Dimensions, Matrix};
+-use p3_merkle_tree::{MerkleTreeMmcs, PrunedMerklePaths};
+-use p3_symmetric::{CompressionFunctionFromHasher, SerializingHasher};
++use p3_merkle_tree::PrunedMerklePaths;
+ use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ 
+-use crate::bytes::{blake3, merkle_node, select, Piece};
++use crate::bytes::{blake3, byte_field, from_bytes, select, shorten, short_node, short_pieces, Piece, TAIL};
+ use crate::challenger::TracedChallenger;
+ use crate::queries;
+-use crate::tape::{digest_elements, F};
++use crate::tape::F;
+ use crate::traced::Traced;
+ 
+ /// The binary stage's Merkle commitment scheme over native values.
+-pub type NativeMmcs = MerkleTreeMmcs<
+-    BinaryField128,
+-    u8,
+-    SerializingHasher<Blake3>,
+-    CompressionFunctionFromHasher<Blake3, 2, 32>,
+-    2,
+-    32,
+->;
++pub type NativeMmcs = zkm_binary_stark::config::MerkleMmcs;
++
++/// Bytes of a Merkle digest.
++const DIGEST: usize = zkm_binary_stark::config::DIGEST_BYTES;
+ 
+ /// A digest of the proof as two elements, its low and high sixteen bytes:
+ /// inputs of the program, or constants when read outside a recording, as a
+@@ -50,27 +44,37 @@
+     /// `digest` as an input of the program, or a constant outside a
+     /// recording.
+     #[must_use]
+-    pub fn read(digest: [u8; 32]) -> Self {
+-        Self(digest_elements(digest).map(|half| {
++    pub fn read(digest: [u8; DIGEST]) -> Self {
++        let lift = |value| {
+             if crate::tape::recording() {
+-                Traced::input(half)
++                Traced::input(value)
++            } else {
++                Traced::constant(value)
++            }
++        };
++        let low = lift(F::from_repr(u128::from_le_bytes(core::array::from_fn(|i| digest[i]))));
++        // The tail enters byte by byte, so each is an input of eight bits.
++        let tail: [Traced; 16] = core::array::from_fn(|i| {
++            if i < TAIL {
++                lift(byte_field(digest[16 + i]))
+             } else {
+-                Traced::constant(half)
++                Traced::constant(byte_field(0))
+             }
+-        }))
++        });
++        Self([low, from_bytes(&tail)])
+     }
+ }
+ 
+ impl<'de> Deserialize<'de> for TracedDigest {
+     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+-        Ok(Self::read(<[u8; 32]>::deserialize(deserializer)?))
++        Ok(Self::read(<[u8; DIGEST]>::deserialize(deserializer)?))
+     }
+ }
+ 
+ impl Serialize for TracedDigest {
+     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+         let [lo, hi] = self.0.map(|half| half.value().to_repr().to_le_bytes());
+-        let digest: [u8; 32] = core::array::from_fn(|i| if i < 16 { lo[i] } else { hi[i - 16] });
++        let digest: [u8; DIGEST] = core::array::from_fn(|i| if i < 16 { lo[i] } else { hi[i - 16] });
+         digest.serialize(serializer)
+     }
+ }
+@@ -100,7 +104,12 @@
+ impl CanObserve<&TracedCap> for TracedChallenger {
+     fn observe(&mut self, cap: &TracedCap) {
+         for root in cap.roots() {
+-            self.observe_elements(&root);
++            for piece in short_pieces(root) {
++                match piece {
++                    Piece::Element(x) => self.observe_elements(&[x]),
++                    Piece::Byte(b) => self.observe_bytes(&[b]),
++                }
++            }
+         }
+     }
+ }
+@@ -135,9 +144,9 @@
+         roots: &[[Traced; 2]],
+     ) {
+         let pieces: Vec<Piece> = leaf.iter().map(|&x| Piece::Element(x)).collect();
+-        let mut digest = blake3(&pieces);
++        let mut digest = shorten(blake3(&pieces));
+         for (&sibling, &bit) in siblings.iter().zip(bits) {
+-            digest = merkle_node(bit, digest, sibling);
++            digest = short_node(bit, digest, sibling);
+         }
+         let cap_bits = &bits[siblings.len()..];
+         let root = select_root(roots, cap_bits);
+@@ -163,8 +172,8 @@
+ impl Mmcs<Traced> for TracedMmcs {
+     type ProverData<M> = ();
+     type Commitment = TracedCap;
+-    type Proof = Vec<[u8; 32]>;
+-    type MultiProof = PrunedMerklePaths<u8, 32>;
++    type Proof = Vec<[u8; DIGEST]>;
++    type MultiProof = PrunedMerklePaths<u8, DIGEST>;
+     type Error = TracedMmcsError;
+ 
+     fn commit<M: Matrix<Traced>>(&self, _inputs: Vec<M>) -> (Self::Commitment, ()) {

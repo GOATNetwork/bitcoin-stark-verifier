@@ -1,0 +1,90 @@
+--- a/binary-pcs/src/whir/profile.rs
++++ b/binary-pcs/src/whir/profile.rs
+@@ -55,6 +55,12 @@
+     starting_log_inv_rate: usize,
+     /// Variables eliminated by each round.
+     folding_factor: usize,
++    /// whir-gc experiment: variables the first round eliminates, when not
++    /// `folding_factor` (zero: the same).
++    first_folding_factor: usize,
++    /// whir-gc experiment: rounds whose rate grows by their folding factor
++    /// (the folded domain kept) rather than one less, bit `i` for round `i`.
++    rate_bumps: u32,
+ }
+ 
+ impl BinaryWhirProfile {
+@@ -70,6 +76,8 @@
+             security_level,
+             starting_log_inv_rate,
+             folding_factor,
++            first_folding_factor: 0,
++            rate_bumps: 0,
+         }
+     }
+ 
+@@ -87,6 +95,8 @@
+             security_level,
+             starting_log_inv_rate,
+             folding_factor,
++            first_folding_factor: 0,
++            rate_bumps: 0,
+         }
+     }
+ 
+@@ -104,9 +114,18 @@
+             security_level,
+             starting_log_inv_rate,
+             folding_factor,
++            first_folding_factor: 0,
++            rate_bumps: 0,
+         }
+     }
+ 
++    /// whir-gc experiment: a first round folding `first_folding_factor`
++    /// variables, and the rounds in `rate_bumps` keeping their folded domain.
++    #[must_use]
++    pub const fn with_first_round(self, first_folding_factor: usize, rate_bumps: u32) -> Self {
++        Self { first_folding_factor, rate_bumps, ..self }
++    }
++
+     /// The proximity regime this profile is graded under.
+     #[must_use]
+     pub const fn assumption(&self) -> SecurityAssumption {
+@@ -145,12 +164,35 @@
+         Challenger: FieldChallenger<F> + GrindingChallenger<Witness = F>,
+         Domain: WhirDomain<F, EF>,
+     {
++        let folding_factor = if self.first_folding_factor == 0
++            || self.first_folding_factor == self.folding_factor
++        {
++            FoldingFactor::Constant(self.folding_factor)
++        } else {
++            FoldingFactor::ConstantFromSecondRound(self.first_folding_factor, self.folding_factor)
++        };
++        let round_log_inv_rates = if self.rate_bumps == 0 {
++            Vec::new()
++        } else {
++            let schedule = folding_factor
++                .compute_folding_schedule(num_variables)
++                .map_err(|error| ProfileError::Schedule(error.into()))?;
++            let mut rate = self.starting_log_inv_rate;
++            schedule[..schedule.len() - 1]
++                .iter()
++                .enumerate()
++                .map(|(round, &factor)| {
++                    rate += factor - 1 + ((self.rate_bumps >> round) & 1) as usize;
++                    rate
++                })
++                .collect()
++        };
+         let mut pow_bits = 0;
+         loop {
+             let parameters = ProtocolParameters {
+                 starting_log_inv_rate: self.starting_log_inv_rate,
+-                round_log_inv_rates: Vec::new(),
+-                folding_factor: FoldingFactor::Constant(self.folding_factor),
++                round_log_inv_rates: round_log_inv_rates.clone(),
++                folding_factor: folding_factor.clone(),
+                 soundness_type: self.assumption,
+                 security_level: self.security_level,
+                 pow_bits,
