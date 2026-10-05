@@ -1301,6 +1301,39 @@ On chain, per key set at 2.2 sat/vB: **2.66 MvB with adaptors (0.058 BTC)**,
 3,456 (2,176 + 1,280), WHIR about 3,900, claims 1,280, bus about 930, sumchecks
 and root about 190.
 
+**Opened values the verifier knows (2026-10-05).** Every column is one
+opened 128-bit value, and many are known without the proof: main padding
+columns are zero by construction (Arith 127, Rounds 96; the Hash table's
+output rows use all 512 columns), and a preprocessed column constant over all
+rows of the fixed program evaluates to that constant at any point. The
+verifier may read these as constants instead of proof values: the values are
+bound into the transcript before the column-combination point is drawn and the
+ring-switch claim checks that combination against the commitment, so a prover
+whose committed column differs fails it with overwhelming probability (a known
+value only adds a constraint), and the honest values equal the constants. No
+change to the prover or the proof: the dumper's re-record mode records the
+level-4 verifier on the saved proof with them as constants, after checking
+each equals its constant in the proof, and the translator gives an unread
+proof value no wires (`data/run-ziren-rw64-level4-known.txt`,
+`data/run-ziren-rw64-level4-known-tape-gc.txt`). 223 of 2,176 main and 643 of
+1,280 preprocessed values are known (padding, address and id bits never set at
+this size, flags of kinds that never occur):
+
+| level 4, rw64 | proof values read | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| all values from the proof | 9,753 | 231,199,237 | 3.70 GB | 1,248,384 |
+| **known values as constants** | **8,887** | **226,755,501** | **3.63 GB** | **1,137,536** (-8.9%) |
+
+It accepts the real proof with 0 of 314,747 values differing, rejects three
+changes of read inputs, and garbles in 190 s. On chain, per key set at 2.2
+sat/vB: **2.42 MvB with adaptors (0.053 BTC)**, 2.32 MvB with the n=16 hash
+selector, 1.18 MvB with an 8-bit-digit selector, 6.56 MvB with 4-bit
+Winternitz: 1.09x the paper's Keccak verifier input. The 637 preprocessed
+columns left are row-dependent (addresses, ids, flags); those equal to a bit
+of the row index, or to an indicator of a row prefix, have evaluations a
+verifier computes from the point in a few products and are the next part of
+this lever.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

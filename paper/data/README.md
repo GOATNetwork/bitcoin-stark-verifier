@@ -539,6 +539,13 @@ finalization are reported separately.
     `run-ziren-rw64-level{3,4}-tape-gc.txt` translate the verifiers. Level 4:
     231,199,237 non-free gates, 3.70 GB, 1,248,384 input bits; accepts with
     0 of 325,970 values differing; rejects three changes; garbled.
+  - Known opened values: `run-ziren-rw64-level4-known.txt` re-records the
+    level-4 verifier on the saved proof with main padding and constant
+    preprocessed columns as constants (866 values), and
+    `run-ziren-rw64-level4-known-tape-gc.txt` translates it: 226,755,501
+    non-free gates, 3.63 GB, 1,137,536 input bits (8,887 read inputs);
+    accepts with 0 of 314,747 values differing; rejects three changes;
+    garbled.
   - Plonky3 changes as unified diffs against `fb5d0d8`:
     `plonky3_align_layout.patch` (the aligned stacked layout) and
     `plonky3_gpu_grind.patch` (the GPU grinding hook; its `build.rs` links

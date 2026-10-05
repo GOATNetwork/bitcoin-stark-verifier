@@ -14,7 +14,10 @@
 //! instead: the binary stage is skipped, the tape's run is proved on the
 //! tape machine (its first `MAX_PUBLIC` inputs public) and the next level's
 //! verifier is recorded, to `ZIREN_RECURSE_TO` (a file name in the output
-//! directory).
+//! directory).  With `ZIREN_RERECORD_PROOF` naming that level's saved proof
+//! as well, nothing is proved: the verifier is recorded again with every
+//! opened value it knows -- main padding columns and preprocessed columns
+//! constant over all rows -- read as a constant, not from the proof.
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -80,7 +83,11 @@ fn dump_binary_stage_verifier_tape() {
         assert_eq!(replay, tape.values, "the saved tape reproduces its values");
         eprintln!("recursing from {from}: {} ops, {} inputs", tape.ops.len(), tape.inputs.len());
         let to = std::env::var("ZIREN_RECURSE_TO").expect("ZIREN_RECURSE_TO names the next level's tape");
-        recurse("next level", &tape, zkm_binary_recursion::machine::ledger::MAX_PUBLIC, &out, &to);
+        if let Ok(saved) = std::env::var("ZIREN_RERECORD_PROOF") {
+            rerecord(&tape, std::path::Path::new(&saved), &out, &to);
+        } else {
+            recurse("next level", &tape, zkm_binary_recursion::machine::ledger::MAX_PUBLIC, &out, &to);
+        }
         return;
     }
     let (proof_path, program_path, digest_path) =
@@ -193,6 +200,104 @@ fn recurse(label: &str, tape: &Tape, num_public: usize, out: &std::path::Path, t
     verdict.expect("the recorded verifier accepts the narrow proof");
     eprintln!("{label} recorded in {:.1} s", started.elapsed().as_secs_f64());
     write_tape(label, &own, &out.join(to));
+}
+
+/// The opened values the tape machine's verifier knows without the proof:
+/// main padding columns (zero by construction) and preprocessed columns
+/// constant over every row, as indices into the main and the preprocessed
+/// opening's values, tables in instance order, with their values.
+fn known_columns(machine: &TapeMachine) -> (Vec<(usize, zkm_binary_stark::F)>, Vec<(usize, zkm_binary_stark::F)>) {
+    use core::borrow::Borrow;
+    use p3_air::BaseAir;
+    use p3_field::PrimeCharacteristicRing;
+    use zkm_binary_recursion::machine::arith::{ArithCols, NUM_ARITH_COLS};
+    use zkm_binary_recursion::machine::rounds::{RoundsCols, NUM_ROUNDS_COLS};
+    type Fb = zkm_binary_stark::F;
+    let (mut main, mut prep) = (Vec::new(), Vec::new());
+    let (mut main_offset, mut prep_offset) = (0usize, 0usize);
+    for air in machine.airs() {
+        let pads: Vec<usize> = match air {
+            TapeAir::Arith(_) => {
+                let index: Vec<usize> = (0..NUM_ARITH_COLS).collect();
+                let cols: &ArithCols<usize> = index.as_slice().borrow();
+                cols.pad.to_vec()
+            }
+            TapeAir::Rounds(_) => {
+                let index: Vec<usize> = (0..NUM_ROUNDS_COLS).collect();
+                let cols: &RoundsCols<usize> = index.as_slice().borrow();
+                cols.pad.to_vec()
+            }
+            _ => Vec::new(),
+        };
+        main.extend(pads.into_iter().map(|i| (main_offset + i, Fb::ZERO)));
+        main_offset += BaseAir::<Fb>::width(air);
+        if let Some(trace) = BaseAir::<Fb>::preprocessed_trace(air) {
+            let width = trace.width;
+            let rows = trace.values.len() / width;
+            for column in 0..width {
+                let first = trace.values[column];
+                if (1..rows).all(|row| trace.values[row * width + column] == first) {
+                    prep.push((prep_offset + column, first));
+                }
+            }
+            prep_offset += width;
+        }
+    }
+    (main, prep)
+}
+
+/// Record the tape machine's verifier on a saved proof of `tape`'s run, the
+/// opened values it knows read as constants, and write the tape to `out/to`.
+fn rerecord(tape: &Tape, saved: &std::path::Path, out: &std::path::Path, to: &str) {
+    use zkm_binary_recursion::machine::ledger::MAX_PUBLIC;
+    let started = std::time::Instant::now();
+    let program = Program::new(tape, MAX_PUBLIC);
+    let (schedule, _) = narrow_schedule();
+    eprintln!("narrow schedule: {schedule:?}");
+    let machine = TapeMachine::new(program, &schedule).expect("the tape machine");
+    eprintln!("tape machine set up in {:.1} s", started.elapsed().as_secs_f64());
+    let proof: zkm_binary_stark::config::MachineProof =
+        postcard::from_bytes(&std::fs::read(saved).unwrap()).expect("a saved narrow proof");
+    let public = machine.public_values(&tape.inputs);
+    machine.verify(&proof, &public).expect("the saved narrow proof verifies");
+    let (main_known, prep_known) = known_columns(&machine);
+    let prep_values = &proof.preprocessed_opening.as_ref().expect("a preprocessed opening").values;
+    for &(i, v) in &main_known {
+        assert_eq!(proof.opening.values[i], v, "main value {i} is not the padding's zero");
+    }
+    for &(i, v) in &prep_known {
+        assert_eq!(prep_values[i], v, "preprocessed value {i} is not its constant column's value");
+    }
+    eprintln!(
+        "known opened values: {} of {} main (padding), {} of {} preprocessed (constant columns)",
+        main_known.len(),
+        proof.opening.values.len(),
+        prep_known.len(),
+        prep_values.len()
+    );
+    let (main, preprocessed) = machine.shapes();
+    let config = TracedConfig::new(&main, &preprocessed, &schedule).expect("traced config");
+    let vk = lift_key(machine.verifying_key());
+    let started = std::time::Instant::now();
+    let (verdict, own) = record(|| {
+        let traced_public: [Traced; MAX_PUBLIC] = public.map(Traced::input);
+        let mut traced: TracedProof = reread(&proof);
+        for &(i, v) in &main_known {
+            traced.opening.values[i] = Traced::constant(v);
+        }
+        let opening = traced.preprocessed_opening.as_mut().expect("a preprocessed opening");
+        for &(i, v) in &prep_known {
+            opening.values[i] = Traced::constant(v);
+        }
+        let instances = machine.verifier_instances(&vk, &traced_public);
+        let mut challenger = TracedChallenger::new(TRANSCRIPT_DOMAIN);
+        let verdict = verify(&config, instances, &traced, 0, &mut challenger).map_err(|e| format!("{e:?}"));
+        zkm_binary_recursion::queries::take();
+        verdict
+    });
+    verdict.expect("the recorded verifier accepts the saved proof with its known values");
+    eprintln!("re-recorded in {:.1} s", started.elapsed().as_secs_f64());
+    write_tape("re-recorded level", &own, &out.join(to));
 }
 
 /// A tape as `write_tape` wrote it (ZTAP v2).

@@ -212,6 +212,28 @@ pub fn parse(bytes: &[u8]) -> BTape {
     BTape { ops, inputs, values }
 }
 
+/// Whether each proof input is read by any operation.
+pub fn input_reads(t: &BTape) -> Vec<bool> {
+    let total: usize = t.ops.iter().map(TOp::defines).sum();
+    let mut read = vec![false; total];
+    for op in &t.ops {
+        for o in op.operands() {
+            if let Opd::Var(v) = o {
+                read[v as usize] = true;
+            }
+        }
+    }
+    let mut by_input = vec![false; t.inputs.len()];
+    let mut var = 0usize;
+    for op in &t.ops {
+        if let TOp::Input(n) = op {
+            by_input[*n as usize] = read[var];
+        }
+        var += op.defines();
+    }
+    by_input
+}
+
 /// How each proof input is read: as a byte only, as a selector only, or as
 /// a field element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -426,6 +448,8 @@ pub struct Report {
     pub output: usize,
     pub input_bits: usize,
     pub inputs_by_width: [usize; 3],
+    /// Inputs the circuit never reads: no wires, no labels, nothing to publish.
+    pub unread_inputs: usize,
     pub profile: Profile,
     pub mismatches: Vec<u32>,
 }
@@ -454,6 +478,7 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
     let mut next: u32 = 0;
     let mut input_bits = 0usize;
     let mut by_width = [0usize; 3];
+    let mut unread_inputs = 0usize;
     let zero = b.zero();
 
     // Read an operand's wires, releasing a variable after its last read.
@@ -498,6 +523,12 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
                 w[0]
             };
             match op {
+                TOp::Input(_) if reads[next as usize] == 0 => {
+                    // A proof value the verifier never reads (one it knows,
+                    // read as a constant instead) is not a circuit input.
+                    unread_inputs += 1;
+                    outs.push(vec![zero; W]);
+                }
                 TOp::Input(n) => {
                     let v = inputs[*n as usize];
                     let width = match widths[*n as usize] {
@@ -663,5 +694,5 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
         let after = non_free(b);
         profile.add(op.kind(), after - before);
     }
-    Report { output: ok, input_bits, inputs_by_width: by_width, profile, mismatches }
+    Report { output: ok, input_bits, inputs_by_width: by_width, unread_inputs, profile, mismatches }
 }

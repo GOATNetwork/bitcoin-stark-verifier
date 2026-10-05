@@ -1,0 +1,59 @@
+# The dumper's re-record mode (ZIREN_RERECORD_PROOF) on the rw64 level-4 proof: no proving; the tape machine is rebuilt from the level-3 tape and its verifier recorded on the saved proof
+# (level4_proof-johnson-10-5.bin, 158,826 B) with the opened values it knows read as constants: main padding columns (Arith 127, Rounds 96) and every preprocessed column constant over all rows,
+# each checked equal to its constant in the proof first. ant-5090-2, 64 cores, MemoryMax=700G, 95% watchdog, 2026-10-05.
+Running scope as unit: run-r1388b0041e0341fa8f3a53ccd0d0760b.scope
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   --> /mnt_zkm/stephen/plonky3-fb5d0d8/binary-field/src/challenger.rs:232:1
+    |
+232 | / /// The `index`-th grinding candidate: the element whose low bytes are those of `index`.
+233 | | ///
+234 | | /// This is injective on the candidate range of every level: narrower levels stop before the
+235 | | /// counter wraps their bit width, and wider ones are zero-extended.
+    | |____________________________________________________________________^
+236 | / unsafe extern "C" {
+237 | |     /// GPU proof-of-work search (zkm_blake3_grind.cu): 0 and the candidate
+238 | |     /// index in `out` when found, nonzero when it declines.
+239 | |     fn zkm_blake3_grind(pending: *const u8, len: usize, bits: u32, out: *mut u64) -> i32;
+240 | | }
+    | |_- rustdoc does not generate documentation for extern blocks
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+running 1 test
+recursing from /mnt_zkm/stephen/ziren-tape-rw64/level3_tape-johnson-9-5.bin: 276203 ops, 10391 inputs
+narrow schedule: BinarySchedule { regime: Johnson, log_inv_rate: 10, folding: 5, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 50 } }
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+tape machine set up in 115.4 s
+known opened values: 223 of 2176 main (padding), 643 of 1280 preprocessed (constant columns)
+re-recorded in 0.1 s
+re-recorded level: 254553 ops, 314747 variables, 9753 inputs, 237171 hashed bytes; garbled estimate 2.48e8 AND (2.07e8 products, 4.08e7 hashing, 3.15e5 other)
+re-recorded level census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [9753, 122584, 112798, 495, 1178, 1070, 720, 436, 261, 396, 380, 232, 1159, 3091]
+re-recorded level tape written: 8821693 bytes
+test dump_binary_stage_verifier_tape ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 131.07s
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 3771.77
+	System time (seconds): 3090.36
+	Percent of CPU this job got: 4253%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 2:41.34
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 160520216
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 25772
+	Minor (reclaiming a frame) page faults: 53671940
+	Voluntary context switches: 484787
+	Involuntary context switches: 54109
+	Swaps: 0
+	File system inputs: 285912
+	File system outputs: 335496
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

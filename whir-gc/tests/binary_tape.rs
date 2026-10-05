@@ -23,12 +23,13 @@ fn tape() -> Option<BTape> {
 fn print(name: &str, r: &Report, and: usize, or: usize, xor: usize, wires: usize, secs: f64) {
     let nf = and + or;
     eprintln!(
-        "{name}: {nf} non-free gates ({and} AND, {or} OR), {xor} XOR, {wires} wires; garbled {:.2} GB at 16 B per non-free gate; inputs {} bits ({} byte, {} bit, {} full-width inputs); built in {secs:.0} s",
+        "{name}: {nf} non-free gates ({and} AND, {or} OR), {xor} XOR, {wires} wires; garbled {:.2} GB at 16 B per non-free gate; inputs {} bits ({} byte, {} bit, {} full-width inputs; {} unread); built in {secs:.0} s",
         nf as f64 * 16.0 / 1e9,
         r.input_bits,
         r.inputs_by_width[0],
         r.inputs_by_width[1],
         r.inputs_by_width[2],
+        r.unread_inputs,
     );
     let mut parts = r.profile.parts.clone();
     parts.sort_by_key(|p| std::cmp::Reverse(p.1));
@@ -70,8 +71,11 @@ fn accepts_the_real_proof_and_rejects_a_tampered_one() {
     // one digest byte (tape v1) or the last field element, a digest half in
     // v2: each is rejected.
     let widths = binary_tape::input_widths(&t);
-    let full: Vec<usize> = (0..t.inputs.len()).filter(|&i| widths[i] == binary_tape::InputWidth::Full).collect();
-    let bytes: Vec<usize> = (0..t.inputs.len()).filter(|&i| widths[i] == binary_tape::InputWidth::Byte).collect();
+    let read = binary_tape::input_reads(&t);
+    let full: Vec<usize> =
+        (0..t.inputs.len()).filter(|&i| read[i] && widths[i] == binary_tape::InputWidth::Full).collect();
+    let bytes: Vec<usize> =
+        (0..t.inputs.len()).filter(|&i| read[i] && widths[i] == binary_tape::InputWidth::Byte).collect();
     let mut rejected = 0;
     let third = if bytes.is_empty() { full[full.len() - 1] } else { bytes[bytes.len() / 2] };
     let picks: Vec<usize> = vec![full[full.len() / 3], full[2 * full.len() / 3], third];
