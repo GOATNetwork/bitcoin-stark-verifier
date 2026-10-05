@@ -1,0 +1,293 @@
+# Ziren f6137ecc -> the box copy's crates/binary-recursion/src/machine: the 64-byte rewiring row (rewire.rs, program.rs: half gathers joined by an Add,
+# Cell::Half, Read.cell as a Cell; arith.rs/hash.rs read cells through cell_value) and ADDR_BITS 24 -> 26 (program.rs).
+--- a/crates/binary-recursion/src/machine/program.rs
++++ b/crates/binary-recursion/src/machine/program.rs
+@@ -36,7 +36,7 @@
+ use crate::tape::{Op, Operand, Tape, Var, F};
+ 
+ /// Bits of an address.
+-pub const ADDR_BITS: usize = 24;
++pub const ADDR_BITS: usize = 26;
+ 
+ /// Bytes of a Blake3 chunk.
+ const CHUNK_BYTES: usize = 1024;
+@@ -67,6 +67,8 @@
+     Value(Operand),
+     /// Byte `c` of an operand.
+     Byte(Operand, u8),
++    /// Half `h` of an operand: its bits `64 h .. 64 h + 64`, the others zero.
++    Half(Operand, u8),
+ }
+ 
+ /// A cell that is read: its address, how often, and its value.
+@@ -101,7 +103,7 @@
+ #[derive(Clone, Copy, Debug)]
+ pub struct Read {
+     pub addr: u32,
+-    pub cell: Operand,
++    pub cell: Cell,
+ }
+ 
+ /// One row of the arithmetic table.
+@@ -117,7 +119,7 @@
+     pub write_c: bool,
+ }
+ 
+-/// What a rewiring row does with its 128 bytes.  An element-input kind
++/// What a rewiring row does with its 64 bytes.  An element-input kind
+ /// reads one element whose 16 bytes are the row's first bytes; a
+ /// byte-input kind reads byte `u` at `in_base ^ u`.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -132,9 +134,10 @@
+     /// Sixteen bytes; the element with byte `u` from input `u` is written
+     /// at `out_base`.
+     FromBytes,
+-    /// 128 bytes; bit `j` of every byte, input `u` at bit `u`, is written
+-    /// at `out_base ^ j`.
+-    Gather,
++    /// 64 bytes; bit `j` of every byte, input `u` at bit `u`, or at bit
++    /// `64 + u` when `high`, is written at `out_base ^ j`: half of a
++    /// transposed column.
++    Gather { high: bool },
+ }
+ 
+ impl RewireKind {
+@@ -256,7 +259,7 @@
+     fn read(&mut self, operand: Operand) -> Read {
+         let (addr, source) = self.address(operand);
+         self.count(addr, Cell::Value(operand), source);
+-        Read { addr, cell: operand }
++        Read { addr, cell: Cell::Value(operand) }
+     }
+ 
+     /// One more read of the cell at `addr`.
+@@ -448,18 +451,46 @@
+                             out_reads: vec![false; 16],
+                         });
+                     }
++                    // Byte position c of the rows, in two halves of 64 rows:
++                    // half h of column 8c + j is written at
++                    // halves ^ (16c + 8h + j), and one addition joins the
++                    // halves, whose bits do not overlap, into the column.
++                    let halves = builder.allocate(16 * 2 * 8);
+                     for c in 0..16u32 {
+-                        let inputs: Vec<Cell> =
+-                            rows.iter().map(|&row| Cell::Byte(row, c as u8)).collect();
+-                        for (u, &cell) in inputs.iter().enumerate() {
+-                            builder.count(bytes ^ (128 * c + u as u32), cell, Source::Write);
++                        for h in 0..2u32 {
++                            let inputs: Vec<Cell> = rows[64 * h as usize..64 * (h as usize + 1)]
++                                .iter()
++                                .map(|&row| Cell::Byte(row, c as u8))
++                                .collect();
++                            for (u, &cell) in inputs.iter().enumerate() {
++                                builder.count(bytes ^ (128 * c + 64 * h + u as u32), cell, Source::Write);
++                            }
++                            builder.program.rewire.push(RewireRow {
++                                kind: RewireKind::Gather { high: h == 1 },
++                                in_base: bytes ^ (128 * c + 64 * h),
++                                inputs,
++                                out_base: halves ^ (16 * c + 8 * h),
++                                out_reads: vec![false; 8],
++                            });
+                         }
+-                        builder.program.rewire.push(RewireRow {
+-                            kind: RewireKind::Gather,
+-                            in_base: bytes ^ (128 * c),
+-                            inputs,
+-                            out_base: out ^ (8 * c),
+-                            out_reads: vec![false; 8],
++                    }
++                    let first = defined.expect("a transpose defines its columns");
++                    for v in 0..128u32 {
++                        let (c, j) = (v / 8, v % 8);
++                        let column = Operand::Var(first + v);
++                        let [a, b] = [0u32, 1].map(|h| Read {
++                            addr: halves ^ (16 * c + 8 * h + j),
++                            cell: Cell::Half(column, h as u8),
++                        });
++                        builder.count(a.addr, a.cell, Source::Write);
++                        builder.count(b.addr, b.cell, Source::Write);
++                        builder.program.arith.push(ArithRow {
++                            kind: ArithKind::Add,
++                            a: Some(a),
++                            b: Some(b),
++                            s: None,
++                            c: Some(out ^ v),
++                            write_c: false,
+                         });
+                     }
+                 }
+@@ -529,6 +560,10 @@
+                 let byte = (Self::value(values, operand).to_repr() >> (8 * c)) & 0xff;
+                 F::from_repr(byte)
+             }
++            Cell::Half(operand, h) => {
++                let mask = u128::from(u64::MAX) << (64 * u32::from(h));
++                F::from_repr(Self::value(values, operand).to_repr() & mask)
++            }
+         }
+     }
+ 
+@@ -559,16 +594,16 @@
+             };
+             let (block, bit) = match c.block {
+                 BlockSource::Slots(reads) => {
+-                    (slot_words(reads.map(|r| Self::value(values, r.cell))), false)
++                    (slot_words(reads.map(|r| Self::cell_value(values, r.cell))), false)
+                 }
+                 BlockSource::Parent(left, right) => {
+                     let (l, r) = (states[left].cv_out(), states[right].cv_out());
+                     (core::array::from_fn(|w| if w < 8 { l[w] } else { r[w - 8] }), false)
+                 }
+                 BlockSource::Merkle { bit, cur, sib } => {
+-                    let bit = Self::value(values, bit.cell) == F::ONE;
+-                    let cur = cur.map(|r| Self::value(values, r.cell));
+-                    let sib = sib.map(|r| Self::value(values, r.cell));
++                    let bit = Self::cell_value(values, bit.cell) == F::ONE;
++                    let cur = cur.map(|r| Self::cell_value(values, r.cell));
++                    let sib = sib.map(|r| Self::cell_value(values, r.cell));
+                     let cells = if bit {
+                         [sib[0], sib[1], cur[0], cur[1]]
+                     } else {
+--- a/crates/binary-recursion/src/machine/rewire.rs
++++ b/crates/binary-recursion/src/machine/rewire.rs
+@@ -1,6 +1,6 @@
+ //! The rewiring table: one row per operation that only moves bits.
+ //!
+-//! A row holds 128 bytes, `m[u]` the bits of byte `u`.  Its kind reads
++//! A row holds 64 bytes, `m[u]` the bits of byte `u`.  Its kind reads
+ //! either one element, whose sixteen bytes are `m[0..16]`, or byte `u` at
+ //! `in_base ^ u` into `m[u]`, and writes what it reads off the bytes:
+ //!
+@@ -9,13 +9,15 @@
+ //!     split        1 element    output j = byte j            at out_base ^ 128 j
+ //!     bits         1 element    output i = bit i             at out_base ^ i
+ //!     from bytes   16 bytes     the element of bytes 0..16   at out_base
+-//!     gather       128 bytes    output j = bit j of byte u,
+-//!                               at bit u, for every u        at out_base ^ j
++//!     gather       64 bytes     output j = bit j of byte u,
++//!                               at bit u (or 64 + u, high),
++//!                               for every u                  at out_base ^ j
+ //! ```
+ //!
+-//! A transpose is 128 splits and 16 gathers (see [`super::program`]), so a
+-//! row is 128 bytes wide where a whole transpose would be 128 elements:
+-//! every column of a table is a value its verifier opens.  Every output is
++//! A transpose is 128 splits, 32 half gathers and 128 additions joining the
++//! halves (see [`super::program`]), so a row is 64 bytes wide where a whole
++//! transpose would be 128 elements: every column of a table is a value its
++//! verifier opens.  Every output is
+ //! a packing of the row's bits, so the table has no constraint of its own:
+ //! the channels are all of it.  A byte pulled from memory equals a cell
+ //! below `2^8`, and an element pulled equals the packing of all 128 bits of
+@@ -26,7 +28,7 @@
+ use p3_air::{Air, BaseAir, WindowAccess};
+ use p3_binary_field::TowerLevel;
+ use p3_bus::{BusActivation, BusDirection};
+-use p3_field::Field;
++use p3_field::{Field, PrimeCharacteristicRing};
+ use p3_matrix::dense::RowMajorMatrix;
+ use p3_sumcheck::layout::Table;
+ use zkm_binary_stark::machine::bits::{dense, log_height_for, BitRows, MEMORY, WRITE};
+@@ -35,11 +37,12 @@
+ use zkm_derive::AlignedBorrow;
+ 
+ use super::cells::{addr_bits, cell, pack, VALUE_BITS};
++use zkm_binary_stark::machine::bits::pack_field;
+ use super::program::{Program, RewireKind, ADDR_BITS};
+ use crate::tape::F;
+ 
+ /// Bytes of a row.
+-pub const WIDTH: usize = 128;
++pub const WIDTH: usize = 64;
+ 
+ /// Bytes of an element.
+ const ELEMENT_BYTES: usize = 16;
+@@ -60,12 +63,14 @@
+     pub split: [T; ELEMENT_BYTES],
+     /// Which bits a split into bits writes.
+     pub bits: [T; VALUE_BITS],
+-    /// Which columns a gather writes.
++    /// Which columns a gather writes, low half.
+     pub gathered: [T; 8],
++    /// Which columns a gather writes, high half.
++    pub gathered_high: [T; 8],
+     /// The row writes the element its bytes assemble.
+     pub assembles: T,
+     /// Zeros, which make the width a power of two.
+-    pub pad: [T; 512 - 2 * ADDR_BITS - 2 - WIDTH - 2 * ELEMENT_BYTES - VALUE_BITS - 8],
++    pub pad: [T; 512 - 2 * ADDR_BITS - 2 - WIDTH - 2 * ELEMENT_BYTES - VALUE_BITS - 16],
+ }
+ 
+ /// The witness part of a rewiring row.
+@@ -106,7 +111,7 @@
+                 RewireKind::ToBytes | RewireKind::Split | RewireKind::Bits { .. } => {
+                     prep.reads_element = 1;
+                 }
+-                RewireKind::FromBytes | RewireKind::Gather => {
++                RewireKind::FromBytes | RewireKind::Gather { .. } => {
+                     prep.reads[..op.inputs.len()].fill(1);
+                 }
+             }
+@@ -114,7 +119,8 @@
+                 RewireKind::ToBytes => mark(&mut prep.bytes, &op.out_reads),
+                 RewireKind::Split => mark(&mut prep.split, &op.out_reads),
+                 RewireKind::Bits { .. } => mark(&mut prep.bits, &op.out_reads),
+-                RewireKind::Gather => mark(&mut prep.gathered, &op.out_reads),
++                RewireKind::Gather { high: false } => mark(&mut prep.gathered, &op.out_reads),
++                RewireKind::Gather { high: true } => mark(&mut prep.gathered_high, &op.out_reads),
+                 RewireKind::FromBytes => prep.assembles = u8::from(op.out_reads[0]),
+             }
+         }
+@@ -138,7 +144,7 @@
+                 RewireKind::ToBytes | RewireKind::Split | RewireKind::Bits { .. } => {
+                     Program::cell_value(values, op.inputs[0]).to_repr().to_le_bytes().to_vec()
+                 }
+-                RewireKind::FromBytes | RewireKind::Gather => op
++                RewireKind::FromBytes | RewireKind::Gather { .. } => op
+                     .inputs
+                     .iter()
+                     .map(|&cell| Program::cell_value(values, cell).to_repr() as u8)
+@@ -221,6 +227,16 @@
+                 cell::<AB>(&prep.out_base, j as u32, pack::<AB>(&column)),
+                 BusActivation::Boolean(prep.gathered[j].into()),
+             );
++            // The high half: bit u of the column at coordinate 64 + u.
++            let high: Vec<AB::Expr> = core::iter::repeat_n(AB::Expr::ZERO, WIDTH)
++                .chain(column.iter().map(|&bit| bit.into()))
++                .collect();
++            builder.declare_bus(
++                WRITE,
++                BusDirection::Push,
++                cell::<AB>(&prep.out_base, j as u32, pack_field::<AB>(&high)),
++                BusActivation::Boolean(prep.gathered_high[j].into()),
++            );
+         }
+         builder.declare_bus(
+             WRITE,
+--- a/crates/binary-recursion/src/machine/arith.rs
++++ b/crates/binary-recursion/src/machine/arith.rs
+@@ -107,7 +107,7 @@
+         let mut row_bits = vec![0u8; NUM_ARITH_COLS];
+         for (row, op) in program.arith.iter().enumerate() {
+             let value =
+-                |read: Option<Read>| read.map_or(F::ZERO, |r| Program::value(values, r.cell));
++                |read: Option<Read>| read.map_or(F::ZERO, |r| Program::cell_value(values, r.cell));
+             let (a, b, s) = (value(op.a), value(op.b), value(op.s));
+             let c = result(op, a, b, s);
+             let cols: &mut ArithCols<u8> = row_bits.as_mut_slice().borrow_mut();
+--- a/crates/binary-recursion/src/machine/hash.rs
++++ b/crates/binary-recursion/src/machine/hash.rs
+@@ -271,9 +271,9 @@
+             program.compressions.iter().zip(states).zip(finals).enumerate()
+         {
+             let cells: [F; 4] = match compression.block {
+-                BlockSource::Slots(reads) => reads.map(|r| Program::value(values, r.cell)),
++                BlockSource::Slots(reads) => reads.map(|r| Program::cell_value(values, r.cell)),
+                 BlockSource::Merkle { cur, sib, .. } => {
+-                    [cur[0], cur[1], sib[0], sib[1]].map(|r| Program::value(values, r.cell))
++                    [cur[0], cur[1], sib[0], sib[1]].map(|r| Program::cell_value(values, r.cell))
+                 }
+                 BlockSource::Parent(..) => core::array::from_fn(|k| {
+                     let repr = (0..4)

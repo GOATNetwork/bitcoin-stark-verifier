@@ -1275,6 +1275,32 @@ rewiring row (-512 elements); then only the encoding (wider selector digits, a
 consensus change) and soldering. At 100-bit security this design is near its
 floor of about 1.1-1.2 Mbit.
 
+**A 64-byte rewiring row (2026-10-05).** The rewiring table's 1,024 columns
+were the widest of the narrow machine. A row now holds 64 bytes: a transpose
+is 128 splits, 32 half gathers (half h of column 8c + j holds bits 64h .. 64h+63
+of the column, pushed at its own cell) and 128 additions joining the halves,
+whose bits do not overlap (`data/ziren_rewire64.patch`: `Cell::Half`, an Arith
+`Add` per column; arith and hash read cells through `cell_value`). The bus
+binds every half as it bound the whole column, so nothing in the argument
+changes. Main values fall from 2,688 to 2,176 at every level; level 2 grows
+from 2^22 to 2^23 Arith rows (427 GiB peak, 1,422 s). Same schedules as above
+(`data/run-ziren-rw64-chain.txt`, `data/run-ziren-rw64-level{3,4}-tape-gc.txt`):
+
+| | level 3, 1/512 f5 | **level 4, 1/1024 f5** |
+|---|---:|---:|
+| narrow proof | 170,318 B | 158,826 B |
+| non-free gates | 241,217,044 | **231,199,237** |
+| garbled | 3.86 GB | **3.70 GB** |
+| input bits | 1,330,048 | **1,248,384** (-5.0%) |
+| eval / 3 changes | accepts / rejected | accepts, 0 of 325,970 differ / rejected |
+
+On chain, per key set at 2.2 sat/vB: **2.66 MvB with adaptors (0.058 BTC)**,
+2.55 MvB with the n=16 hash selector, 1.30 MvB with an 8-bit-digit selector,
+7.20 MvB with 4-bit Winternitz: 1.20x the paper's Keccak verifier input
+(1.04 Mbit) at 2.5x its gates. The 9,753 input elements left: opened values
+3,456 (2,176 + 1,280), WHIR about 3,900, claims 1,280, bus about 930, sumchecks
+and root about 190.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

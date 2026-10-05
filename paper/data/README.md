@@ -532,6 +532,13 @@ finalization are reported separately.
     translate the verifiers. Level 4: 242,454,733 non-free gates, 3.88 GB,
     1,313,920 input bits; accepts with 0 of 345,760 values differing; rejects
     three changes; garbled in 130 s.
+  - A 64-byte rewiring row: `ziren_rewire64.patch` (against Ziren
+    `f6137ecc`, the box copy's binary-recursion machine) halves the rewiring
+    table's width; `run-ziren-rw64-chain.txt` runs levels 2, 3 and 4 with it
+    on top of the aligned layout and GPU grinding;
+    `run-ziren-rw64-level{3,4}-tape-gc.txt` translate the verifiers. Level 4:
+    231,199,237 non-free gates, 3.70 GB, 1,248,384 input bits; accepts with
+    0 of 325,970 values differing; rejects three changes; garbled.
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB
