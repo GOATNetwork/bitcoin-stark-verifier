@@ -539,6 +539,10 @@ finalization are reported separately.
     `run-ziren-rw64-level{3,4}-tape-gc.txt` translate the verifiers. Level 4:
     231,199,237 non-free gates, 3.70 GB, 1,248,384 input bits; accepts with
     0 of 325,970 values differing; rejects three changes; garbled.
+  - Plonky3 changes as unified diffs against `fb5d0d8`:
+    `plonky3_align_layout.patch` (the aligned stacked layout) and
+    `plonky3_gpu_grind.patch` (the GPU grinding hook; its `build.rs` links
+    `libzkmgrind` unconditionally, so it is experiment-only as written).
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB
