@@ -1329,10 +1329,52 @@ changes of read inputs, and garbles in 190 s. On chain, per key set at 2.2
 sat/vB: **2.42 MvB with adaptors (0.053 BTC)**, 2.32 MvB with the n=16 hash
 selector, 1.18 MvB with an 8-bit-digit selector, 6.56 MvB with 4-bit
 Winternitz: 1.09x the paper's Keccak verifier input. The 637 preprocessed
-columns left are row-dependent (addresses, ids, flags); those equal to a bit
-of the row index, or to an indicator of a row prefix, have evaluations a
-verifier computes from the point in a few products and are the next part of
-this lever.
+columns left are row-dependent (addresses, ids, flags). Those equal to a bit
+of the row index, or to an indicator of a row prefix, would have evaluations
+a verifier computes from the point in a few products, but the dumper's
+classifier (`ZIREN_CLASSIFY_PREP`) finds only 17 of the 637 so structured:
+not worth a protocol change.
+
+**One ring-switch element for all claims (2026-10-05).** Each opening (main,
+preprocessed) sends one 128-element tensor per aligned column block, five per
+opening at level 4: 1,280 of the inputs. Claims at points sharing the seven
+coordinates an element absorbs (every block at one row point does) can send
+one element between them. With claim i's element s_i (weight eq_i on the
+first leg), the prover binds the points, draws mu, and sends
+T = sum_i (mu^i x 1) s_i. Its columns, weighed by eq_low, must equal
+sum_i mu^i reading_i; its rows are those of the element of the weight
+W = sum_i mu^i eq_i, so one sumcheck against W's weight multilinear (each
+claim's equality scaled by mu^i, on its own sub-slot) ties them to the
+packing, r'' drawn after T is bound; the closing weight is
+sum_i gate_i * A_i(r') with claim i's equality element scaled by mu^i. A false
+reading survives only if sum_i mu^i err_i = 0, at most (k-1)/2^128, the term
+lambda already adds to an unmerged batch; the rest is the one-claim ring
+switch. Successor views are never merged. A Plonky3 change
+(`data/plonky3_merged_claims.patch`: `sumcheck/src/ring_switch/bits/` plus
+binary-pcs reading the prover's readings, since a merged proof has no
+per-claim element), no Ziren change: the recorded verifier is Plonky3's,
+traced. Tests: all ring-switch tests plus new ones (one element sent; a false
+reading at any claim, two cancelling errors, a forged row, a tampered surviving
+value and an unmerged-shaped proof rejected); p3-sumcheck, p3-binary-pcs,
+p3-multi-stark and p3-whir pass except the stacked-layout test our aligned
+layout patch already breaks; the narrow-machine test proves, verifies and
+records with one element per opening (`data/run-ziren-merged-narrow-small.txt`).
+Level 4 re-proved from the same level-3 tape (6.3 h on two GPUs, 382 GB peak)
+and re-recorded with the known values (`data/run-ziren-merged-level4.txt`,
+`data/run-ziren-merged-level4-tape-gc.txt`):
+
+| level 4, rw64, known values | proof values read | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| one element per claim | 8,887 | 226,755,501 | 3.63 GB | 1,137,536 |
+| **merged claims** | **7,863** | **221,687,835** | **3.55 GB** | **1,006,464** (-11.5%) |
+
+It accepts the real proof with 0 of 312,263 values differing, rejects three
+changes of read inputs, and garbles in 187 s. On chain, per key set at 2.2
+sat/vB: **2.14 MvB with adaptors (0.047 BTC)**, 2.05 MvB with the n=16 hash
+selector, 1.04 MvB with an 8-bit-digit selector, 5.80 MvB with 4-bit
+Winternitz: **0.97x the paper's Keccak verifier input** (1.04 Mbit). Left:
+WHIR about 3,900, main values 1,953, preprocessed values 637, bus about 930,
+claims 256, sumchecks and root about 190.
 
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about

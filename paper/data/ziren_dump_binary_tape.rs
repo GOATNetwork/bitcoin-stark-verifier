@@ -246,6 +246,45 @@ fn known_columns(machine: &TapeMachine) -> (Vec<(usize, zkm_binary_stark::F)>, V
     (main, prep)
 }
 
+/// Print, per table, how each preprocessed column depends on the row index:
+/// constant; bit k of the row; bit k of the row on the first n rows, zero
+/// after; the indicator of the first n rows; or other.  The first three
+/// kinds after the constants evaluate at a point in a few products.
+fn classify_preprocessed(machine: &TapeMachine) {
+    use p3_air::BaseAir;
+    use p3_field::PrimeCharacteristicRing;
+    type Fb = zkm_binary_stark::F;
+    for air in machine.airs() {
+        let Some(trace) = BaseAir::<Fb>::preprocessed_trace(air) else { continue };
+        let width = trace.width;
+        let rows = trace.values.len() / width;
+        let log_rows = rows.trailing_zeros() as usize;
+        let mut kinds = std::collections::BTreeMap::<String, usize>::new();
+        for column in 0..width {
+            let col: Vec<bool> = (0..rows).map(|r| trace.values[r * width + column] == Fb::ONE).collect();
+            let first = trace.values[column];
+            let kind = if (0..rows).all(|r| trace.values[r * width + column] == first) {
+                "constant".to_string()
+            } else if trace.values.iter().skip(column).step_by(width).any(|&v| v != Fb::ZERO && v != Fb::ONE) {
+                "not a bit".to_string()
+            } else {
+                let n = col.iter().rposition(|&b| b).map_or(0, |p| p + 1);
+                if (0..log_rows).any(|k| (0..rows).all(|r| col[r] == ((r >> k) & 1 == 1))) {
+                    "row bit".to_string()
+                } else if (0..n).all(|r| col[r]) {
+                    "prefix indicator".to_string()
+                } else if (0..log_rows).any(|k| (0..n).all(|r| col[r] == ((r >> k) & 1 == 1))) {
+                    "row bit on a prefix".to_string()
+                } else {
+                    "other".to_string()
+                }
+            };
+            *kinds.entry(kind).or_default() += 1;
+        }
+        eprintln!("prep classes {:>7} (2^{log_rows} rows, {width} columns): {kinds:?}", air.name());
+    }
+}
+
 /// Record the tape machine's verifier on a saved proof of `tape`'s run, the
 /// opened values it knows read as constants, and write the tape to `out/to`.
 fn rerecord(tape: &Tape, saved: &std::path::Path, out: &std::path::Path, to: &str) {
@@ -261,6 +300,9 @@ fn rerecord(tape: &Tape, saved: &std::path::Path, out: &std::path::Path, to: &st
     let public = machine.public_values(&tape.inputs);
     machine.verify(&proof, &public).expect("the saved narrow proof verifies");
     let (main_known, prep_known) = known_columns(&machine);
+    if std::env::var_os("ZIREN_CLASSIFY_PREP").is_some() {
+        classify_preprocessed(&machine);
+    }
     let prep_values = &proof.preprocessed_opening.as_ref().expect("a preprocessed opening").values;
     for &(i, v) in &main_known {
         assert_eq!(proof.opening.values[i], v, "main value {i} is not the padding's zero");
