@@ -1414,6 +1414,44 @@ sat/vB (scaled per bit from the measured encodings): **1.90 MvB with adaptors
 8-bit-digit selector, 5.16 MvB with 4-bit Winternitz: **0.86x the paper's
 Keccak verifier input**.
 
+**Columns read only packed (2026-10-06).** The ledger's value and the
+arithmetic operands `a`, `b`, `c` (512 of the 2,176 main columns) are read
+by every constraint and bus only as packed elements `sum_k e_k col_k`. An
+AIR now declares such groups (`main_packed_groups`), and a table opened only
+by its AIR batch sends, in column order, each column outside a group and one
+value per group (the forms), binds them, draws `rho`, and runs a degree-two
+sumcheck over the column variables of `sum_slots L(u) W(u)`, `L` weighing
+form `j`'s columns by `rho^j` (times `e_k` in a group) and `W` the columns at
+the row point; it ends at `u*` with the fold `W(u*)`, which is exactly the
+reading of the table's one block claim at the column point `u*` that the
+ring switch (merged) already checks. The verifier closes the rounds with
+`L(u*) W(u*)` and hands the AIR columns that pack to each form (the group's
+first column `e_0^-1` times it, the rest zero). Soundness: forms bound before
+`rho`, `(forms - 1)/2^128`, plus `2 log2(width)/2^128` for the rounds; the
+block claim is unchanged. Plonky3 (`data/plonky3_packed_columns.patch`:
+`BaseAir`, `TableSpec`, the main schedule, the column-batch transcript,
+planner and trace commitment, with tests: one value per group, opened columns
+packing to the true values, every wire value checked, an unpacked proof
+refused); Ziren (`data/ziren_packed_columns.patch`: the two tables' groups,
+the dumper's known-value positions). Ledger sends 1 + 14 + 1 values instead
+of 128, Arith 131 + 18 + 1 instead of 512: 2,176 -> 1,702 main values. Level
+4 re-proved (3.5 h, 501 GiB peak, proof 116,250 B) and re-recorded, every
+known value checked at its new position (`data/run-ziren-packed-level4.txt`,
+`data/run-ziren-packed-level4-tape-gc.txt`):
+
+| level 4, known values, merged claims, short digests, fold 3 | inputs (bytes / elements) | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| every column sent | 11,826 / 6,257 | 220,159,322 | 3.52 GB | 895,504 |
+| **Ledger and Arith packed** | **11,826 / 5,783** | **219,233,411** | **3.51 GB** | **834,832** (-6.8%) |
+
+It accepts the real proof with 0 of 417,565 values differing, rejects three
+changes of read inputs, and garbles in 116 s. On chain, per key set at 2.2
+sat/vB (scaled per bit): **1.78 MvB with adaptors (0.039 BTC)**, 1.70 MvB
+with the n=16 hash selector, 0.87 MvB with an 8-bit-digit selector, 4.81 MvB
+with 4-bit Winternitz: **0.80x the paper's Keccak verifier input**. The
+experiment copies holding every change are `ziren-packed` and
+`plonky3-packed` on the box.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is
