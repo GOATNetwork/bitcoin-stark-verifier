@@ -1452,6 +1452,51 @@ with 4-bit Winternitz: **0.80x the paper's Keccak verifier input**. The
 experiment copies holding every change are `ziren-packed` and
 `plonky3-packed` on the box.
 
+**Linear forms, per-round folds and a deep preprocessed cap (2026-10-06).**
+Three changes in one level-4 re-prove (the box is shared; one run each was
+not available):
+
+1. *Linear forms of every table.* The packed groups generalise: a table's
+   constraints and buses, walked symbolically (`ziren` `forms.rs`), are
+   normalised to sums of products of linear atoms times one linear form,
+   terms with the same atoms merged; the atoms and forms left, reduced to an
+   independent set (sparsest first), are every linear form of the columns the
+   table reads. A trace sends one value per form when fewer than the columns
+   it reads (main: all but Rounds, whose carries read every bit; preprocessed:
+   all five), then the column sumcheck; the verifier hands the AIR the columns
+   a right inverse makes of the values, a constant matrix (XORs in the GC),
+   checked at setup. Census at the narrow test's machine
+   (`data/run-ziren-forms-census.txt`): main 2,176 columns -> 633 forms (Rewire
+   183, Hash 29, Rounds 416), preprocessed 1,280 -> 308. Main values sent 1,702
+   -> 801, preprocessed 1,280 -> 391; a preprocessed form over constant columns
+   only is known (120 at level 4). Plonky3 `LinearForms` on `BaseAir`,
+   `TableSpec` and the trace commitment (`data/plonky3_linear_forms.patch`),
+   Ziren (`data/ziren_linear_forms.patch`).
+2. *Per-round WHIR folds* [4, 5, 4, 4], rates [14, 18, 21], 46-bit grinding:
+   the best schedule once digests are 200 bits
+   (`data/run-ziren-level4-perround-schedules.txt`; model -139 elements).
+3. *A deep cap on the preprocessed tree.* Its tree is fixed by the verifying
+   key, so the re-record takes its 16,384 nodes 14 layers below the root from
+   the proving key as circuit constants (checked to hash to the key's cap). A
+   path into it hashes its 15 lower siblings and is compared with the constant
+   node a one-hot of the top 14 index bits selects (2^14 indicator ANDs per
+   query; the selection is XORs); the siblings above are never read. No
+   change to the proof or the native verifier.
+
+Level 4 proved in 2.1 h at 451 GiB peak (proof 91,849 B) and re-recorded
+(`data/run-ziren-forms-level4.txt`, `data/run-ziren-forms-level4-tape-gc.txt`):
+
+| level 4 | inputs (bytes / elements) | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| packed Ledger and Arith | 11,826 / 5,783 | 219,233,411 | 3.51 GB | 834,832 |
+| **forms, folds, deep cap** | **9,981 / 4,405** | **215,814,232** | **3.45 GB** | **643,688** (-22.9%) |
+
+It accepts the real proof with 0 of 961,415 values differing, rejects three
+changes of read inputs, and garbles in 189 s. On chain, per key set at 2.2
+sat/vB (scaled per bit): **1.37 MvB with adaptors (0.030 BTC)**, 1.31 MvB
+with the n=16 hash selector, 0.67 MvB with an 8-bit-digit selector, 3.71 MvB
+with 4-bit Winternitz: **0.62x the paper's Keccak verifier input**.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

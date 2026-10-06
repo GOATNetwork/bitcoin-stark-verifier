@@ -1,0 +1,32 @@
+# Ziren experiment copy plus paper/data/ziren_level4_perround_schedules.rs as crates/binary-recursion/tests/level4_perround.rs (removed afterwards); no proving.
+# Level-4 shapes, starting rate 1/1024, per-round folds; input elements = (200 x digests + 128 x other values) / 128, the paired first round's second tree included; model only.
+paired arity 30, packed 23
+reference johnson 10, fold 5: 3666 input elements (942 digests, 1120 opened), pow 46
+current fold (3,5) rates [13,17,21]: 3332 input elements (1045 digests, 872 opened), pow 46
+--- best with pow <= 46
+folds [4, 5, 4, 4] rates [14, 18, 21]: 3193 input elements (990 digests, 704 opened), pow 46; [f4 13q/44b, f5 9q/46b, f4 7q/46b] terminal 6q
+folds [4, 4, 5, 4] rates [14, 17, 21]: 3239 input elements (1019 digests, 704 opened), pow 46; [f4 13q/44b, f4 9q/46b, f5 8q/46b] terminal 6q
+folds [4, 5, 4, 5] rates [14, 18, 21]: 3248 input elements (984 digests, 800 opened), pow 46; [f4 13q/44b, f5 9q/46b, f4 7q/46b] terminal 6q
+folds [4, 5, 4, 4] rates [13, 18, 21]: 3254 input elements (1008 digests, 736 opened), pow 46; [f4 13q/44b, f5 10q/44b, f4 7q/46b] terminal 6q
+folds [4, 4, 5, 4] rates [13, 16, 21]: 3272 input elements (1030 digests, 720 opened), pow 46; [f4 13q/44b, f4 10q/44b, f5 8q/46b] terminal 6q
+folds [3, 5, 5, 4] rates [13, 17, 21]: 3277 input elements (1051 digests, 776 opened), pow 46; [f3 13q/44b, f5 10q/44b, f5 8q/46b] terminal 6q
+folds [4, 4, 5, 4] rates [13, 17, 21]: 3284 input elements (1038 digests, 720 opened), pow 46; [f4 13q/44b, f4 10q/44b, f5 8q/46b] terminal 6q
+folds [3, 4, 5, 5] rates [13, 16, 20]: 3292 input elements (1081 digests, 744 opened), pow 45; [f3 13q/44b, f4 10q/44b, f5 8q/45b] terminal 7q
+--- best with pow <= 47
+folds [4, 4, 4, 5] rates [14, 18, 21]: 3170 input elements (1006 digests, 656 opened), pow 47; [f4 13q/44b, f4 9q/46b, f4 7q/47b] terminal 6q
+folds [4, 5, 4, 4] rates [14, 18, 21]: 3193 input elements (990 digests, 704 opened), pow 46; [f4 13q/44b, f5 9q/46b, f4 7q/46b] terminal 6q
+folds [3, 5, 4, 5] rates [13, 18, 21]: 3209 input elements (1038 digests, 728 opened), pow 47; [f3 13q/44b, f5 10q/45b, f4 7q/47b] terminal 6q
+folds [4, 4, 4, 5] rates [14, 17, 21]: 3219 input elements (1027 digests, 672 opened), pow 47; [f4 13q/44b, f4 9q/46b, f4 8q/47b] terminal 6q
+folds [3, 4, 5, 5] rates [13, 16, 21]: 3229 input elements (1061 digests, 712 opened), pow 47; [f3 13q/44b, f4 10q/44b, f5 8q/47b] terminal 6q
+folds [4, 4, 5, 4] rates [14, 17, 21]: 3239 input elements (1019 digests, 704 opened), pow 46; [f4 13q/44b, f4 9q/46b, f5 8q/46b] terminal 6q
+folds [3, 4, 5, 5] rates [13, 17, 21]: 3241 input elements (1069 digests, 712 opened), pow 47; [f3 13q/44b, f4 10q/44b, f5 8q/47b] terminal 6q
+folds [4, 5, 3, 5] rates [14, 18, 21]: 3244 input elements (997 digests, 744 opened), pow 47; [f4 13q/44b, f5 9q/46b, f3 7q/47b] terminal 6q
+--- best with pow <= 48
+folds [4, 4, 4, 5] rates [14, 18, 21]: 3170 input elements (1006 digests, 656 opened), pow 47; [f4 13q/44b, f4 9q/46b, f4 7q/47b] terminal 6q
+folds [4, 4, 5, 4] rates [14, 18, 22]: 3185 input elements (1005 digests, 672 opened), pow 48; [f4 13q/44b, f4 9q/46b, f5 7q/48b] terminal 6q
+folds [4, 5, 4, 4] rates [14, 18, 21]: 3193 input elements (990 digests, 704 opened), pow 46; [f4 13q/44b, f5 9q/46b, f4 7q/46b] terminal 6q
+folds [4, 5, 4, 4] rates [14, 18, 22]: 3203 input elements (996 digests, 704 opened), pow 48; [f4 13q/44b, f5 9q/46b, f4 7q/48b] terminal 6q
+folds [3, 5, 4, 5] rates [13, 18, 21]: 3209 input elements (1038 digests, 728 opened), pow 47; [f3 13q/44b, f5 10q/45b, f4 7q/47b] terminal 6q
+folds [4, 5, 4, 4] rates [14, 19, 22]: 3214 input elements (1003 digests, 704 opened), pow 48; [f4 13q/44b, f5 9q/46b, f4 7q/48b] terminal 6q
+folds [4, 4, 4, 5] rates [14, 17, 21]: 3219 input elements (1027 digests, 672 opened), pow 47; [f4 13q/44b, f4 9q/46b, f4 8q/47b] terminal 6q
+folds [3, 5, 5, 4] rates [13, 18, 22]: 3223 input elements (1037 digests, 744 opened), pow 48; [f3 13q/44b, f5 10q/45b, f5 7q/48b] terminal 6q

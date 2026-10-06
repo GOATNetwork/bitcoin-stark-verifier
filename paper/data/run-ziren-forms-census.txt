@@ -1,0 +1,9 @@
+# Ziren experiment copy (ziren-packed) plus paper/data/ziren_forms_census.rs as crates/binary-recursion/tests/forms_census.rs (removed afterwards); no proving.
+# The tape machine of the narrow test's level-1 tape: per table, the independent linear forms of its main and preprocessed columns its symbolic constraints and buses read.
+# cargo test --release -p zkm-binary-recursion --test forms_census -- --ignored --nocapture
+ Ledger: main 128 columns -> 1 forms (13 distinct); prep 256 columns -> 17 forms; varying prep 180 columns -> 9 forms
+  Arith: main 512 columns -> 4 forms (16 distinct); prep 128 columns -> 15 forms; varying prep 84 columns -> 15 forms
+ Rewire: main 512 columns -> 183 forms (242 distinct); prep 512 columns -> 244 forms; varying prep 280 columns -> 244 forms
+   Hash: main 512 columns -> 29 forms (51 distinct); prep 256 columns -> 22 forms; varying prep 109 columns -> 20 forms
+ Rounds: main 512 columns -> 416 forms (522 distinct); prep 128 columns -> 10 forms; varying prep 46 columns -> 10 forms
+total: main 2176 -> 633; prep 1280 -> 308; varying prep 699 -> 298
