@@ -1497,6 +1497,40 @@ sat/vB (scaled per bit): **1.37 MvB with adaptors (0.030 BTC)**, 1.31 MvB
 with the n=16 hash selector, 0.67 MvB with an 8-bit-digit selector, 3.71 MvB
 with 4-bit Winternitz: **0.62x the paper's Keccak verifier input**.
 
+**One ring switch for both commitments, and eq-factored bus rounds
+(2026-10-06).** Two more changes, one re-prove:
+
+1. *Joint ring switch.* The main and preprocessed packings have one arity, so
+   the pair's two switches run as one over `t(s, w) = (1 - s) f(w) + s g(w)`:
+   main claims at `(0, z)`, preprocessed at `(1, z)`, all ten merged into one
+   element and one sumcheck ending at `(r0, r)`; the pair opens `f` and `g`
+   at the same `r`, and the verifier checks `(1 - r0) f(r) + r0 g(r)` against
+   the surviving value. The second side's reduction is empty (a new
+   `JointPaired` opening kind). One 128-element tensor and one sumcheck fewer.
+2. *Gruen's factoring in the bus product GKR.* A radix-four round polynomial
+   is `l_k(X) h(X)` with `l_k` the linear eq factor of the round's
+   coordinate; the prover sends `h` (degree four) at 0, 2, 3, 4, and the
+   verifier recovers `h(1) = (s - (1 - r_k) h(0)) / r_k` (one batched
+   inversion per layer). One element per round fewer.
+
+Plonky3 `data/plonky3_joint_switch_gruen_bus.patch` (pair switch, opening
+kind, bus prover and verifier; the binary-pcs, bus and multi-stark tests
+pass), Ziren `data/ziren_joint_switch.patch`. Level 4 proved in 3.2 h
+(proof 86,047 B) and re-recorded (`data/run-ziren-joint-level4.txt`,
+`data/run-ziren-joint-level4-tape-gc.txt`):
+
+| level 4 | inputs (bytes / elements) | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| forms, folds, deep cap | 9,981 / 4,405 | 215,814,232 | 3.45 GB | 643,688 |
+| **joint switch, factored bus** | **9,981 / 4,088** | **216,490,930** | **3.46 GB** | **603,112** (-6.3%) |
+
+It accepts the real proof with 0 of 960,347 values differing, rejects three
+changes of read inputs, and garbles in 109 s. On chain, per key set at 2.2
+sat/vB (scaled per bit): **1.28 MvB with adaptors (0.028 BTC)**, 1.23 MvB
+with the n=16 hash selector, 0.63 MvB with an 8-bit-digit selector, 3.48 MvB
+with 4-bit Winternitz: **0.58x the paper's Keccak verifier input**. From the
+binary stage's 2.36 Mbit at level 2, the verifier input is down 3.9x.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is
