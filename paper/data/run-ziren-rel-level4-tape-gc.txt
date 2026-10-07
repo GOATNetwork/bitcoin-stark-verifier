@@ -1,0 +1,11 @@
+13946 inputs: 9981 bytes, 0 bits, 3965 field elements = 587368 bits (73421 bytes)
+binary-stage verifier: 217807068 non-free gates (217574298 AND, 232770 OR), 1417008588 XOR, 1635390610 wires; garbled 3.48 GB at 16 B per non-free gate; inputs 574952 bits (9981 byte, 0 bit, 3868 full-width inputs; 97 unread); built in 48 s
+test gate_counts ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 47.71s
+honest proof: output true; 1635390610 wires evaluated in 77 s; 0 of 958139 values differ from the tape
+input 1361 changed: output false
+input 2963 changed: output false
+input 8401 changed: output false
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 313.90s
+streamed: 217807068 non-free gates garbled and checked in 193 s (1.13 M/s, one core), plan 93 s over 1635390610 wires, peak 11911370 live wires; output true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 286.41s

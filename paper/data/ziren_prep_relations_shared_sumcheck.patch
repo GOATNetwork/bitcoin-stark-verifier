@@ -1,0 +1,395 @@
+diff --git a/crates/binary-recursion/src/forms.rs b/crates/binary-recursion/src/forms.rs
+--- a/crates/binary-recursion/src/forms.rs
++++ b/crates/binary-recursion/src/forms.rs
+@@ -377,8 +377,207 @@
+             let varies: Vec<bool> = (0..trace.width)
+                 .map(|c| (1..rows).any(|r| trace.values[r * trace.width + c] != trace.values[c]))
+                 .collect();
+-            worth(&prep, prep_width, &|c| varies[c])
++            worth(&prep, prep_width, &|c| varies[c]).map(|lf| over_fixed_trace(lf, &trace.values, trace.width))
+         })
+         .flatten();
+     (main_forms, prep_forms)
+ }
++
++/// Each column of a fixed trace over a GF(2) basis of its columns and the all-ones
++/// column: the chosen original columns, and per column the set of chosen columns (bit
++/// `width` for the ones column) that sum to it over every row.
++fn column_relations(values: &[F], width: usize) -> (Vec<usize>, Vec<Vec<u64>>) {
++    let rows = values.len() / width;
++    let words = rows.div_ceil(64);
++    let combo_words = (width + 1).div_ceil(64);
++    let column = |c: usize| -> Vec<u64> {
++        let mut bits = vec![0u64; words];
++        for r in 0..rows {
++            let v = values[r * width + c];
++            assert!(v == F::ZERO || v == F::ONE, "a preprocessed cell is a bit");
++            if v == F::ONE {
++                bits[r / 64] |= 1 << (r % 64);
++            }
++        }
++        bits
++    };
++    let mut ones = vec![u64::MAX; words];
++    if rows % 64 != 0 {
++        ones[words - 1] = (1u64 << (rows % 64)) - 1;
++    }
++    let mut basis: Vec<(usize, Vec<u64>, Vec<u64>)> = Vec::new();
++    let mut chosen = Vec::new();
++    let mut expressed = vec![Vec::new(); width];
++    for c in std::iter::once(width).chain(0..width) {
++        let mut v = if c == width { ones.clone() } else { column(c) };
++        let mut combo = vec![0u64; combo_words];
++        combo[c / 64] |= 1 << (c % 64);
++        for (pivot, bvec, bcombo) in &basis {
++            if bvec.len() == v.len() && v[pivot / 64] >> (pivot % 64) & 1 == 1 {
++                for (x, y) in v.iter_mut().zip(bvec) {
++                    *x ^= y;
++                }
++                for (x, y) in combo.iter_mut().zip(bcombo) {
++                    *x ^= y;
++                }
++            }
++        }
++        match v.iter().position(|&w| w != 0) {
++            Some(word) => {
++                let pivot = word * 64 + v[word].trailing_zeros() as usize;
++                basis.push((pivot, v, combo));
++                if c < width {
++                    chosen.push(c);
++                    let mut own = vec![0u64; combo_words];
++                    own[c / 64] |= 1 << (c % 64);
++                    expressed[c] = own;
++                }
++            }
++            None => {
++                if c < width {
++                    let mut rest = combo;
++                    rest[c / 64] &= !(1 << (c % 64));
++                    expressed[c] = rest;
++                }
++            }
++        }
++    }
++    (chosen, expressed)
++}
++
++/// Keep only the forms independent over the fixed trace, and rebuild the rest.
++///
++/// A form of fixed columns is, over every row, a fixed combination of a column basis
++/// and the all-ones column, so its value at any point is that combination of the basis
++/// values and a constant.  A form dependent on the kept ones is therefore an affine
++/// function of their values, and the right inverse becomes affine: the verifier reads
++/// the kept forms only.
++fn over_fixed_trace(lf: LinearForms, values: &[F], width: usize) -> LinearForms {
++    let (chosen, expressed) = column_relations(values, width);
++    let index: HashMap<usize, usize> = chosen.iter().enumerate().map(|(i, &c)| (c, i)).collect();
++    // Each form over the basis, and its constant part.
++    let rows: Vec<(Vec<F>, F)> = lf
++        .forms
++        .iter()
++        .map(|form| {
++            let mut row = vec![F::ZERO; chosen.len()];
++            let mut constant = F::ZERO;
++            for &(c, x) in form {
++                let x = f(x);
++                for o in 0..=width {
++                    if expressed[c][o / 64] >> (o % 64) & 1 == 1 {
++                        if o == width {
++                            constant += x;
++                        } else {
++                            row[index[&o]] += x;
++                        }
++                    }
++                }
++            }
++            (row, constant)
++        })
++        .collect();
++    // Independent forms in order; each dependent form as a combination of them.
++    let mut kept: Vec<usize> = Vec::new();
++    let mut reduced: Vec<(usize, Vec<F>, Vec<F>)> = Vec::new();
++    let mut combination: Vec<Option<Vec<F>>> = vec![None; rows.len()];
++    for (j, (row, _)) in rows.iter().enumerate() {
++        let mut a = row.clone();
++        let mut acc = vec![F::ZERO; kept.len()];
++        for (pivot, brow, bcomb) in &reduced {
++            let x = a[*pivot];
++            if x != F::ZERO {
++                for (ai, bi) in a.iter_mut().zip(brow) {
++                    *ai -= x * *bi;
++                }
++                for (ci, bi) in acc.iter_mut().zip(bcomb) {
++                    *ci += x * *bi;
++                }
++            }
++        }
++        match a.iter().position(|x| *x != F::ZERO) {
++            None => combination[j] = Some(acc),
++            Some(pivot) => {
++                let k = kept.len();
++                kept.push(j);
++                let s = a[pivot].inverse();
++                let brow: Vec<F> = a.iter().map(|x| *x * s).collect();
++                let mut bcomb: Vec<F> = acc.iter().map(|x| -*x * s).collect();
++                bcomb.resize(k + 1, F::ZERO);
++                bcomb[k] = s;
++                for (_, _, other) in reduced.iter_mut() {
++                    other.resize(k + 1, F::ZERO);
++                }
++                reduced.push((pivot, brow, bcomb));
++            }
++        }
++    }
++    let position: HashMap<usize, usize> = kept.iter().enumerate().map(|(i, &j)| (j, i)).collect();
++    // Every form as an affine function of the kept forms: coefficients and a constant.
++    let affine: Vec<(Vec<F>, F)> = (0..rows.len())
++        .map(|j| match position.get(&j) {
++            Some(&k) => {
++                let mut coefficients = vec![F::ZERO; kept.len()];
++                coefficients[k] = F::ONE;
++                (coefficients, F::ZERO)
++            }
++            None => {
++                let mut coefficients = combination[j].clone().expect("a dependent form");
++                coefficients.resize(kept.len(), F::ZERO);
++                let constant = rows[j].1
++                    - coefficients.iter().zip(&kept).map(|(t, &s)| *t * rows[s].1).sum::<F>();
++                (coefficients, constant)
++            }
++        })
++        .collect();
++    let inverse: Vec<Vec<(usize, u128)>> = lf
++        .inverse
++        .iter()
++        .map(|column| {
++            let mut coefficients = vec![F::ZERO; kept.len()];
++            let mut constant = F::ZERO;
++            for &(j, r) in column {
++                let r = f(r);
++                for (c, t) in coefficients.iter_mut().zip(&affine[j].0) {
++                    *c += r * *t;
++                }
++                constant += r * affine[j].1;
++            }
++            let mut out: Vec<(usize, u128)> = coefficients
++                .iter()
++                .enumerate()
++                .filter(|(_, x)| **x != F::ZERO)
++                .map(|(k, x)| (k, x.to_repr()))
++                .collect();
++            if constant != F::ZERO {
++                out.push((usize::MAX, constant.to_repr()));
++            }
++            out
++        })
++        .collect();
++    // The kept forms, rebuilt through the inverse, must give back every form's value at
++    // the fixed trace's rows (checked on a few rows).
++    let forms: Vec<Vec<(usize, u128)>> = kept.iter().map(|&j| lf.forms[j].clone()).collect();
++    let rows_count = values.len() / width;
++    for r in (0..rows_count).step_by((rows_count / 7).max(1)).take(8) {
++        let row = &values[r * width..(r + 1) * width];
++        let kept_values: Vec<F> = forms
++            .iter()
++            .map(|form| form.iter().map(|&(c, x)| f(x) * row[c]).sum())
++            .collect();
++        let rebuilt: Vec<F> = inverse
++            .iter()
++            .map(|column| {
++                column
++                    .iter()
++                    .map(|&(k, x)| f(x) * if k == usize::MAX { F::ONE } else { kept_values[k] })
++                    .sum()
++            })
++            .collect();
++        for form in &lf.forms {
++            let at = |cols: &[F]| -> F { form.iter().map(|&(c, x)| f(x) * cols[c]).sum() };
++            assert_eq!(at(&rebuilt), at(row), "the affine inverse rebuilds every form");
++        }
++    }
++    LinearForms { forms, inverse }
++}
+diff --git a/crates/prover/tests/dump_binary_tape.rs b/crates/prover/tests/dump_binary_tape.rs
+--- a/crates/prover/tests/dump_binary_tape.rs
++++ b/crates/prover/tests/dump_binary_tape.rs
+@@ -211,7 +211,6 @@
+     use p3_air::BaseAir;
+     use p3_binary_field::TowerLevel;
+     use p3_field::PrimeCharacteristicRing;
+-    use zkm_binary_recursion::forms::wire_len;
+     use zkm_binary_recursion::machine::arith::{ArithCols, NUM_ARITH_COLS};
+     use zkm_binary_recursion::machine::rounds::{RoundsCols, NUM_ROUNDS_COLS};
+     type Fb = zkm_binary_stark::F;
+@@ -221,7 +220,7 @@
+         let width = BaseAir::<Fb>::width(air);
+         // A table sending forms reads no padding; one sending columns knows its padding is zero.
+         if let Some(forms) = BaseAir::<Fb>::main_linear_forms(air) {
+-            main_offset += wire_len(forms.forms.len(), width);
++            main_offset += forms.forms.len();
+         } else {
+             let pads: Vec<usize> = match air {
+                 TapeAir::Arith(_) => {
+@@ -259,7 +258,7 @@
+                         prep.push((prep_offset + j, value));
+                     }
+                 }
+-                prep_offset += wire_len(forms.forms.len(), width);
++                prep_offset += forms.forms.len();
+             } else {
+                 for (c, v) in constant.iter().enumerate() {
+                     if let Some(v) = v {
+@@ -321,6 +320,10 @@
+     let (schedule, _) = narrow_schedule();
+     eprintln!("narrow schedule: {schedule:?}");
+     let machine = TapeMachine::new(program, &schedule).expect("the tape machine");
++    if std::env::var_os("ZIREN_PREP_RANK").is_some() {
++        prep_rank(&machine);
++        return;
++    }
+     eprintln!("tape machine set up in {:.1} s", started.elapsed().as_secs_f64());
+     let proof: zkm_binary_stark::config::MachineProof =
+         postcard::from_bytes(&std::fs::read(saved).unwrap()).expect("a saved narrow proof");
+@@ -574,3 +577,142 @@
+     f.write_all(&w.0).unwrap();
+     eprintln!("{label} tape written: {} bytes", w.0.len());
+ }
++
++
++/// whir-gc experiment: how many preprocessed values a verifier needs once the
++/// fixed trace's exact linear relations are used.  Per table: the GF(2) rank of
++/// the preprocessed columns (the all-ones column known), and the rank over F of
++/// the table's preprocessed forms written over that column basis.
++fn prep_rank(machine: &TapeMachine) {
++    use p3_air::BaseAir;
++    use p3_binary_field::TowerLevel;
++    use p3_field::{Field, PrimeCharacteristicRing};
++    type Fb = zkm_binary_stark::F;
++    let (mut total_now, mut total_rank) = (0usize, 0usize);
++    for air in machine.airs() {
++        let Some(trace) = BaseAir::<Fb>::preprocessed_trace(air) else { continue };
++        let width = trace.width;
++        let rows = trace.values.len() / width;
++        let words = rows.div_ceil(64);
++        let column = |c: usize| -> Vec<u64> {
++            let mut bits = vec![0u64; words];
++            for r in 0..rows {
++                let v = trace.values[r * width + c];
++                assert!(v == Fb::ZERO || v == Fb::ONE, "a preprocessed cell is a bit");
++                if v == Fb::ONE {
++                    bits[r / 64] |= 1 << (r % 64);
++                }
++            }
++            bits
++        };
++        // Basis vectors in echelon form, each with its combination of original
++        // columns (bit `width` is the all-ones column).
++        let combo_words = (width + 1).div_ceil(64);
++        let mut basis: Vec<(usize, Vec<u64>, Vec<u64>)> = Vec::new();
++        let mut ones = vec![u64::MAX; words];
++        if rows % 64 != 0 {
++            ones[words - 1] = (1u64 << (rows % 64)) - 1;
++        }
++        let mut chosen: Vec<usize> = Vec::new(); // original columns in the basis
++        // Express every column over the chosen originals and the ones column.
++        let mut expressed: Vec<Vec<u64>> = vec![Vec::new(); width];
++        let candidates = std::iter::once(width).chain(0..width);
++        for c in candidates {
++            let mut v = if c == width { ones.clone() } else { column(c) };
++            let mut combo = vec![0u64; combo_words];
++            combo[c / 64] |= 1 << (c % 64);
++            for (pivot, bvec, bcombo) in &basis {
++                if v[pivot / 64] >> (pivot % 64) & 1 == 1 {
++                    for (x, y) in v.iter_mut().zip(bvec) {
++                        *x ^= y;
++                    }
++                    for (x, y) in combo.iter_mut().zip(bcombo) {
++                        *x ^= y;
++                    }
++                }
++            }
++            match v.iter().position(|&w| w != 0) {
++                Some(word) => {
++                    let pivot = word * 64 + v[word].trailing_zeros() as usize;
++                    // Keep earlier vectors reduced at the new pivot.
++                    for (_, bvec, bcombo) in basis.iter_mut() {
++                        if bvec[pivot / 64] >> (pivot % 64) & 1 == 1 {
++                            for (x, y) in bvec.iter_mut().zip(&v) {
++                                *x ^= y;
++                            }
++                            for (x, y) in bcombo.iter_mut().zip(&combo) {
++                                *x ^= y;
++                            }
++                        }
++                    }
++                    basis.push((pivot, v, combo.clone()));
++                    if c < width {
++                        chosen.push(c);
++                        let mut own = vec![0u64; combo_words];
++                        own[c / 64] |= 1 << (c % 64);
++                        expressed[c] = own;
++                    }
++                }
++                None => {
++                    // combo XORs to zero: column c is the sum of the others in it.
++                    if c < width {
++                        let mut rest = combo.clone();
++                        rest[c / 64] &= !(1 << (c % 64));
++                        expressed[c] = rest;
++                    }
++                }
++            }
++        }
++        // Each column over the chosen originals; the ones column's value is known.
++        let index: std::collections::HashMap<usize, usize> =
++            chosen.iter().enumerate().map(|(i, &c)| (c, i)).collect();
++        let forms = BaseAir::<Fb>::preprocessed_linear_forms(air);
++        let form_vectors: Vec<Vec<(usize, Fb)>> = match &forms {
++            Some(lf) => lf.forms.iter().map(|f| f.iter().map(|&(c, x)| (c, Fb::from_repr(x))).collect()).collect(),
++            None => (0..width).map(|c| vec![(c, Fb::ONE)]).collect(),
++        };
++        let mut matrix: Vec<Vec<Fb>> = Vec::new();
++        for form in &form_vectors {
++            let mut row = vec![Fb::ZERO; chosen.len()];
++            for &(c, x) in form {
++                for o in 0..width {
++                    if expressed[c][o / 64] >> (o % 64) & 1 == 1 {
++                        row[index[&o]] += x;
++                    }
++                }
++            }
++            matrix.push(row);
++        }
++        // Rank over F.
++        let mut rank = 0;
++        let cols = chosen.len();
++        for col in 0..cols {
++            let Some(p) = (rank..matrix.len()).find(|&r| matrix[r][col] != Fb::ZERO) else { continue };
++            matrix.swap(rank, p);
++            let inv = matrix[rank][col].inverse();
++            let pivot_row: Vec<Fb> = matrix[rank].iter().map(|x| *x * inv).collect();
++            for r in 0..matrix.len() {
++                if r != rank && matrix[r][col] != Fb::ZERO {
++                    let f = matrix[r][col];
++                    for (x, y) in matrix[r].iter_mut().zip(&pivot_row) {
++                        *x -= f * *y;
++                    }
++                }
++            }
++            matrix[rank] = pivot_row;
++            rank += 1;
++        }
++        // What the verifier reads today: forms (or columns) not over constant columns only.
++        let varies: Vec<bool> = (0..width)
++            .map(|c| (1..rows).any(|r| trace.values[r * width + c] != trace.values[c]))
++            .collect();
++        let now = form_vectors.iter().filter(|f| f.iter().any(|&(c, _)| varies[c])).count();
++        eprintln!(
++            "{:>7}: {width} preprocessed columns, GF(2) rank {} (with the ones column), {} forms, {now} read today, {rank} independent over the column basis",
++            air.name(), basis.len(), form_vectors.len()
++        );
++        total_now += now;
++        total_rank += rank;
++    }
++    eprintln!("preprocessed values read today {total_now}; needed with the fixed relations {total_rank}");
++}

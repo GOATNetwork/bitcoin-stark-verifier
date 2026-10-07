@@ -1,0 +1,8 @@
+# Ziren dev copy (the joint-run tree) with the dumper's ZIREN_PREP_RANK mode; the level-4 tape machine built from level3_tape-johnson-9-5.bin, no proving.
+# Per table: GF(2) rank of the fixed preprocessed columns (all-ones column included), the preprocessed forms, those read today (any varying column), and their rank over F written over the column basis.
+Ledger: 256 preprocessed columns, GF(2) rank 189 (with the ones column), 17 forms, 17 read today, 17 independent over the column basis
+Arith: 128 preprocessed columns, GF(2) rank 84 (with the ones column), 15 forms, 15 read today, 12 independent over the column basis
+Rewire: 512 preprocessed columns, GF(2) rank 63 (with the ones column), 244 forms, 124 read today, 22 independent over the column basis
+Hash: 256 preprocessed columns, GF(2) rank 129 (with the ones column), 22 forms, 22 read today, 18 independent over the column basis
+Rounds: 128 preprocessed columns, GF(2) rank 32 (with the ones column), 10 forms, 10 read today, 9 independent over the column basis
+preprocessed values read today 188; needed with the fixed relations 78

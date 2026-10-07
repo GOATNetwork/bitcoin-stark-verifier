@@ -1,0 +1,259 @@
+Running scope as unit: run-rba2d34b2eef54db1909d5206b59766d0.scope
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+
+    Finished `release` profile [optimized] target(s) in 6.96s
+     Running tests/dump_binary_tape.rs (/mnt_zkm/stephen/ziren-dev-target/release/deps/dump_binary_tape-af35eb870871f53c)
+
+running 1 test
+recursing from /mnt_zkm/stephen/ziren-tape-rw64/level3_tape-johnson-9-5.bin: 276203 ops, 10391 inputs
+tape machine program: 1243009 cells read 1506730 times; arith 319583 rows (Add 183507, Mul 121799, Square 3999, Inv 1673, Eq 1155, Select 234, Copy 7216); rewire 64201 rows; 4180 compressions
+narrow schedule: BinarySchedule { regime: Johnson, log_inv_rate: 10, folding: 5, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 50 } }
+2026-10-07T04:53:25.819783Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T04:53:25.819830Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T04:53:26.861545Z  INFO gather boolean bits: close time.busy=4.60ms time.idle=6.09µs
+2026-10-07T04:53:26.861599Z  INFO new: close time.busy=1.59µs time.idle=330ns
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+2026-10-07T04:55:21.658671Z  INFO encode: close time.busy=115s time.idle=2.32µs height=536870912 width=16
+2026-10-07T04:55:23.459430Z  INFO commit_matrix: close time.busy=1.80s time.idle=14.9µs
+   Ledger: 2^21 rows x 128 + 256 prep
+    Arith: 2^19 rows x 512 + 128 prep
+   Rewire: 2^16 rows x 512 + 512 prep
+     Hash: 2^14 rows x 512 + 256 prep
+   Rounds: 2^19 rows x 512 + 128 prep
+tape machine set up in 118.2 s
+2026-10-07T04:55:23.849778Z  INFO prove:gather boolean bits: close time.busy=8.29ms time.idle=3.00µs
+2026-10-07T04:55:23.849835Z  INFO prove:new: close time.busy=2.82µs time.idle=960ns
+2026-10-07T04:57:16.900345Z  INFO prove:encode: close time.busy=113s time.idle=1.99µs height=536870912 width=16
+2026-10-07T04:57:18.003521Z  INFO prove:commit_matrix: close time.busy=1.10s time.idle=3.14µs
+2026-10-07T04:58:20.202648Z  INFO prove:prove_with_lookup_and_bus: close time.busy=54.1s time.idle=3.49µs
+2026-10-07T04:58:29.296476Z  INFO prove:evaluate boolean columns: close time.busy=1.28µs time.idle=2.73µs width=128 next=false
+2026-10-07T04:58:29.296551Z  INFO prove:evaluate boolean columns: close time.busy=7.67µs time.idle=230ns width=512 next=false
+2026-10-07T04:58:29.296602Z  INFO prove:evaluate boolean columns: close time.busy=1.63µs time.idle=191ns width=512 next=false
+2026-10-07T04:58:29.296709Z  INFO prove:evaluate boolean columns: close time.busy=1.97µs time.idle=190ns width=512 next=false
+2026-10-07T04:58:29.296871Z  INFO prove:evaluate boolean columns: close time.busy=1.48µs time.idle=181ns width=512 next=false
+2026-10-07T04:58:29.309038Z  INFO prove:evaluate boolean columns: close time.busy=10.6ms time.idle=2.18µs width=256 next=false
+2026-10-07T04:58:29.312522Z  INFO prove:evaluate boolean columns: close time.busy=3.39ms time.idle=3.98µs width=128 next=false
+2026-10-07T04:58:29.314441Z  INFO prove:evaluate boolean columns: close time.busy=1.82ms time.idle=3.19µs width=512 next=false
+2026-10-07T04:58:29.315576Z  INFO prove:evaluate boolean columns: close time.busy=1.04ms time.idle=4.00µs width=256 next=false
+2026-10-07T04:58:29.319202Z  INFO prove:evaluate boolean columns: close time.busy=3.51ms time.idle=4.30µs width=128 next=false
+2026-10-07T04:58:29.457120Z  INFO prove:bit ring switch: bit ring switch claims merged claims=10
+2026-10-07T04:58:29.623303Z  INFO prove:bit ring switch: close time.busy=166ms time.idle=5.09µs
+2026-10-07T04:58:29.709343Z  INFO prove:pair opening:pair values: close time.busy=76.9ms time.idle=1.96µs
+2026-10-07T04:58:30.483681Z  INFO prove:pair opening:grind for proof-of-work witness: close time.busy=774ms time.idle=4.53µs
+2026-10-07T04:58:31.341160Z  INFO prove:pair opening:pair combine: close time.busy=857ms time.idle=4.30µs
+2026-10-07T04:58:31.341942Z  INFO prove:pair opening:new: close time.busy=9.95µs time.idle=6.18µs
+2026-10-07T04:58:31.369125Z  INFO prove:pair opening:record_virtual: close time.busy=27.1ms time.idle=2.25µs
+2026-10-07T04:58:31.393125Z  INFO prove:pair opening:record_virtual: close time.busy=23.9ms time.idle=3.13µs
+2026-10-07T04:58:31.565145Z  INFO prove:pair opening:prove_batched:into_sumcheck:grind for proof-of-work witness: close time.busy=127ms time.idle=4.28µs
+2026-10-07T04:58:33.009800Z  INFO prove:pair opening:prove_batched:into_sumcheck:grind for proof-of-work witness: close time.busy=1.44s time.idle=3.54µs
+2026-10-07T04:58:36.718445Z  INFO prove:pair opening:prove_batched:into_sumcheck:grind for proof-of-work witness: close time.busy=3.71s time.idle=2.91µs
+2026-10-07T04:58:38.629550Z  INFO prove:pair opening:prove_batched:into_sumcheck:grind for proof-of-work witness: close time.busy=1.91s time.idle=3.10µs
+2026-10-07T04:58:38.655214Z  INFO prove:pair opening:prove_batched:into_sumcheck:compress_stacked:compress_stacked_scaled: close time.busy=25.6ms time.idle=1.75µs
+2026-10-07T04:58:38.655236Z  INFO prove:pair opening:prove_batched:into_sumcheck:compress_stacked: close time.busy=25.6ms time.idle=1.40µs
+2026-10-07T04:58:38.668056Z  INFO prove:pair opening:prove_batched:into_sumcheck:combine_weights: close time.busy=12.8ms time.idle=3.40µs
+2026-10-07T04:58:38.668103Z  INFO prove:pair opening:prove_batched:into_sumcheck: close time.busy=7.23s time.idle=549ns
+2026-10-07T04:58:38.675436Z  INFO prove:pair opening:prove_batched:pad: close time.busy=1.45ms time.idle=1.98µs
+2026-10-07T05:00:33.042853Z  INFO prove:pair opening:prove_batched:dft: close time.busy=114s time.idle=3.27µs height=268435456 width=32
+2026-10-07T05:00:34.446917Z  INFO prove:pair opening:prove_batched:commit_matrix: close time.busy=1.40s time.idle=2.36µs
+2026-10-07T05:04:35.758052Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=241s time.idle=10.8µs
+2026-10-07T05:04:53.067995Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=17.2s time.idle=6.14µs
+2026-10-07T05:04:58.553758Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=5.47s time.idle=5.73µs
+2026-10-07T05:05:15.361815Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=16.8s time.idle=5.21µs
+2026-10-07T05:05:19.185184Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=3.82s time.idle=4.95µs
+2026-10-07T05:06:00.917287Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=41.7s time.idle=7.38µs
+2026-10-07T05:06:14.588889Z  INFO prove:pair opening:prove_batched:pad: close time.busy=531µs time.idle=6.24µs
+2026-10-07T05:07:15.414763Z  INFO prove:pair opening:prove_batched:dft: close time.busy=60.8s time.idle=2.21µs height=268435456 width=16
+2026-10-07T05:07:16.412732Z  INFO prove:pair opening:prove_batched:commit_matrix: close time.busy=998ms time.idle=3.24µs
+2026-10-07T05:24:51.958084Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=1056s time.idle=4.62µs
+2026-10-07T05:32:13.105428Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=441s time.idle=4.50µs
+2026-10-07T05:32:21.271513Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=8.16s time.idle=3.96µs
+2026-10-07T05:42:14.925154Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=594s time.idle=4.70µs
+2026-10-07T05:47:50.496147Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=336s time.idle=3.23µs
+2026-10-07T05:48:04.936681Z  INFO prove:pair opening:prove_batched:pad: close time.busy=26.4µs time.idle=8.55µs
+2026-10-07T05:48:35.226553Z  INFO prove:pair opening:prove_batched:dft: close time.busy=30.3s time.idle=3.36µs height=134217728 width=16
+2026-10-07T05:48:35.612151Z  INFO prove:pair opening:prove_batched:commit_matrix: close time.busy=386ms time.idle=4.08µs
+2026-10-07T05:50:15.593665Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=100.0s time.idle=4.23µs
+2026-10-07T05:54:05.787935Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=230s time.idle=7.88µs
+2026-10-07T06:08:46.721345Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=881s time.idle=3.73µs
+2026-10-07T06:23:01.420626Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=855s time.idle=2.95µs
+2026-10-07T06:34:49.454001Z  INFO prove:pair opening:prove_batched:grind for proof-of-work witness: close time.busy=708s time.idle=3.68µs
+2026-10-07T06:41:06.683189Z  INFO prove:pair opening:prove_batched:final_round:grind for proof-of-work witness: close time.busy=372s time.idle=2.73µs
+2026-10-07T06:41:06.684295Z  INFO prove:pair opening:prove_batched:final_round: close time.busy=372s time.idle=4.41µs
+2026-10-07T06:41:09.542354Z  INFO prove:pair opening:prove_batched: close time.busy=6158s time.idle=5.66µs
+2026-10-07T06:41:09.546177Z  INFO prove:pair opening: close time.busy=6160s time.idle=3.35µs
+2026-10-07T06:41:09.555416Z  INFO prove: close time.busy=6346s time.idle=3.45µs
+narrow proof: 81501 bytes in 6346.1 s
+2026-10-07T06:41:09.671457Z  INFO verify:verify_batched: close time.busy=8.67ms time.idle=3.53µs
+2026-10-07T06:41:09.690169Z  INFO verify: close time.busy=93.0ms time.idle=4.81µs
+    commitment                                                    201 B
+    lookup                                                          1 B
+    indexed                                                         1 B
+    bus                                                         12696 B
+    sumcheck                                                     1619 B
+    main.values (751 values)                                    12382 B
+    main.reduction.claims (1 claims)                             2396 B
+    main.reduction.sumcheck                                       903 B
+    preprocessed.values (101 values)                             1887 B
+    preprocessed.reduction.claims (0 claims)                        1 B
+    preprocessed.reduction.sumcheck                                 2 B
+    preprocessed.opening.evals+cross                               89 B
+    preprocessed.opening.whir.initial_sumcheck                    174 B
+    preprocessed.opening.whir.rounds (3 rounds)                 42629 B
+    preprocessed.opening.whir.final_openings                     5360 B
+    preprocessed.opening.whir.final_poly                          863 B
+2026-10-07T06:41:09.700418Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:41:09.703211Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:41:09.969664Z  INFO verify:verify_batched: close time.busy=11.8ms time.idle=4.48µs
+2026-10-07T06:41:09.989467Z  INFO verify: close time.busy=184ms time.idle=6.74µs
+next level recorded in 0.3 s
+next level: 244052 ops, 378715 variables, 15376 inputs, 150435 hashed bytes; garbled estimate 2.41e8 AND (2.11e8 products, 2.91e7 hashing, 9.69e5 other)
+next level census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [15376, 102800, 99656, 517, 1265, 1214, 5603, 6566, 267, 1571, 391, 5112, 0, 3714]
+next level tape written: 10484949 bytes
+test dump_binary_stage_verifier_tape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6475.70s
+
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 42619.05
+	System time (seconds): 10776.28
+	Percent of CPU this job got: 823%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:48:03
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 473427072
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 2970
+	Minor (reclaiming a frame) page faults: 202452287
+	Voluntary context switches: 555183
+	Involuntary context switches: 614439
+	Swaps: 0
+	File system inputs: 131184
+	File system outputs: 21584
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+Running scope as unit: run-r237e8ab12ad84ef29f8cac68a82053f4.scope
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+
+    Finished `release` profile [optimized] target(s) in 14.05s
+     Running tests/dump_binary_tape.rs (/mnt_zkm/stephen/ziren-dev-target/release/deps/dump_binary_tape-af35eb870871f53c)
+
+running 1 test
+recursing from /mnt_zkm/stephen/ziren-tape-rw64/level3_tape-johnson-9-5.bin: 276203 ops, 10391 inputs
+narrow schedule: BinarySchedule { regime: Johnson, log_inv_rate: 10, folding: 5, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 50 } }
+2026-10-07T06:41:36.469460Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:41:36.472602Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:41:37.854876Z  INFO gather boolean bits: close time.busy=14.1ms time.idle=6.86µs
+2026-10-07T06:41:37.854932Z  INFO new: close time.busy=1.51µs time.idle=610ns
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+2026-10-07T06:43:50.749295Z  INFO encode: close time.busy=133s time.idle=3.50µs height=536870912 width=16
+2026-10-07T06:43:55.162311Z  INFO commit_matrix: close time.busy=4.41s time.idle=4.56ms
+tape machine set up in 139.3 s
+2026-10-07T06:44:08.060313Z  INFO verify:verify_batched: close time.busy=996µs time.idle=5.02µs
+2026-10-07T06:44:08.073025Z  INFO verify: close time.busy=12.9s time.idle=4.10µs
+deep preprocessed cap: 16384 constant nodes at level 14
+known opened values: 96 of 751 main (padding), 0 of 101 preprocessed (constant columns)
+2026-10-07T06:44:12.335715Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:44:12.335741Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:44:12.442478Z  INFO verify:verify_batched: close time.busy=47.0ms time.idle=3.90µs
+2026-10-07T06:44:12.456517Z  INFO verify: close time.busy=120ms time.idle=7.12µs
+re-recorded in 0.1 s
+re-recorded level: 832199 ops, 958139 variables, 13946 inputs, 143285 hashed bytes; garbled estimate 2.73e8 AND (2.10e8 products, 2.76e7 hashing, 3.50e7 other)
+re-recorded level census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [13946, 428297, 99557, 517, 1265, 1214, 5031, 5851, 267, 1428, 391, 270721, 0, 3714]
+re-recorded level tape written: 33232223 bytes
+test dump_binary_stage_verifier_tape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 168.41s
+
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 5159.37
+	System time (seconds): 2556.25
+	Percent of CPU this job got: 4220%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:02.83
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 170299072
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 400
+	Minor (reclaiming a frame) page faults: 81535189
+	Voluntary context switches: 26587
+	Involuntary context switches: 682302
+	Swaps: 0
+	File system inputs: 90576
+	File system outputs: 65568
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+Running scope as unit: run-rb58e788774634e5c918b832eaa19103d.scope
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+
+    Finished `release` profile [optimized] target(s) in 11.92s
+     Running tests/dump_binary_tape.rs (/mnt_zkm/stephen/ziren-dev-target/release/deps/dump_binary_tape-af35eb870871f53c)
+
+running 1 test
+recursing from /mnt_zkm/stephen/ziren-tape-rw64/level3_tape-johnson-9-5.bin: 276203 ops, 10391 inputs
+narrow schedule: BinarySchedule { regime: Johnson, log_inv_rate: 10, folding: 5, term_security_bits: 108, security_bits: 100, budget: BinaryWhirBudget { max_stir_queries: 768, max_proof_bytes: 1048576, max_grinding_bits: 50 } }
+2026-10-07T06:44:37.075469Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:44:37.075526Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:44:38.211188Z  INFO gather boolean bits: close time.busy=7.58ms time.idle=4.81µs
+2026-10-07T06:44:38.211265Z  INFO new: close time.busy=8.19µs time.idle=1.52µs
+test dump_binary_stage_verifier_tape has been running for over 60 seconds
+2026-10-07T06:46:52.937868Z  INFO encode: close time.busy=135s time.idle=3.65µs height=536870912 width=16
+2026-10-07T06:46:55.602435Z  INFO commit_matrix: close time.busy=2.66s time.idle=5.53µs
+tape machine set up in 139.2 s
+2026-10-07T06:47:04.998055Z  INFO verify:verify_batched: close time.busy=916µs time.idle=3.14µs
+2026-10-07T06:47:05.010845Z  INFO verify: close time.busy=9.40s time.idle=1.74µs
+deep preprocessed cap: 262144 constant nodes at level 18
+known opened values: 96 of 751 main (padding), 0 of 101 preprocessed (constant columns)
+2026-10-07T06:47:07.892651Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:47:07.892669Z  INFO per-round folds num_variables=23 folds=[4, 5, 4, 4, 0, 0, 0, 0]
+2026-10-07T06:47:08.458829Z  INFO verify:verify_batched: close time.busy=515ms time.idle=4.03µs
+2026-10-07T06:47:08.470420Z  INFO verify: close time.busy=577ms time.idle=4.38µs
+re-recorded in 0.6 s
+re-recorded level: 9709031 ops, 9831799 variables, 13426 inputs, 140685 hashed bytes; garbled estimate 7.84e8 AND (2.10e8 products, 2.70e7 hashing, 5.46e8 other)
+re-recorded level census ["input", "add", "mul", "inv", "assert_eq", "assert_nonzero", "to_bytes", "from_bytes", "byte_bits", "blake3", "transpose", "select", "merkle_node", "square"] [13426, 5312777, 99557, 517, 1265, 1214, 4823, 5591, 267, 1376, 391, 4264113, 0, 3714]
+re-recorded level tape written: 379777839 bytes
+test dump_binary_stage_verifier_tape ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 170.23s
+
+	Command being timed: "cargo test --release -p zkm-prover --test dump_binary_tape -- --ignored --nocapture"
+	User time (seconds): 5108.77
+	System time (seconds): 2374.44
+	Percent of CPU this job got: 4102%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:02.39
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 170336084
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 217
+	Minor (reclaiming a frame) page faults: 69093862
+	Voluntary context switches: 26912
+	Involuntary context switches: 964573
+	Swaps: 0
+	File system inputs: 143704
+	File system outputs: 742192
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

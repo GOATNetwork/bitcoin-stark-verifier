@@ -583,6 +583,17 @@ finalization are reported separately.
     non-free gates, 3.46 GB, 603,112 input bits (9,981 byte and 4,088
     element inputs); accepts with 0 of 960,347 values differing; rejects three
     changes; garbled in 109 s.
+  - Fixed preprocessed relations, one shared forms sumcheck, deep cap 18:
+    `run-ziren-prep-rank-level4.txt` (GF(2) rank of each table's fixed
+    preprocessed columns; 188 preprocessed values read, 78 independent),
+    `plonky3_prep_relations_shared_sumcheck.patch`,
+    `ziren_prep_relations_shared_sumcheck.patch`; `run-ziren-rel-level4.txt`
+    (level 4 proved in 1.8 h, 473 GB peak, re-recorded at caps 14 and 18),
+    `run-ziren-rel-level4-tape-gc.txt` (cap 14: 217,807,068 non-free gates,
+    3.48 GB, 574,952 input bits), `run-ziren-rel18-level4-tape-gc.txt` (cap
+    18: 218,022,788 non-free gates, 3.49 GB, 564,552 input bits, 9,513 byte
+    and 3,816 element inputs; accepts with 0 of 9,831,799 values differing;
+    rejects three changes; garbled in 217 s).
   - The per-step patches above are incremental and some are against
     intermediate copies; the cumulative patches that reproduce the final trees
     are in `patches/` at the repository root (`plonky3-fb5d0d89.patch`,

@@ -1531,6 +1531,58 @@ with the n=16 hash selector, 0.63 MvB with an 8-bit-digit selector, 3.48 MvB
 with 4-bit Winternitz: **0.58x the paper's Keccak verifier input**. From the
 binary stage's 2.36 Mbit at level 2, the verifier input is down 3.9x.
 
+**Fixed preprocessed relations, one shared forms sumcheck, deep cap 18
+(2026-10-07).** A census of the level-4 machine's fixed preprocessed columns
+first (`data/run-ziren-prep-rank-level4.txt`, no proving): over GF(2), with
+the all-ones column known, the five tables' 1,280 preprocessed columns have
+rank 189, 84, 63, 129, 32, and of the 188 preprocessed values read (forms not
+over constant columns), only 78 are independent once each form is written over
+that column basis. Three changes, one re-prove:
+
+1. *Fixed preprocessed relations.* A preprocessed form is, at every row, a
+   fixed GF(2) combination of a column basis and the all-ones column, so a
+   form dependent on others is an affine function of their values. The forms
+   are cut to the independent ones and the right inverse becomes affine
+   (Plonky3: an inverse entry `usize::MAX` is the constant one; Ziren
+   `forms.rs` `column_relations`, `over_fixed_trace`, checked on rows of the
+   fixed trace). Preprocessed values 391 -> 101 (271 -> 101 read, the rest
+   are forms over constant columns, known in the re-record).
+2. *One forms sumcheck for every table.* The per-table column sumchecks run as
+   one over the widest table's column variables, each table zero above its
+   width and read at the trailing coordinates, so the claim is
+   `sum_t prefix_t^2 L_t(s_t) w_t` and each table sends only its fold. Main
+   values 801 -> 751 (the round coefficients counted in the values section).
+3. *Deep preprocessed cap 18.* The re-record takes the fixed tree's level-18
+   nodes (262,144) as constants instead of level 14 (16,384); four fewer
+   authentication levels per preprocessed query, more selection gates.
+
+Plonky3 `data/plonky3_prep_relations_shared_sumcheck.patch` (plan, transcript,
+`table.rs`; a test with a 16-wide, an 8-wide and a plain table, the affine
+inverse on one), Ziren `data/ziren_prep_relations_shared_sumcheck.patch`
+(`forms.rs`, the dumper's `ZIREN_PREP_RANK` mode). Level 4 proved in 1.8 h
+(proof 81,501 B, 473 GB peak) and re-recorded at caps 14 and 18
+(`data/run-ziren-rel-level4.txt`, `data/run-ziren-rel-level4-tape-gc.txt`,
+`data/run-ziren-rel18-level4-tape-gc.txt`):
+
+| level 4 | inputs (bytes / elements) | non-free gates | garbled | input bits |
+|---|---:|---:|---:|---:|
+| joint switch, factored bus | 9,981 / 4,088 | 216,490,930 | 3.46 GB | 603,112 |
+| relations, shared sumcheck, cap 14 | 9,981 / 3,868 | 217,807,068 | 3.48 GB | 574,952 (-4.7%) |
+| **cap 18** | **9,513 / 3,816** | **218,022,788** | **3.49 GB** | **564,552** (-6.4%) |
+
+At cap 18 it accepts the real proof with 0 of 9,831,799 values differing
+(the constant nodes are tape variables), rejects three changes of read inputs,
+and garbles in 217 s on one core. A deeper cap stops paying: each level
+removes one 200-bit node per query but doubles the constants the one-hot
+selects from. On chain, per key set at 2.2 sat/vB (scaled per bit): **1.20
+MvB with adaptors (0.026 BTC)**, 1.15 MvB with the n=16 hash selector, 0.59
+MvB with an 8-bit-digit selector, 3.26 MvB with 4-bit Winternitz: **0.54x
+the paper's Keccak verifier input**, and about 38x deferred binding's 31.5 kvB.
+From the binary stage's 2.36 Mbit at level 2, the input is down 4.2x.
+
+Not done: moving Rewire's per-bit writes so the bus product GKR loses a level
+(estimated -1.2%).
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

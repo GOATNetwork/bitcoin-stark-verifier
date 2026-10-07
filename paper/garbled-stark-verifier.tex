@@ -87,8 +87,8 @@ about 40 classical bits and Bitcoin's transaction signatures are not
 post-quantum. Thus the artifact is a measured hash-based verifier and a cost
 study, not a complete post-quantum Bitcoin protocol. Recursing a zkVM proof
 through a narrow tape machine, with experimental and unreviewed changes to the
-proof system that we list, brings the garbled verifier's input to 603{,}112
-bits in 216.5M non-free gates.
+proof system that we list, brings the garbled verifier's input to 564{,}552
+bits in 218.0M non-free gates.
 \end{abstract}
 
 % =====================================================================
@@ -193,7 +193,7 @@ last three study its Bitcoin integration, security boundaries and measurements.
     a gate profile, an ablation of the gadget and memory choices, measurements
     of the one-key-set input-authentication components, seven-key-set
     projections, a comparison with pairing-based designs, and the garbled
-    verifier of a recursion proof of Ziren's binary stage at 603{,}112 input
+    verifier of a recursion proof of Ziren's binary stage at 564{,}552 input
     bits (\S\ref{sec:eval}).
 \end{itemize}
 The circuit builder and the measurements are open source; the streaming
@@ -1499,7 +1499,7 @@ tuning also moves soundness from queries to grinding, which halves under quantum
 search (\S\ref{sec:pq}). Below this the input shrinks only with a narrower AIR,
 whose opened values scale with its width, or by recursion into a proof whose own
 WHIR opening is still some $0.37$M bits at these parameters; a measured
-recursion reaches 603{,}112 bits (Table~\ref{tab:recursion}).
+recursion reaches 564{,}552 bits (Table~\ref{tab:recursion}).
 
 \begin{table}[t]\centering\small
 \begin{tabular}{lrr}\toprule
@@ -1560,8 +1560,8 @@ its circuit accepts that proof with every tape value reproduced and rejects
 three single-input changes. From the third row on, each is a level-4 proof
 re-proved from the same level-3 tape at the Johnson rate $1/1024$ and
 re-recorded, and each was garbled by the streaming garbler. The last has
-603{,}112 input bits (9{,}981 bytes and 4{,}088 field elements), $0.58\times$
-the Keccak verifier's, in 216.5M non-free gates and 3.46\,GB.
+564{,}552 input bits (9{,}513 bytes and 3{,}816 field elements), $0.54\times$
+the Keccak verifier's, in 218.0M non-free gates and 3.49\,GB.
 
 \begin{table}[t]\centering\small
 \begin{tabular}{lrrr}\toprule
@@ -1574,7 +1574,9 @@ level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,G
 \quad + 200-bit Merkle digests & 895{,}504 & 220.2M & 3.52\,GB\\
 \quad + packed operand columns & 834{,}832 & 219.2M & 3.51\,GB\\
 \quad + linear forms, per-round folds, deep preprocessed cap & 643{,}688 & 215.8M & 3.45\,GB\\
-\quad + one ring switch per pair, eq-factored bus rounds & \textbf{603{,}112} & 216.5M & 3.46\,GB\\\bottomrule
+\quad + one ring switch per pair, eq-factored bus rounds & 603{,}112 & 216.5M & 3.46\,GB\\
+\quad + affine preprocessed forms, one shared forms sumcheck & 574{,}952 & 217.8M & 3.48\,GB\\
+\quad + preprocessed cap 18 layers deep & \textbf{564{,}552} & 218.0M & 3.49\,GB\\\bottomrule
 \end{tabular}
 \caption{Narrow recursion removes the statement's width from the garbled
 verifier's input. Exact counts for Ziren's binary stage and for the verifier of its narrow-recursion proofs (level 2 with 26-bit addresses, the
@@ -1586,9 +1588,9 @@ changes listed in the text.}
 The steps combine recording choices with changes to the proof system. The
 recorder reads opened values the verifier knows (padding and constant
 preprocessed columns) as constants, and reads the fixed preprocessed Merkle
-tree down to 14 layers below its root as circuit constants, chosen by a one-hot
+tree down to 18 layers below its root as circuit constants, chosen by a one-hot
 of the query's top index bits. The schedule folds 4, 5, 4, 4 variables per WHIR
-round at 46 bits of grinding. The protocol changes are four. Ring-switch claims
+round at 46 bits of grinding. The protocol changes are five. Ring-switch claims
 at points sharing the coordinates one packed element absorbs send one tensor,
 weighted by powers of a challenge drawn after the points, and a pair's main and
 preprocessed switches run as one over both packings behind a selector variable.
@@ -1597,17 +1599,20 @@ $2^{100}$ work classically and $2^{66.7}$ under BHT search. Each table sends one
 value per linear form of its columns that its constraints and buses read,
 derived from the symbolic AIR, and a sumcheck over the column index reduces them
 to the table's ring-switch claim; the verifier rebuilds the columns with a
-constant right inverse, which costs only \XOR{}s. Bus product-GKR rounds send
+constant right inverse, which costs only \XOR{}s. Preprocessed forms are cut
+to those independent over the fixed trace's GF(2) column basis and the
+all-ones column, the rest rebuilt by an affine inverse, and one sumcheck over
+the widest table's column index serves every table. Bus product-GKR rounds send
 the round polynomial without its linear eq factor. Each change passes Plonky3's
 and Ziren's tests and tamper tests of its own, but none has been reviewed; the
 patches are in the repository. Each proof meets 100 bits of composed soundness
 by Plonky3's assessment in the Johnson regime, with up to 46 bits of grinding
 per term at level 4, which halves under quantum search. The circuit checks only
 the last proof, so the statement's soundness also composes over the earlier
-levels. Proving level 4 alone took 3.2 hours on 64 cores with four GPUs
+levels. Proving level 4 alone took 1.8 hours on 64 cores with four GPUs
 grinding and about 470\,GB of memory. At the measured mechanisms' per-bit costs
-(Table~\ref{tab:onchain}), 603{,}112 bits would be about 1.28\,MvB with the
-8-bit adaptor baseline and 6.86--10.01\,MvB per hash-key set; these are
+(Table~\ref{tab:onchain}), 564{,}552 bits would be about 1.20\,MvB with the
+8-bit adaptor baseline and 6.42--9.37\,MvB per hash-key set; these are
 scalings, not fixtures.
 
 \paragraph{Comparison.} Table~\ref{tab:compare} places the result among
@@ -1626,9 +1631,9 @@ artifacts, of megabytes, and their proofs need far fewer input bits; both rely
 on pairings and a trusted setup.
 On-chain, the comparison inverts. The Groth16 designs publish 508 to 1{,}019
 input bits and report dispute paths of a few to a few tens of kilobytes, under
-\$60; our dispute publishes 603{,}112 bits and its input component alone is
-about 1.28\,MvB with adaptor signatures or 6.86\,MvB hash-based, one to three
-orders of magnitude more (about $40\times$ deferred binding's 32\,kvB with
+\$60; our dispute publishes 564{,}552 bits and its input component alone is
+about 1.20\,MvB with adaptor signatures or 6.42\,MvB hash-based, one to three
+orders of magnitude more (about $38\times$ deferred binding's 32\,kvB with
 adaptors), before the unconstructed remainder of the
 graph. That is the price of verifying the STARK directly rather than wrapping
 it, and \S\ref{sec:protocol} and \S\ref{sec:discussion} are about reducing it.
@@ -1642,7 +1647,7 @@ garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & n/r & e
 BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & Assert 9{,}240\,vB, ChallengeAssert 17{,}400\,vB, WronglyChallenged 149\,vB: 26.8\,kvB, \$56.90 at 2.2\,sat/vB & pairings (GGM+RO), trusted setup\\\addlinespace[2pt]
 deferred-binding WE~\cite{goatpbwe} & Groth16, late inputs & 0.92\,GiB$^{\dagger}$ & 768 & Assert 2{,}154\,B, ChallengeAssert 14{,}312\,B witness and 109{,}393\,B script, WronglyChallenged 64\,B; about 32\,kvB & BABE + DLog\\\addlinespace[2pt]
 PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & one hash in Assert, one signature in Disprove; no size reported & heuristic\\\addlinespace[2pt]
-\textbf{this work} & \textbf{STARK recursion proof over $\F$} & \textbf{3.46\,GB} & \textbf{603{,}112} & \textbf{input publication 1.28\,MvB (adaptor, DLog) or 6.86\,MvB (hash-based), about \$2{,}700 or \$14{,}400 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity; unreviewed proof-system changes}$^{\ddagger}$\\\bottomrule
+\textbf{this work} & \textbf{STARK recursion proof over $\F$} & \textbf{3.49\,GB} & \textbf{564{,}552} & \textbf{input publication 1.20\,MvB (adaptor, DLog) or 6.42\,MvB (hash-based), about \$2{,}500 or \$13{,}500 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity; unreviewed proof-system changes}$^{\ddagger}$\\\bottomrule
 \\
 \end{tabularx}
 \caption{Comparison of verifier artifacts, dispute inputs and on-chain dispute
@@ -1656,7 +1661,7 @@ all instances. Its on-chain entry is witness and script bytes as reported; the
 kvB figure is our arithmetic.
 $^{\S}$Our on-chain entry scales the Core-tested per-bit funding-plus-reveal
 costs of Table~\ref{tab:onchain}, measured on the Keccak verifier's
-1{,}041{,}024 input bits, to the recursion verifier's 603{,}112, plus the
+1{,}041{,}024 input bits, to the recursion verifier's 564{,}552, plus the
 Core-tested reject-label Disprove, for one key set; the challenge, completion, timeout and anchor transactions and the
 multi-copy soldering are not constructed (\S\ref{sec:protocol}), so it is a
 lower bound on the dispute path, not a total. $^{\ddagger}$Verifier assumptions
@@ -1814,7 +1819,7 @@ WHIR tuning removes only a fifth of the input (Table~\ref{tab:inputs}); equal-ar
 narrow-statement models remove $37$--$58\%$, but require a new AIR, and the
 larger real trace shows that batching can amortize input per permutation by
 $3.76\times$ without reducing the absolute logical circuit input. Narrow
-recursion reaches $0.58\times$ the input with real proofs
+recursion reaches $0.54\times$ the input with real proofs
 (Table~\ref{tab:recursion}), at the price of a recursion prover and of
 proof-system changes still to be reviewed.
 Deployability additionally requires public-input support and a concrete,
@@ -1919,10 +1924,10 @@ a wider-state hash and stronger cut-and-choose.
 
 The input shrinks further when the statement is itself a recursion proof.
 Verifying the last of three narrow-recursion proofs of Ziren's binary stage
-takes 603{,}112 input bits and 216.5M non-free gates, measured on real proofs
+takes 564{,}552 input bits and 218.0M non-free gates, measured on real proofs
 but resting on experimental, unreviewed changes to Plonky3 and Ziren: shared
-ring-switch tensors, 200-bit digests, linear-form openings and eq-factored bus
-rounds.
+ring-switch tensors, 200-bit digests, linear-form openings with affine
+preprocessed forms and eq-factored bus rounds.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}

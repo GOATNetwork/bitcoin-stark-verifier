@@ -212,17 +212,27 @@ diff --git a/binary-pcs/src/boolean_trace/plan.rs b/binary-pcs/src/boolean_trace
                  });
              }
          }
-@@ -415,6 +435,98 @@
+@@ -415,6 +435,111 @@
      protocol.iter_openings().map(|(_, batch)| batch.len()).sum()
  }
  
 +/// Values a proof carries on a route: per column, or per batched run's wire layout.
 +pub(super) fn wire_value_count(route: &OpeningRoute, protocol: &OpeningProtocol) -> usize {
 +    match route {
-+        OpeningRoute::Batched(runs) => runs
-+            .iter()
-+            .map(|run| run.shape.values_per_batch() * run.shape.num_batches)
-+            .sum(),
++        OpeningRoute::Batched(runs) => {
++            let own: usize = runs
++                .iter()
++                .map(|run| run.shape.values_per_batch() * run.shape.num_batches)
++                .sum();
++            // The shared forms sumcheck: two values per round of the widest, one fold per run.
++            let forms_runs = runs.iter().filter(|run| !run.forms.is_empty());
++            let tail = forms_runs
++                .clone()
++                .map(|run| run.shape.column_variables())
++                .max()
++                .map_or(0, |widest| 2 * widest + forms_runs.count());
++            own + tail
++        }
 +        OpeningRoute::PerColumn(_) => value_count(protocol),
 +    }
 +}
@@ -277,7 +287,10 @@ diff --git a/binary-pcs/src/boolean_trace/plan.rs b/binary-pcs/src/boolean_trace
 +        .map(|column| {
 +            column
 +                .iter()
-+                .map(|&(form, c)| coefficient::<EF>(c) * values[form])
++                // `usize::MAX` is the constant one, for an affine inverse.
++                .map(|&(form, c)| {
++                    coefficient::<EF>(c) * if form == usize::MAX { EF::ONE } else { values[form] }
++                })
 +                .sum()
 +        })
 +        .collect()
@@ -349,7 +362,7 @@ diff --git a/binary-pcs/src/boolean_trace/tests.rs b/binary-pcs/src/boolean_trac
  
      let mut verifier_chal = challenger();
      scheme.observe_commitment(&commitment, &mut verifier_chal);
-@@ -2272,3 +2276,172 @@
+@@ -2272,3 +2276,232 @@
          .unwrap();
      assert!((batching.bits.bits() - (128.0 - 6f64.log2())).abs() < 1e-9);
  }
@@ -522,10 +535,70 @@ diff --git a/binary-pcs/src/boolean_trace/tests.rs b/binary-pcs/src/boolean_trac
 +            .is_err()
 +    );
 +}
++
++#[test]
++fn forms_tables_of_different_widths_share_one_sumcheck() {
++    // A 16-wide and an 8-wide forms table and a plain one: one sumcheck over four column
++    // variables, the narrower table read at the last three; an affine inverse on the second.
++    let shapes = vec![TableShape::new(8, 16), TableShape::new(7, 8), TableShape::new(6, 3)];
++    let (second_forms, mut second_inverse) = group_forms(8, &[(2, 4)]);
++    // Column 7 is read as the constant one plus form 5 (column 7 itself): rebuilt as
++    // 1 + value, compared below on the forms only.
++    second_inverse[7].push((usize::MAX, 0));
++    let protocol = protocol(&shapes).with_forms(vec![
++        Some(group_forms(16, &[(1, 4), (6, 3)])),
++        Some((second_forms.clone(), second_inverse)),
++        None,
++    ]);
++    let tables = vec![
++        table_with_width(0x9AE1, 8, 16),
++        table_with_width(0x9AE2, 7, 8),
++        table_with_width(0x9AE3, 6, 3),
++    ];
++    let mut rng = SmallRng::seed_from_u64(0x9AE4);
++    let points = vec![
++        Point::<EF>::rand(&mut rng, 8),
++        Point::rand(&mut rng, 7),
++        Point::rand(&mut rng, 6),
++    ];
++    let scheme = pcs(&shapes);
++    let mut prover_chal = challenger();
++    let (commitment, data) = scheme.commit(tables.clone(), &mut prover_chal).unwrap();
++    let proof = scheme.open_at(data, &protocol, &points, &mut prover_chal).unwrap();
++    // 11 and 5 forms, the plain table's 3 values, 2 x 4 shared rounds and two folds.
++    assert_eq!(proof.values.len(), 11 + 5 + 3 + 2 * 4 + 2);
++    let mut verifier_chal = challenger();
++    scheme.observe_commitment(&commitment, &mut verifier_chal);
++    let evals = scheme
++        .verify_at(&commitment, &proof, &protocol, &points, &mut verifier_chal)
++        .unwrap();
++    let truth = |table: usize, column: usize| {
++        Poly::new(tables[table].poly(column).as_slice().to_vec()).eval_base(&points[table])
++    };
++    let opened = evals[1].current();
++    for form in &second_forms {
++        let value = |columns: &dyn Fn(usize) -> EF| -> EF {
++            form.iter().map(|&(c, k)| plan::coefficient::<EF>(k) * columns(c)).sum()
++        };
++        assert_eq!(value(&|c| opened[c]), value(&|c| truth(1, c)));
++    }
++    for index in 0..proof.values.len() {
++        let mut tampered = proof.clone();
++        tampered.values[index] += EF::ONE;
++        let mut verifier_chal = challenger();
++        scheme.observe_commitment(&commitment, &mut verifier_chal);
++        assert!(
++            scheme
++                .verify_at(&commitment, &tampered, &protocol, &points, &mut verifier_chal)
++                .is_err(),
++            "value {index}"
++        );
++    }
++}
 diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
 --- a/binary-pcs/src/boolean_trace.rs
 +++ b/binary-pcs/src/boolean_trace.rs
-@@ -104,7 +104,10 @@
+@@ -104,13 +104,17 @@
  use serde::{Deserialize, Serialize};
  use thiserror::Error;
  
@@ -537,7 +610,14 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
  use crate::boolean::{
      BitOpening, BitReadings, BooleanBackend, BooleanMultilinearPcs, BooleanPcs, BooleanPcsError,
      BooleanProof, ReadingsCheck,
-@@ -199,16 +202,17 @@
+ };
+ use crate::boolean_trace_transcript::{
+     ColumnBatchProverTranscript, ColumnBatchShape, ColumnBatchVerifierTranscript,
++    FormsSumcheckProverTranscript, FormsSumcheckShape, FormsSumcheckVerifierTranscript,
+ };
+ use crate::fold::{ChallengeField, FoldAlphabet};
+ use crate::packing::Coordinates;
+@@ -199,16 +203,17 @@
          column_point: &'a Point<EF>,
          current: &'a [EF],
          successor: &'a [EF],
@@ -559,7 +639,7 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
                  next: next.then(|| Self::combine_columns(&successor[columns], &block_point)),
              };
              let mut local = block_point;
-@@ -268,6 +272,12 @@
+@@ -268,6 +273,12 @@
      pub fn table(&self, index: usize) -> &Table<EF> {
          &self.tables[index]
      }
@@ -572,7 +652,7 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
  }
  
  /// One opening of a Boolean trace: the column values, and the bit proof behind them.
-@@ -324,6 +334,13 @@
+@@ -324,6 +335,13 @@
          actual: usize,
      },
  
@@ -586,7 +666,7 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
      /// A table's bit region is wider than the table itself.
      #[error("table {table} declares {bits} bit columns out of {width}")]
      BitRegionWidth {
-@@ -633,7 +650,8 @@
+@@ -633,7 +651,8 @@
          self.inner
              .verify_readings(commitment, &openings, &readings, &proof.opening, challenger)
              .map_err(BooleanTraceCommitmentError::Boolean)?;
@@ -596,7 +676,7 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
      }
  
      fn verify_pair_at(
-@@ -674,9 +692,13 @@
+@@ -674,9 +693,13 @@
                  challenger,
              )
              .map_err(BooleanTraceCommitmentError::Boolean)?;
@@ -612,7 +692,15 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
          ))
      }
  
-@@ -813,7 +835,7 @@
+@@ -800,6 +823,7 @@
+         let pad = self.stacked_pad(plan_stacked_layout(&protocol.table_shapes()).0)?;
+ 
+         let mut values = Vec::with_capacity(value_count(protocol));
++        let mut forms_runs: Vec<(&TableRun, &Point<EF>, Vec<EF>)> = Vec::new();
+         let mut openings = Vec::new();
+         let mut expected = Vec::new();
+         let mut batch_points = points.iter();
+@@ -813,7 +837,7 @@
              } = run.shape;
              let run_points: Vec<_> = batch_points.by_ref().take(num_batches).collect();
              let run_known = batch_known.by_ref().take(num_batches);
@@ -621,7 +709,7 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
              tracing::info_span!("evaluate boolean columns", width, next).in_scope(|| {
                  for (point, known) in run_points.iter().zip(run_known) {
                      // A supplied run is bound as it stands; the reduction below compares each
-@@ -821,25 +843,69 @@
+@@ -821,32 +845,46 @@
                      // a random check, the only one the run meets: a wrong run passes it with
                      // probability at most `j / |EF|` per block of `2^j` columns.
                      if let Some(known) = known {
@@ -647,6 +735,11 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
                  let (current, successor) = batch_values.split_at(width);
 -                // Both value runs are bound before the point that combines either of them.
 -                let column_point = transcript.batch(point, current, successor);
+-                for (opening, readings) in
+-                    Self::block_claims(run, pad, point, &column_point, current, successor)
+-                {
+-                    openings.push(opening);
+-                    expected.push(readings);
 +                if run.forms.is_empty() {
 +                    values.extend_from_slice(batch_values);
 +                    // Both value runs are bound before the point that combines either of them.
@@ -658,48 +751,24 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
 +                        expected.push(readings);
 +                    }
 +                    continue;
-+                }
-+                // The forms are bound before the weight combining them, and the sumcheck
-+                // over the column variables reduces their combination to one fold.
+                 }
++                // A forms batch binds its row point and forms here; the sumcheck every
++                // forms batch shares runs once all runs are bound.
++                assert_eq!(run.shape.num_batches, 1, "a forms run opens one point");
 +                let forms = packed_forms(current, &run.forms);
-+                let rho = transcript.packed_batch(point, &forms);
++                transcript.bind_forms(point, &forms);
 +                values.extend_from_slice(&forms);
-+                let mut weights = packed_weights(width, &run.forms, rho);
-+                let mut columns = current.to_vec();
-+                columns.resize(weights.len(), EF::ZERO);
-+                let mut coordinates = Vec::with_capacity(run.shape.column_variables());
-+                while weights.len() > 1 {
-+                    let half = weights.len() / 2;
-+                    let (mut a, mut c) = (EF::ZERO, EF::ZERO);
-+                    for i in 0..half {
-+                        a += weights[i] * columns[i];
-+                        c += (weights[half + i] - weights[i]) * (columns[half + i] - columns[i]);
-+                    }
-+                    values.push(a);
-+                    values.push(c);
-+                    let r = transcript.column_round([a, c]);
-+                    for i in 0..half {
-+                        let (low, high) = (weights[i], weights[half + i]);
-+                        weights[i] = low + r * (high - low);
-+                        let (low, high) = (columns[i], columns[half + i]);
-+                        columns[i] = low + r * (high - low);
-+                    }
-+                    weights.truncate(half);
-+                    columns.truncate(half);
-+                    coordinates.push(r);
-+                }
-+                let folded = columns[0];
-+                let column_point = Point::new(coordinates);
-+                debug_assert_eq!(folded, Self::combine_columns(current, &column_point));
-+                transcript.folded(folded);
-+                values.push(folded);
-                 for (opening, readings) in
--                    Self::block_claims(run, pad, point, &column_point, current, successor)
-+                    Self::block_claims(run, pad, point, &column_point, current, successor, Some(folded))
-                 {
-                     openings.push(opening);
-                     expected.push(readings);
-@@ -861,7 +927,7 @@
++                forms_runs.push((run, point, current.to_vec()));
+             }
+             transcript.finish();
+         }
++        if !forms_runs.is_empty() {
++            Self::prove_forms(&forms_runs, pad, challenger, &mut values, &mut openings, &mut expected);
++        }
+         Ok(PendingOpening {
+             openings,
+             route: PendingRoute::Batched { values, expected },
+@@ -861,7 +899,7 @@
          points: &[Point<EF>],
      ) -> Result<Vec<TablePlacement>, BooleanTraceCommitmentError<B::Error>> {
          let placements = self.validate_opening(protocol, points)?;
@@ -708,21 +777,27 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
          if proof.values.len() != expected_values {
              return Err(BooleanTraceCommitmentError::ValueCount {
                  expected: expected_values,
-@@ -898,6 +964,7 @@
+@@ -898,6 +936,8 @@
  
          let mut openings = Vec::new();
          let mut readings = Vec::new();
 +        let mut batch_index = 0;
++        let mut forms_runs: Vec<(&TableRun, &Point<EF>, &[EF])> = Vec::new();
          let mut batch_points = points.iter();
          let mut batch_values = proof.values.as_slice();
          for run in &runs {
-@@ -910,11 +977,50 @@
+@@ -910,21 +950,203 @@
                  .take(run.shape.num_batches)
                  .zip(run_values.chunks_exact(run.shape.values_per_batch()))
              {
 -                let (current, successor) = values.split_at(run.shape.width);
 -                // Both value runs are bound before the point that combines either of them.
 -                let column_point = transcript.batch(point, current, successor)?;
+-                for (opening, reading) in
+-                    Self::block_claims(run, pad, point, &column_point, current, successor)
+-                {
+-                    openings.push(opening);
+-                    readings.push(reading);
 +                batch_index += 1;
 +                if run.forms.is_empty() {
 +                    let (current, successor) = values.split_at(run.shape.width);
@@ -735,42 +810,194 @@ diff --git a/binary-pcs/src/boolean_trace.rs b/binary-pcs/src/boolean_trace.rs
 +                        readings.push(reading);
 +                    }
 +                    continue;
+                 }
++                assert_eq!(run.shape.num_batches, 1, "a forms run opens one point");
++                transcript.bind_forms(point, values)?;
++                forms_runs.push((run, point, values));
+             }
+             transcript.finish();
+         }
++        if !forms_runs.is_empty() {
++            Self::verify_forms(&forms_runs, pad, batch_values, challenger, &mut openings, &mut readings)?;
++        }
++        let _ = batch_index;
+         Ok((openings, readings))
+     }
+ 
++    /// whir-gc experiment: the one sumcheck every forms run shares, prover side.
++    ///
++    /// ```text
++    ///     claim   sum_g rho^g form_g  =  sum_t sum_u L_t(u) W_t(u)
++    /// ```
++    ///
++    /// over the widest table's column variables, each table's slots zero above its width,
++    /// so after the leading coordinates it reads its own columns at the trailing ones.
++    #[allow(clippy::type_complexity)]
++    fn prove_forms<Challenger>(
++        runs: &[(&TableRun, &Point<EF>, Vec<EF>)],
++        pad: usize,
++        challenger: &mut Challenger,
++        values: &mut Vec<EF>,
++        openings: &mut Vec<BitOpening<EF>>,
++        expected: &mut Vec<BitReadings<EF>>,
++    ) where
++        Challenger: FieldChallenger<B::Val>
++            + GrindingChallenger<Witness = B::Val>
++            + CanSampleUniformBits<B::Val>,
++    {
++        let column_variables = runs
++            .iter()
++            .map(|(run, _, _)| run.shape.column_variables())
++            .max()
++            .expect("at least one forms run");
++        let shape = FormsSumcheckShape { column_variables, tables: runs.len() };
++        let mut transcript =
++            FormsSumcheckProverTranscript::<B::Val, EF, Challenger>::new(challenger, shape);
++        let rho = transcript.weight();
++        let size = 1usize << column_variables;
++        let mut power = EF::ONE;
++        let mut tables: Vec<(Vec<EF>, Vec<EF>)> = runs
++            .iter()
++            .map(|(run, _, current)| {
++                let mut weights = packed_weights(run.shape.width, &run.forms, rho);
++                for weight in &mut weights {
++                    *weight *= power;
 +                }
-+                let (forms, rest) = values.split_at(run.shape.forms);
-+                let (rounds, folded) = rest.split_at(2 * run.shape.column_variables());
-+                let folded = folded[0];
-+                let rho = transcript.packed_batch(point, forms)?;
-+                // The weighted forms are the sum the column rounds open with.
-+                let mut claim = EF::ZERO;
-+                let mut power = EF::ONE;
-+                for &form in forms {
-+                    claim += power * form;
-+                    power *= rho;
++                power *= rho.exp_u64(run.forms.len() as u64);
++                weights.resize(size, EF::ZERO);
++                let mut columns = current.clone();
++                columns.resize(size, EF::ZERO);
++                (weights, columns)
++            })
++            .collect();
++        let mut coordinates = Vec::with_capacity(column_variables);
++        for _ in 0..column_variables {
++            let half = tables[0].0.len() / 2;
++            let (mut a, mut c) = (EF::ZERO, EF::ZERO);
++            for (weights, columns) in &tables {
++                for i in 0..half {
++                    a += weights[i] * columns[i];
++                    c += (weights[half + i] - weights[i]) * (columns[half + i] - columns[i]);
 +                }
-+                let mut coordinates = Vec::with_capacity(run.shape.column_variables());
-+                for round in rounds.chunks_exact(2) {
-+                    let (a, c) = (round[0], round[1]);
-+                    let b = claim - a.double() - c;
-+                    let r = transcript.column_round([a, c])?;
-+                    claim = a + b * r + c * r.square();
-+                    coordinates.push(r);
++            }
++            values.push(a);
++            values.push(c);
++            let r = transcript.round([a, c]);
++            for (weights, columns) in &mut tables {
++                for i in 0..half {
++                    let (low, high) = (weights[i], weights[half + i]);
++                    weights[i] = low + r * (high - low);
++                    let (low, high) = (columns[i], columns[half + i]);
++                    columns[i] = low + r * (high - low);
 +                }
-+                transcript.folded(folded);
-+                let column_point = Point::new(coordinates);
-+                let weights = packed_weights(run.shape.width, &run.forms, rho);
-+                if claim != Self::combine_columns(&weights, &column_point) * folded {
-+                    transcript.abort();
-+                    return Err(BooleanTraceCommitmentError::PackedColumns {
-+                        batch: batch_index - 1,
-+                    });
-+                }
-+                // The fold is what the block's bit claim reads; no column value is needed.
-                 for (opening, reading) in
--                    Self::block_claims(run, pad, point, &column_point, current, successor)
-+                    Self::block_claims(run, pad, point, &column_point, &[], &[], Some(folded))
-                 {
-                     openings.push(opening);
-                     readings.push(reading);
++                weights.truncate(half);
++                columns.truncate(half);
++            }
++            coordinates.push(r);
++        }
++        let suffixes: Vec<Point<EF>> = runs
++            .iter()
++            .map(|(run, _, _)| {
++                Point::new(coordinates[column_variables - run.shape.column_variables()..].to_vec())
++            })
++            .collect();
++        let folds: Vec<EF> = runs
++            .iter()
++            .zip(&suffixes)
++            .map(|((_, _, current), suffix)| Self::combine_columns(current, suffix))
++            .collect();
++        transcript.folds(&folds);
++        values.extend_from_slice(&folds);
++        for (((run, point, current), suffix), &fold) in runs.iter().zip(&suffixes).zip(&folds) {
++            for (opening, readings) in
++                Self::block_claims(run, pad, point, suffix, current, &[], Some(fold))
++            {
++                openings.push(opening);
++                expected.push(readings);
++            }
++        }
++        transcript.finish();
++    }
++
++    /// whir-gc experiment: the one sumcheck every forms run shares, verifier side; `tail`
++    /// holds its rounds and then one fold per forms run.
++    #[allow(clippy::type_complexity)]
++    fn verify_forms<Challenger>(
++        runs: &[(&TableRun, &Point<EF>, &[EF])],
++        pad: usize,
++        tail: &[EF],
++        challenger: &mut Challenger,
++        openings: &mut Vec<BitOpening<EF>>,
++        readings: &mut Vec<BitReadings<EF>>,
++    ) -> Result<(), BooleanTraceCommitmentError<B::Error>>
++    where
++        Challenger: FieldChallenger<B::Val>
++            + GrindingChallenger<Witness = B::Val>
++            + CanSampleUniformBits<B::Val>,
++    {
++        let column_variables = runs
++            .iter()
++            .map(|(run, _, _)| run.shape.column_variables())
++            .max()
++            .expect("at least one forms run");
++        let shape = FormsSumcheckShape { column_variables, tables: runs.len() };
++        let mut transcript =
++            FormsSumcheckVerifierTranscript::<B::Val, EF, Challenger>::new(challenger, shape);
++        let rho = transcript.weight();
++        let (rounds, folds) = tail.split_at(2 * column_variables);
++        // The weighted forms, in run order, are the sum the rounds open with.
++        let mut claim = EF::ZERO;
++        let mut power = EF::ONE;
++        for (_, _, forms) in runs {
++            for &form in *forms {
++                claim += power * form;
++                power *= rho;
++            }
++        }
++        let mut coordinates = Vec::with_capacity(column_variables);
++        for round in rounds.chunks_exact(2) {
++            let (a, c) = (round[0], round[1]);
++            let b = claim - a.double() - c;
++            let r = transcript.round([a, c])?;
++            claim = a + b * r + c * r.square();
++            coordinates.push(r);
++        }
++        transcript.folds(folds)?;
++        // Each table, zero above its width, is its weight times its fold at the trailing
++        // coordinates, scaled by eq(0, the leading ones) once for each of the two factors.
++        let mut expected = EF::ZERO;
++        let mut power = EF::ONE;
++        let mut suffixes = Vec::with_capacity(runs.len());
++        for ((run, _, _), &fold) in runs.iter().zip(folds) {
++            let lead = column_variables - run.shape.column_variables();
++            let prefix: EF = coordinates[..lead].iter().map(|&u| EF::ONE - u).product();
++            let suffix = Point::new(coordinates[lead..].to_vec());
++            let mut weights = packed_weights(run.shape.width, &run.forms, rho);
++            for weight in &mut weights {
++                *weight *= power;
++            }
++            power *= rho.exp_u64(run.forms.len() as u64);
++            expected += prefix.square() * Self::combine_columns(&weights, &suffix) * fold;
++            suffixes.push(suffix);
++        }
++        if claim != expected {
++            transcript.abort();
++            return Err(BooleanTraceCommitmentError::PackedColumns { batch: 0 });
++        }
++        transcript.finish();
++        // Each fold is what its block's bit claim reads; no column value is needed.
++        for (((run, point, _), suffix), &fold) in runs.iter().zip(&suffixes).zip(folds) {
++            for (opening, reading) in Self::block_claims(run, pad, point, suffix, &[], &[], Some(fold)) {
++                openings.push(opening);
++                readings.push(reading);
++            }
++        }
++        Ok(())
++    }
++
+     /// The reductions an opening of this protocol asks of the bit commitment, and the column
+     /// batching draw it makes itself.
+     ///
 diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean_trace_transcript.rs
 --- a/binary-pcs/src/boolean_trace_transcript.rs
 +++ b/binary-pcs/src/boolean_trace_transcript.rs
@@ -790,37 +1017,29 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
      pub(crate) width: usize,
      pub(crate) num_batches: usize,
      pub(crate) next: bool,
-+    /// whir-gc experiment: values a batch sends when some column groups are read only
-+    /// packed, zero when every column is sent.  Such a batch binds its values, draws a
-+    /// weight, and reduces the weighted values to one fold of the columns by a sumcheck
-+    /// over the column variables, whose challenges are the column point.
++    /// whir-gc experiment: values a batch sends when its columns are read through linear
++    /// forms, zero when every column is sent.  Such a batch binds its row point and its
++    /// forms; one sumcheck shared by every such run (see [`FormsSumcheckShape`]) then
++    /// reduces all their forms to one fold of each table's columns.
 +    pub(crate) forms: usize,
  }
  
  impl ColumnBatchShape {
-@@ -44,9 +54,14 @@
+@@ -44,9 +54,9 @@
          1 + usize::from(self.next)
      }
  
 -    /// Values each batch carries: the whole width once per view.
-+    /// Values each batch carries: the whole width once per view; or its forms, then two
-+    /// coefficients per column round, then the folded columns.
++    /// Values each batch carries: the whole width once per view, or its forms.
      pub(crate) fn values_per_batch(self) -> usize {
 -        self.width * self.num_views()
-+        if self.forms > 0 {
-+            self.forms + 2 * self.column_variables() + 1
-+        } else {
-+            self.width * self.num_views()
-+        }
++        if self.forms > 0 { self.forms } else { self.width * self.num_views() }
      }
  
      fn pattern<F, EF>(self) -> InteractionPattern
-@@ -54,8 +69,51 @@
-         F: TranscriptField,
-         EF: Field + AlgebraIdentity<F>,
+@@ -56,6 +66,23 @@
      {
--        let per_batch = 3 + usize::from(self.next);
-+        let per_batch = 3 + usize::from(self.next) + 2 * self.column_variables() + 2;
+         let per_batch = 3 + usize::from(self.next);
          let mut steps = Vec::with_capacity(self.num_batches * per_batch);
 +        if self.forms > 0 {
 +            for _ in 0..self.num_batches {
@@ -836,39 +1055,13 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
 +                    VALUES,
 +                    Length::Fixed(self.forms),
 +                ));
-+                steps.push(Interaction::algebra::<F, EF>(
-+                    Hierarchy::Atomic,
-+                    Kind::Challenge,
-+                    PACKING_WEIGHT,
-+                    Length::Scalar,
-+                ));
-+                for _ in 0..self.column_variables() {
-+                    steps.push(Interaction::algebra::<F, EF>(
-+                        Hierarchy::Atomic,
-+                        Kind::Message,
-+                        COLUMN_ROUND,
-+                        Length::Fixed(2),
-+                    ));
-+                    steps.push(Interaction::algebra::<F, EF>(
-+                        Hierarchy::Atomic,
-+                        Kind::Challenge,
-+                        COLUMN_CHALLENGE,
-+                        Length::Scalar,
-+                    ));
-+                }
-+                steps.push(Interaction::algebra::<F, EF>(
-+                    Hierarchy::Atomic,
-+                    Kind::Message,
-+                    FOLDED_COLUMNS,
-+                    Length::Scalar,
-+                ));
 +            }
-+            return InteractionPattern::new(steps).expect("flat packed column transcript is valid");
++            return InteractionPattern::new(steps).expect("flat forms transcript is valid");
 +        }
          for _ in 0..self.num_batches {
              steps.push(Interaction::algebra::<F, EF>(
                  Hierarchy::Atomic,
-@@ -101,6 +159,9 @@
+@@ -101,6 +128,9 @@
          if self.next {
              separator.instance(SUCCESSOR_LABEL);
          }
@@ -878,24 +1071,138 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
          separator
      }
  }
-@@ -152,6 +213,34 @@
+@@ -152,6 +182,15 @@
          Point::new(coordinates.collect())
      }
  
-+    /// Bind a packed batch's point and forms, and draw the weight that combines the forms.
-+    pub(crate) fn packed_batch(&mut self, point: &Point<EF>, forms: &[EF]) -> EF {
++    /// Bind a forms batch's row point and forms.
++    pub(crate) fn bind_forms(&mut self, point: &Point<EF>, forms: &[EF]) {
 +        debug_assert_eq!(forms.len(), self.shape.forms);
 +        self.state
 +            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(POINT, point.as_slice());
 +        self.state
 +            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(VALUES, forms);
++    }
++
+     pub(crate) fn finish(self) {
+         assert!(
+             self.state.finalize().is_empty(),
+@@ -212,6 +251,20 @@
+         Ok(Point::new(coordinates.collect()))
+     }
+ 
++    /// Bind a forms batch's row point and forms.
++    pub(crate) fn bind_forms(
++        &mut self,
++        point: &Point<EF>,
++        forms: &[EF],
++    ) -> Result<(), p3_challenger::fs::TranscriptError> {
++        debug_assert_eq!(forms.len(), self.shape.forms);
++        self.state
++            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(POINT, point.as_slice())?;
++        self.state
++            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(VALUES, forms)?;
++        Ok(())
++    }
++
+     pub(crate) fn finish(self) {
+         self.state
+             .finalize()
+@@ -219,6 +272,172 @@
+     }
+ }
+ 
++const FORMS_NAME: &[u8] = b"p3-boolean-trace-forms-sumcheck";
++
++/// whir-gc experiment: the one sumcheck every forms batch of an opening shares.
++///
++/// Every forms batch has bound its row point and forms in its own run's transcript.
++/// This one draws the weight `rho` over all their forms in run order, runs one degree-two
++/// sumcheck over the widest table's column variables (each table's slots zero above its
++/// own width, so it reads the trailing coordinates), and binds each table's fold.
++#[derive(Clone, Copy, Debug)]
++pub(crate) struct FormsSumcheckShape {
++    pub(crate) column_variables: usize,
++    pub(crate) tables: usize,
++}
++
++impl FormsSumcheckShape {
++    fn pattern<F, EF>(self) -> InteractionPattern
++    where
++        F: TranscriptField,
++        EF: Field + AlgebraIdentity<F>,
++    {
++        let mut steps = Vec::with_capacity(2 + 2 * self.column_variables);
++        steps.push(Interaction::algebra::<F, EF>(
++            Hierarchy::Atomic,
++            Kind::Challenge,
++            PACKING_WEIGHT,
++            Length::Scalar,
++        ));
++        for _ in 0..self.column_variables {
++            steps.push(Interaction::algebra::<F, EF>(
++                Hierarchy::Atomic,
++                Kind::Message,
++                COLUMN_ROUND,
++                Length::Fixed(2),
++            ));
++            steps.push(Interaction::algebra::<F, EF>(
++                Hierarchy::Atomic,
++                Kind::Challenge,
++                COLUMN_CHALLENGE,
++                Length::Scalar,
++            ));
++        }
++        steps.push(Interaction::algebra::<F, EF>(
++            Hierarchy::Atomic,
++            Kind::Message,
++            FOLDED_COLUMNS,
++            Length::Fixed(self.tables),
++        ));
++        InteractionPattern::new(steps).expect("flat forms sumcheck transcript is valid")
++    }
++
++    fn separator<F, EF>(self) -> DomainSeparator<Alphabet<F>>
++    where
++        F: TranscriptField,
++        EF: Field + AlgebraIdentity<F>,
++    {
++        let mut separator = DomainSeparator::new(VERSION, FORMS_NAME, self.pattern::<F, EF>());
++        separator
++            .instance(&(self.column_variables as u64).to_be_bytes())
++            .instance(&(self.tables as u64).to_be_bytes())
++            .instance(PACKED_LABEL);
++        separator
++    }
++}
++
++/// Prover side of [`FormsSumcheckShape`].
++pub(crate) struct FormsSumcheckProverTranscript<'a, F: TranscriptField, EF, C> {
++    state: ProverState<&'a mut C, Alphabet<F>>,
++    _challenge: PhantomData<EF>,
++}
++
++impl<'a, F, EF, C> FormsSumcheckProverTranscript<'a, F, EF, C>
++where
++    F: Field + TranscriptField + AlgebraIdentity<F>,
++    EF: ExtensionField<F>,
++    C: CanObserve<F> + CanSample<F> + CanSampleUniformBits<F> + GrindingChallenger<Witness = F>,
++{
++    pub(crate) fn new(challenger: &'a mut C, shape: FormsSumcheckShape) -> Self {
++        let separator = shape.separator::<F, EF>();
++        Self {
++            state: ProverState::new(challenger, &separator),
++            _challenge: PhantomData,
++        }
++    }
++
++    pub(crate) fn weight(&mut self) -> EF {
 +        self.state
 +            .challenge_extension::<F, EF, FieldToFieldCodec<F>>(PACKING_WEIGHT)
 +            .into_inner()
 +    }
 +
-+    /// Bind one column round's two coefficients, and draw its challenge.
-+    pub(crate) fn column_round(&mut self, coefficients: [EF; 2]) -> EF {
++    pub(crate) fn round(&mut self, coefficients: [EF; 2]) -> EF {
 +        self.state
 +            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(COLUMN_ROUND, &coefficients);
 +        self.state
@@ -903,39 +1210,46 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
 +            .into_inner()
 +    }
 +
-+    /// Bind the columns folded at the column point.
-+    pub(crate) fn folded(&mut self, value: EF) {
-+        let _ = self
-+            .state
-+            .observe_extension::<F, EF, FieldToFieldCodec<F>>(FOLDED_COLUMNS, &value);
++    pub(crate) fn folds(&mut self, folds: &[EF]) {
++        self.state
++            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(FOLDED_COLUMNS, folds);
 +    }
 +
-     pub(crate) fn finish(self) {
-         assert!(
-             self.state.finalize().is_empty(),
-@@ -212,6 +301,48 @@
-         Ok(Point::new(coordinates.collect()))
-     }
- 
-+    /// Bind a packed batch's point and forms, and draw the weight that combines the forms.
-+    pub(crate) fn packed_batch(
-+        &mut self,
-+        point: &Point<EF>,
-+        forms: &[EF],
-+    ) -> Result<EF, p3_challenger::fs::TranscriptError> {
-+        debug_assert_eq!(forms.len(), self.shape.forms);
++    pub(crate) fn finish(self) {
++        assert!(
++            self.state.finalize().is_empty(),
++            "forms sumcheck transcript carries no wire values",
++        );
++    }
++}
++
++/// Verifier side of [`FormsSumcheckShape`].
++pub(crate) struct FormsSumcheckVerifierTranscript<'a, F: TranscriptField, EF, C> {
++    state: VerifierState<'static, &'a mut C, Alphabet<F>>,
++    _challenge: PhantomData<EF>,
++}
++
++impl<'a, F, EF, C> FormsSumcheckVerifierTranscript<'a, F, EF, C>
++where
++    F: Field + TranscriptField + AlgebraIdentity<F>,
++    EF: ExtensionField<F>,
++    C: CanObserve<F> + CanSample<F> + CanSampleUniformBits<F> + GrindingChallenger<Witness = F>,
++{
++    pub(crate) fn new(challenger: &'a mut C, shape: FormsSumcheckShape) -> Self {
++        let separator = shape.separator::<F, EF>();
++        Self {
++            state: VerifierState::new(challenger, &separator, &[]),
++            _challenge: PhantomData,
++        }
++    }
++
++    pub(crate) fn weight(&mut self) -> EF {
 +        self.state
-+            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(POINT, point.as_slice())?;
-+        self.state
-+            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(VALUES, forms)?;
-+        Ok(self
-+            .state
 +            .challenge_extension::<F, EF, FieldToFieldCodec<F>>(PACKING_WEIGHT)
-+            .into_inner())
++            .into_inner()
 +    }
 +
-+    /// Bind one column round's two coefficients, and draw its challenge.
-+    pub(crate) fn column_round(
++    pub(crate) fn round(
 +        &mut self,
 +        coefficients: [EF; 2],
 +    ) -> Result<EF, p3_challenger::fs::TranscriptError> {
@@ -947,22 +1261,27 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
 +            .into_inner())
 +    }
 +
-+    /// Bind the columns folded at the column point.
-+    pub(crate) fn folded(&mut self, value: EF) {
-+        let _ = self
-+            .state
-+            .observe_extension::<F, EF, FieldToFieldCodec<F>>(FOLDED_COLUMNS, &value);
++    pub(crate) fn folds(&mut self, folds: &[EF]) -> Result<(), p3_challenger::fs::TranscriptError> {
++        self.state
++            .observe_extensions::<F, EF, FieldToFieldCodec<F>>(FOLDED_COLUMNS, folds)?;
++        Ok(())
 +    }
 +
-+    /// Abandon the transcript after a failed check, so dropping it is not an error.
 +    pub(crate) fn abort(&mut self) {
 +        self.state.abort();
 +    }
 +
-     pub(crate) fn finish(self) {
-         self.state
-             .finalize()
-@@ -237,6 +368,7 @@
++    pub(crate) fn finish(self) {
++        self.state
++            .finalize()
++            .expect("forms sumcheck transcript is complete");
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use alloc::format;
+@@ -237,6 +456,7 @@
              width: 3,
              num_batches: 2,
              next,
@@ -970,7 +1289,7 @@ diff --git a/binary-pcs/src/boolean_trace_transcript.rs b/binary-pcs/src/boolean
          }
      }
  
-@@ -247,6 +379,7 @@
+@@ -247,6 +467,7 @@
              width: 5,
              num_batches: 1,
              next,
@@ -2494,7 +2813,7 @@ diff --git a/sumcheck/src/table.rs b/sumcheck/src/table.rs
  }
  
  impl TableSpec {
-@@ -196,9 +201,48 @@
+@@ -196,9 +201,49 @@
          Self {
              shape,
              point_schedule,
@@ -2530,8 +2849,9 @@ diff --git a/sumcheck/src/table.rs b/sumcheck/src/table.rs
 +                "a form reads columns of the table"
 +            );
 +            assert_eq!(inverse.len(), self.shape.width(), "one inverse list per column");
++            // `usize::MAX` stands for the constant one: an affine inverse.
 +            assert!(
-+                inverse.iter().flatten().all(|&(form, _)| form < forms.len()),
++                inverse.iter().flatten().all(|&(form, _)| form < forms.len() || form == usize::MAX),
 +                "the inverse names forms"
 +            );
 +        }
@@ -2543,7 +2863,7 @@ diff --git a/sumcheck/src/table.rs b/sumcheck/src/table.rs
      /// Returns the logical table shape.
      pub const fn shape(&self) -> &TableShape {
          &self.shape
-@@ -231,6 +275,37 @@
+@@ -231,6 +276,37 @@
          Self(tables)
      }
  
