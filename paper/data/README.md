@@ -550,6 +550,43 @@ finalization are reported separately.
     `plonky3_align_layout.patch` (the aligned stacked layout) and
     `plonky3_gpu_grind.patch` (the GPU grinding hook; its `build.rs` links
     `libzkmgrind` unconditionally, so it is experiment-only as written).
+  - Merged ring-switch claims: `plonky3_merged_claims.patch`;
+    `run-ziren-merged-narrow-small.txt` (Ziren's narrow test, one claims
+    element per opening), `run-ziren-merged-level4.txt` (level 4 re-proved and
+    re-recorded with known values), `run-ziren-merged-level4-tape-gc.txt`:
+    221,687,835 non-free gates, 3.55 GB, 1,006,464 input bits; accepts with 0
+    of 312,263 values differing; rejects three changes; garbled in 187 s.
+  - 200-bit digests and a first WHIR fold of 3: `ziren_short_digest_first_round.patch`,
+    `plonky3_first_round_profile.patch`; `ziren_level4_schedules.rs`,
+    `ziren_level4_mixed_schedules.rs` and `run-ziren-level4-mixed-schedules.txt`
+    (schedules scored without proving); `run-ziren-short-level4.txt`,
+    `run-ziren-short-level4-tape-gc.txt`: 220,159,322 non-free gates, 3.52 GB,
+    895,504 input bits; accepts with 0 of 419,620 values differing; rejects
+    three changes; garbled in 116 s.
+  - Columns read only packed (Ledger, Arith): `plonky3_packed_columns.patch`,
+    `ziren_packed_columns.patch`; `run-ziren-packed-level4.txt`,
+    `run-ziren-packed-level4-tape-gc.txt`: 219,233,411 non-free gates, 3.51 GB,
+    834,832 input bits; accepts with 0 of 417,565 values differing; rejects
+    three changes; garbled in 116 s.
+  - Linear forms, per-round folds and a deep preprocessed cap:
+    `ziren_forms_census.rs` and `run-ziren-forms-census.txt` (the forms each
+    table reads, from the symbolic AIR), `ziren_level4_perround_schedules.rs`
+    and `run-ziren-level4-perround-schedules.txt` (per-round folds scored with
+    200-bit digests), `plonky3_linear_forms.patch`, `ziren_linear_forms.patch`;
+    `run-ziren-forms-level4.txt`, `run-ziren-forms-level4-tape-gc.txt`:
+    215,814,232 non-free gates, 3.45 GB, 643,688 input bits; accepts with 0 of
+    961,415 values differing; rejects three changes; garbled in 189 s.
+  - One ring switch for both commitments and eq-factored bus rounds:
+    `plonky3_joint_switch_gruen_bus.patch`, `ziren_joint_switch.patch`;
+    `run-ziren-joint-level4.txt` (level 4 proved in 3.2 h on 64 cores and four
+    GPUs, re-recorded), `run-ziren-joint-level4-tape-gc.txt`: 216,490,930
+    non-free gates, 3.46 GB, 603,112 input bits (9,981 byte and 4,088
+    element inputs); accepts with 0 of 960,347 values differing; rejects three
+    changes; garbled in 109 s.
+  - The per-step patches above are incremental and some are against
+    intermediate copies; the cumulative patches that reproduce the final trees
+    are in `patches/` at the repository root (`plonky3-fb5d0d89.patch`,
+    `ziren-9398469a.patch`, with a README).
   - `run-ziren-narrow-small-memory-b8bfde94.txt`: Ziren's own small
     narrow-recursion test at `b8bfde94`, with the test binary's RSS sampled
     every 0.2 s: 4.2 GiB after setup, rising through proving to an 11.5 GiB

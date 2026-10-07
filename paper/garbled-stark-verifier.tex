@@ -85,7 +85,10 @@ sets, whose consistency protocol is also unimplemented, is
 about 52 quantum bits, whereas the reported cut-and-choose parameters provide
 about 40 classical bits and Bitcoin's transaction signatures are not
 post-quantum. Thus the artifact is a measured hash-based verifier and a cost
-study, not a complete post-quantum Bitcoin protocol.
+study, not a complete post-quantum Bitcoin protocol. Recursing a zkVM proof
+through a narrow tape machine, with experimental and unreviewed changes to the
+proof system that we list, brings the garbled verifier's input to 603{,}112
+bits in 216.5M non-free gates.
 \end{abstract}
 
 % =====================================================================
@@ -189,8 +192,9 @@ last three study its Bitcoin integration, security boundaries and measurements.
   \item \textbf{Measurements.} Real Keccak-$f$ proofs from $2^5$ to $2^{20}$ rows,
     a gate profile, an ablation of the gadget and memory choices, measurements
     of the one-key-set input-authentication components, seven-key-set
-    projections, and a comparison with pairing-based designs
-    (\S\ref{sec:eval}).
+    projections, a comparison with pairing-based designs, and the garbled
+    verifier of a recursion proof of Ziren's binary stage at 603{,}112 input
+    bits (\S\ref{sec:eval}).
 \end{itemize}
 The circuit builder and the measurements are open source; the streaming
 garbler, the Blake3 circuit and a label-level evaluator are contributed to
@@ -1192,7 +1196,8 @@ an AMD EPYC 9355 limited to 128\,GB and 32 cores.
 dependencies, benchmark commands, raw measurement logs and their SHA-256
 manifest. The commands and memory caps are listed in
 \texttt{whir-gc/README.md}, and \texttt{paper/data/README.md} maps tables and
-figures to raw logs. \texttt{Cargo.lock} pins Plonky3 at revision
+figures to raw logs, and \texttt{patches/} holds the experimental Plonky3 and
+Ziren changes behind Table~\ref{tab:recursion}. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
 are deterministic; wall-clock times are single-run engineering measurements
@@ -1493,7 +1498,8 @@ values are 416{,}000 bits, two rows of 1{,}625 columns at 128 bits each. The
 tuning also moves soundness from queries to grinding, which halves under quantum
 search (\S\ref{sec:pq}). Below this the input shrinks only with a narrower AIR,
 whose opened values scale with its width, or by recursion into a proof whose own
-WHIR opening is still some $0.37$M bits at these parameters.
+WHIR opening is still some $0.37$M bits at these parameters; a measured
+recursion reaches 603{,}112 bits (Table~\ref{tab:recursion}).
 
 \begin{table}[t]\centering\small
 \begin{tabular}{lrr}\toprule
@@ -1537,6 +1543,72 @@ $6.53\%$, reducing the input per permutation from 99.29 to 26.44 bits, a
 $3.76\times$ amortization. Batching does not reduce the absolute unhappy-path
 payload for one proof, but it is the only measured input optimization here that
 requires no new AIR or input-delivery protocol.
+
+\paragraph{Recursion into a narrow machine.} The floor above belongs to the
+statement, so we also garbled the verifier of a statement built to be verified
+cheaply. Ziren's binary stage~\cite{ziren} proves, over $\F$ with Boolean WHIR
+and Blake3, the program that verifies a shrunk zkVM proof, and its
+\texttt{binary-recursion} crate records Plonky3's verifier of such a proof as a
+straight-line tape over $\F$. A five-table tape machine (ledger, arithmetic,
+rewiring, Blake3 message and round tables) proves a run of a tape, and its own
+verifier is recorded and proved again: narrow recursion. We translate a tape
+gate by gate (\texttt{whir-gc/src/binary\_tape.rs}). For a Fibonacci program the
+binary stage's verifier has 3.37G non-free gates and 18{,}050{,}304 input bits;
+after three rounds of narrow recursion the verifier of the last proof has the
+sizes in Table~\ref{tab:recursion}. Every row is the verifier of a real proof:
+its circuit accepts that proof with every tape value reproduced and rejects
+three single-input changes. From the third row on, each is a level-4 proof
+re-proved from the same level-3 tape at the Johnson rate $1/1024$ and
+re-recorded, and each was garbled by the streaming garbler. The last has
+603{,}112 input bits (9{,}981 bytes and 4{,}088 field elements), $0.58\times$
+the Keccak verifier's, in 216.5M non-free gates and 3.46\,GB.
+
+\begin{table}[t]\centering\small
+\begin{tabular}{lrrr}\toprule
+verifier & input bits & non-free gates & garbled\\\midrule
+binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
+narrow recursion, level 2, Ziren \texttt{f6137ecc} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
+level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
+\quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
+\quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
+\quad + 200-bit Merkle digests & 895{,}504 & 220.2M & 3.52\,GB\\
+\quad + packed operand columns & 834{,}832 & 219.2M & 3.51\,GB\\
+\quad + linear forms, per-round folds, deep preprocessed cap & 643{,}688 & 215.8M & 3.45\,GB\\
+\quad + one ring switch per pair, eq-factored bus rounds & \textbf{603{,}112} & 216.5M & 3.46\,GB\\\bottomrule
+\end{tabular}
+\caption{Narrow recursion removes the statement's width from the garbled
+verifier's input. Exact counts for Ziren's binary stage and for the verifier of its narrow-recursion proofs (level 2 with 26-bit addresses, the
+smallest that fit the real tape); the rows below the third use the experimental
+changes listed in the text.}
+\label{tab:recursion}
+\end{table}
+
+The steps combine recording choices with changes to the proof system. The
+recorder reads opened values the verifier knows (padding and constant
+preprocessed columns) as constants, and reads the fixed preprocessed Merkle
+tree down to 14 layers below its root as circuit constants, chosen by a one-hot
+of the query's top index bits. The schedule folds 4, 5, 4, 4 variables per WHIR
+round at 46 bits of grinding. The protocol changes are four. Ring-switch claims
+at points sharing the coordinates one packed element absorbs send one tensor,
+weighted by powers of a challenge drawn after the points, and a pair's main and
+preprocessed switches run as one over both packings behind a selector variable.
+Merkle digests are Blake3 truncated to 200 bits, which keeps collisions at
+$2^{100}$ work classically and $2^{66.7}$ under BHT search. Each table sends one
+value per linear form of its columns that its constraints and buses read,
+derived from the symbolic AIR, and a sumcheck over the column index reduces them
+to the table's ring-switch claim; the verifier rebuilds the columns with a
+constant right inverse, which costs only \XOR{}s. Bus product-GKR rounds send
+the round polynomial without its linear eq factor. Each change passes Plonky3's
+and Ziren's tests and tamper tests of its own, but none has been reviewed; the
+patches are in the repository. Each proof meets 100 bits of composed soundness
+by Plonky3's assessment in the Johnson regime, with up to 46 bits of grinding
+per term at level 4, which halves under quantum search. The circuit checks only
+the last proof, so the statement's soundness also composes over the earlier
+levels. Proving level 4 alone took 3.2 hours on 64 cores with four GPUs
+grinding and about 470\,GB of memory. At the measured mechanisms' per-bit costs
+(Table~\ref{tab:onchain}), 603{,}112 bits would be about 1.28\,MvB with the
+8-bit adaptor baseline and 6.86--10.01\,MvB per hash-key set; these are
+scalings, not fixtures.
 
 \paragraph{Comparison.} Table~\ref{tab:compare} places the result among
 approaches to verifying proofs on Bitcoin (\S\ref{sec:related}). For the
@@ -1734,7 +1806,10 @@ commitment itself is therefore the bottleneck.
 WHIR tuning removes only a fifth of the input (Table~\ref{tab:inputs}); equal-area
 narrow-statement models remove $37$--$58\%$, but require a new AIR, and the
 larger real trace shows that batching can amortize input per permutation by
-$3.76\times$ without reducing the absolute logical circuit input.
+$3.76\times$ without reducing the absolute logical circuit input. Narrow
+recursion reaches $0.58\times$ the input with real proofs
+(Table~\ref{tab:recursion}), at the price of a recursion prover and of
+proof-system changes still to be reviewed.
 Deployability additionally requires public-input support and a concrete,
 serialized and policy-tested transaction graph.
 
@@ -1796,7 +1871,9 @@ $3^7$ is a second: bitvm-gc's $\mathbb{F}_{2^{233}}$ multiplier, which evaluates
 multiplies and interpolates over $\mathbb{F}_{2^9}$, costs $2{,}097$ \AND{} gates
 for a field almost twice as wide, at the price of $1.5$M \XOR{}s per product.
 Per-tree Merkle cap heights and a narrower AIR for the statement actually
-verified reduce the hashing and column terms.
+verified reduce the hashing and column terms; the recursion of
+Table~\ref{tab:recursion} does both, with a preprocessed tree read deep below its
+root and tables whose opened values are linear forms of their columns.
 At the other end of the graph, a Core-tested false-label-derived Taproot
 pointlock reduces this implementation's 16-byte-label Disprove spend from
 97 to 83\,vB when both outputs retain the same timeout sibling. This is only a
@@ -1832,6 +1909,13 @@ construction needs public-input support, an implemented and measured multi-copy
 input layer, a serialized and policy-tested Assert graph, post-quantum graph
 authorization, and a measured parameter set with an enlarged field and labels,
 a wider-state hash and stronger cut-and-choose.
+
+The input shrinks further when the statement is itself a recursion proof.
+Verifying the last of three narrow-recursion proofs of Ziren's binary stage
+takes 603{,}112 input bits and 216.5M non-free gates, measured on real proofs
+but resting on experimental, unreviewed changes to Plonky3 and Ziren: shared
+ring-switch tensors, 200-bit digests, linear-form openings and eq-factored bus
+rounds.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}

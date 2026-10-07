@@ -76,5 +76,17 @@ layout models save 36.6%--57.6% but have no implemented AIR. Real 2^18 and
 2^20 artifacts reduce input per Keccak-f from 99.29 to 26.44 bits by batching;
 the absolute proof input still grows by 6.53%.
 
+Narrow recursion shrinks the input further with real proofs. Ziren's binary
+stage proves a zkVM proof's verifier over GF(2^128) with Boolean WHIR and Blake3,
+and its five-table tape machine proves recorded verifier tapes. The garbled
+verifier of the third narrow-recursion proof of a Fibonacci program takes
+603,112 input bits in 216.5M non-free gates (3.46 GB), 0.58x the Keccak
+verifier's input; it accepts the real proof and rejects changed inputs. The
+reduction rests on experimental, unreviewed changes to Plonky3 and Ziren
+(shared ring-switch tensors, 200-bit digests, linear-form openings,
+eq-factored bus rounds), kept as patches in [`patches/`](../patches/README.md).
+At the adaptor baseline's 2.13 vB per bit that would be about 1.28 MvB, a
+scaling rather than a fixture.
+
 Still to do before release: the author list
 and the open points in `notes.md` §8.

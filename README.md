@@ -97,6 +97,18 @@ counts or complete on-chain costs. The construction still needs a mechanism
 that enforces the same bit choice across all seven
 key sets. Tuning the proof removes about 19% of the one-set input component.
 
+Narrow recursion shrinks the input further with real proofs. Ziren's binary
+stage proves a zkVM proof's verifier over GF(2^128) with Boolean WHIR and Blake3,
+and its five-table tape machine proves recorded verifier tapes. The garbled
+verifier of the third narrow-recursion proof of a Fibonacci program takes
+603,112 input bits in 216.5M non-free gates (3.46 GB), 0.58x the Keccak
+verifier's input; it accepts the real proof and rejects changed inputs. The
+reduction rests on experimental, unreviewed changes to Plonky3 and Ziren
+(shared ring-switch tensors, 200-bit digests, linear-form openings,
+eq-factored bus rounds), kept as patches in [`patches/`](patches/README.md).
+At the adaptor baseline's 2.13 vB per bit that would be about 1.28 MvB, a
+scaling rather than a fixture.
+
 Details are in [`whir-gc/README.md`](whir-gc/README.md) and the paper. The
 tracked raw logs, test-command map and checksums are in
 [`paper/data/`](paper/data/README.md).
