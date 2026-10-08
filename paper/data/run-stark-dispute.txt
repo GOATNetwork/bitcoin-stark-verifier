@@ -1,4 +1,0 @@
-2^5 rows: 586240 input bits in 588 Assert leaves (28726348 B of script), executed in 839.9ms; 44573121 non-free gates garbled with every input at 0 (setup 106.6s); evaluated in 115.5s; real proof: no Disprove; changed proof: Disprove opens
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 256.59s
-	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:43.04
-	Maximum resident set size (kbytes): 6272324

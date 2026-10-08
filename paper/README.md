@@ -14,7 +14,7 @@ non-post-quantum transaction signatures.
 | `assert-disprove-reduction-survey.md` | evidence-tiered study of current-consensus and soft-fork methods to shrink Assert/Disprove |
 | `refs.bib` | bibliography used by the paper |
 | `notes.md` | per-paper notes with section, table and figure references, plus our measurements and a list of things to fix before release |
-| `data/` | tracked raw measurement records, reproduction commands, provenance notes and SHA-256 checksums |
+| `data/` | local only, git-ignored: raw measurement records, reproduction commands, provenance notes and SHA-256 checksums |
 | `refs/` | PDFs of the papers read (git-ignored) |
 
 Build:
@@ -25,8 +25,9 @@ pdflatex garbled-stark-verifier && bibtex garbled-stark-verifier && pdflatex gar
 
 ## Measurements
 
-[`data/README.md`](data/README.md) maps each archived log to its test command
-and to the paper table or claim it supports. From the repository root, verify
+`data/` is kept locally and is not in the repository. Its `README.md` maps
+each archived log to its test command and to the paper table or claim it
+supports; the commands regenerate the logs. From the repository root, verify
 the archived artifacts with:
 
 ```sh

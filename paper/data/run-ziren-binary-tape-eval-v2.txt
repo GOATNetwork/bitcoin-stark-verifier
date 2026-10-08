@@ -1,9 +1,0 @@
-# whir-gc binary_tape on the v2 level-1 tape (127,326,474 B, from run-ziren-narrow-dump.txt); local box, systemd MemoryMax=32G, taskset 9-15, 2026-10-03
-# BINARY_TAPE_DUMP=target/binary-tape-v2.bin cargo test --release -p whir-gc --test binary_tape accepts_the_real -- --ignored --nocapture
-running 1 test
-honest proof: output true; 24409480217 wires evaluated in 1283 s; 0 of 4914646 values differ from the tape
-input 47006 changed: output false
-input 94012 changed: output false
-input 141017 changed: output false
-test accepts_the_real_proof_and_rejects_a_tampered_one ... ok
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 4461.44s
