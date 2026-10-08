@@ -1,7 +1,7 @@
 //! Full, transaction-bound serialization for the measured verifier's Lamport
 //! Assert input-publication component.
 //!
-//! Unlike the per-bit helper in `paper/data/lamport_cost.rs`, this fixture
+//! Unlike a per-bit script-size estimate, this fixture
 //! constructs every P2TR script-path input and every transaction needed for
 //! 1,041,024 authenticated bits.  It includes the Lamport preimage witness,
 //! a 64-byte SIGHASH_DEFAULT Schnorr authorization signature per input, the

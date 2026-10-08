@@ -31,7 +31,8 @@
 //! and the honest value is asserted to be a byte. An input read only as a
 //! selector is 1 bit, and every other is 128.
 //!
-//! The dump this reads is written by `paper/data/ziren_dump_binary_tape.rs`.
+//! The dump this reads is written by Ziren's `crates/prover/tests/dump_binary_tape.rs`,
+//! which `patches/ziren-9398469a.patch` adds.
 
 use garbled_snark_verifier::circuits::sect233k1::blake3_ckt as blake3;
 use garbled_snark_verifier::circuits::sect233k1::builder::CircuitTrait;

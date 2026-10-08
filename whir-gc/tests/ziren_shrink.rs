@@ -2,7 +2,8 @@
 //! garbled circuit: exact gate counts, with and without Merkle deduplication,
 //! and gate-level evaluation on a real compressed proof.
 //!
-//! The dump is produced by `paper/data/ziren_dump_shrink.rs` from a Ziren
+//! The dump is produced by a Ziren test (`ziren_dump_shrink.rs`, kept with the
+//! local measurement logs, not in this repository) from a Ziren
 //! compressed proof; set `ZIREN_SHRINK_DUMP` or put it at
 //! `target/ziren-shrink.bin`. Run with
 //! `cargo test --release -p whir-gc --test ziren_shrink -- --ignored --nocapture`.

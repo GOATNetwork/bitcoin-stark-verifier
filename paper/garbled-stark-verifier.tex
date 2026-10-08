@@ -1122,9 +1122,14 @@ bits, and they trade on-chain size against assumptions.
 Packing more bits into each adaptor completion reduces the serialized
 transaction shape. Our Core-tested 16-bit fixture uses 2{,}960\,vB of funding
 and 1{,}111{,}128\,vB across 12 reveals, or 1{,}114{,}088\,vB in 13
-transactions. This is an encoding sensitivity result, not yet a binary-label
-authentication mechanism: the complete $2^{16}$ choice table and exclusive
-digit-to-binary-label delivery remain unimplemented. We therefore retain the
+transactions. Exact serializations of 10-, 11- and 12-bit digits, still
+with placeholder signatures and not replayed in Core, give 1{,}782{,}498,
+1{,}620{,}499 and 1{,}485{,}410\,vB including funding. The price is off-chain:
+a table of every digit's $2^{b}$ choices at 65 bytes each is 2.165\,GB per key
+set at 8 bits, 6.929, 12.598 and 23.097\,GB at 10, 11 and 12 bits, and
+277.162\,GB at 16. This is an encoding sensitivity result, not yet a
+binary-label authentication mechanism: the complete $2^{16}$ choice table and
+exclusive digit-to-binary-label delivery remain unimplemented. We therefore retain the
 8-bit construction as the authenticated baseline in Table~\ref{tab:onchain}.
 Our labels are free-XOR correlated, so a hash-based preimage $s$ cannot itself be
 a label. A key-derivation function (KDF) maps it to one by a translation ciphertext

@@ -33,7 +33,8 @@
 //! compared, so the routing affects completeness only: any sibling value
 //! that makes a path reach the committed root is a valid opening.
 //!
-//! The dump this reads is written by `paper/data/ziren_dump_shrink.rs`.
+//! The dump this reads is written by a Ziren test (`ziren_dump_shrink.rs`) kept
+//! with the local measurement logs, not in this repository.
 
 use std::collections::HashMap;
 

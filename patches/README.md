@@ -2,7 +2,7 @@
 
 Two cumulative patches: every change behind the level-4 verifier tape that
 the garbled verifier (`whir-gc`) measures at **564,552 input bits**
-(`paper/notes.md` §7n; per-step patches and logs in `paper/data/`).
+(`paper/notes.md` §7n; the per-step patches and logs are kept locally in `paper/data/`, not in the repository).
 
 | patch | base | files |
 |---|---|---:|
