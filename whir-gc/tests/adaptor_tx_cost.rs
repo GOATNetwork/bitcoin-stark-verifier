@@ -39,7 +39,41 @@ use bitcoin::{
 };
 use std::str::FromStr;
 
-const INPUT_BITS: usize = 1_041_024;
+/// The measured Keccak verifier's input; the golden totals and the hand-derived
+/// packings are pinned at this size.
+const KECCAK_INPUT_BITS: usize = 1_041_024;
+
+/// The input size the globally optimized reveal serializes:
+/// `WHIR_GC_INPUT_BITS`, else the Keccak verifier's.
+fn input_bits() -> usize {
+    std::env::var("WHIR_GC_INPUT_BITS")
+        .ok()
+        .map_or(KECCAK_INPUT_BITS, |s| s.parse().expect("WHIR_GC_INPUT_BITS is a bit count"))
+}
+
+/// Digits per input when six inputs fill a standard transaction (5,855 digits;
+/// see `globally_optimized_reveal_packing`).
+const FULL_SIX_INPUT_TX: [usize; 6] = [998, 998, 998, 998, 998, 865];
+
+/// A packing for any digit count: full six-input transactions, then the
+/// remainder in inputs of at most `MAX_DIGITS`. It meets the lower bound on the
+/// number of standard transactions, ceil(digits / 5,855); the input count can
+/// exceed the hand-derived optimum by one.
+fn greedy_packing(total_digits: usize) -> Vec<Vec<usize>> {
+    let full: usize = FULL_SIX_INPUT_TX.iter().sum();
+    let mut packing = vec![FULL_SIX_INPUT_TX.to_vec(); total_digits / full];
+    let mut left = total_digits % full;
+    if left != 0 {
+        let mut tx = Vec::new();
+        while left != 0 {
+            let digits = left.min(MAX_DIGITS);
+            tx.push(digits);
+            left -= digits;
+        }
+        packing.push(tx);
+    }
+    packing
+}
 const BITS_PER_ADAPTOR_SIGNATURE: usize = 8;
 const SOURCE_DIGITS: usize = 128;
 const MAX_DIGITS: usize = 998;
@@ -696,8 +730,8 @@ fn minimum_input_digit_packing() -> Vec<Vec<usize>> {
 #[test]
 fn adaptor_minimum_input_packing_is_2_222_397_vbytes() {
     let packing = minimum_input_digit_packing();
-    let total_digits = INPUT_BITS / BITS_PER_ADAPTOR_SIGNATURE;
-    assert_eq!(INPUT_BITS % BITS_PER_ADAPTOR_SIGNATURE, 0);
+    let total_digits = KECCAK_INPUT_BITS / BITS_PER_ADAPTOR_SIGNATURE;
+    assert_eq!(KECCAK_INPUT_BITS % BITS_PER_ADAPTOR_SIGNATURE, 0);
     assert_eq!(total_digits, 130_128);
     assert_eq!(packing.len(), 26);
     assert_eq!(packing.iter().map(Vec::len).sum::<usize>(), 131);
@@ -874,7 +908,7 @@ fn wider_adaptor_digits_exact_serialized_sweep() {
         "bits/digit | digits | inputs | reveal txs | reveal WU | reveal vB | off-chain table bytes"
     );
     for (bits, digits, inputs, transactions, expected_wu, expected_vb) in expected {
-        assert_eq!(digits, INPUT_BITS.div_ceil(bits));
+        assert_eq!(digits, KECCAK_INPUT_BITS.div_ceil(bits));
         let packing = wider_digit_packing(bits);
         assert_eq!(packing.len(), transactions);
         assert_eq!(packing.iter().map(Vec::len).sum::<usize>(), inputs);
@@ -908,7 +942,7 @@ fn wider_adaptor_digits_exact_serialized_sweep() {
 #[test]
 fn adaptor_16bit_globally_optimized_reveal_is_1_111_128_vbytes() {
     let packing = wider_digit_packing(16);
-    let total_digits = INPUT_BITS.div_ceil(16);
+    let total_digits = KECCAK_INPUT_BITS.div_ceil(16);
     assert_eq!(total_digits, 65_064);
     assert_eq!(packing.len(), 12);
     assert_eq!(packing.iter().map(Vec::len).sum::<usize>(), 66);
@@ -957,7 +991,7 @@ fn adaptor_16bit_globally_optimized_reveal_is_1_111_128_vbytes() {
     assert_eq!(weights.iter().sum::<u64>(), 4_444_494);
     assert_eq!(vsizes.iter().sum::<usize>(), 1_111_128);
     eprintln!(
-        "{INPUT_BITS} bits via 16-bit adaptor digits: {total_digits} signatures, \
+        "{KECCAK_INPUT_BITS} bits via 16-bit adaptor digits: {total_digits} signatures, \
          {next_input} signed P2TR inputs in {} two-output transactions; {} WU; \
          {} vB; max tx {} WU",
         packing.len(),
@@ -973,20 +1007,27 @@ fn adaptor_16bit_globally_optimized_reveal_is_1_111_128_vbytes() {
 
 #[test]
 fn adaptor_globally_optimized_reveal_is_2_222_213_vbytes() {
-    let packing = globally_optimized_reveal_packing();
-    let total_digits = INPUT_BITS / BITS_PER_ADAPTOR_SIGNATURE;
-    assert_eq!(INPUT_BITS % BITS_PER_ADAPTOR_SIGNATURE, 0);
-    assert_eq!(total_digits, 130_128);
-    assert_eq!(packing.len(), 23);
-    assert_eq!(packing.iter().map(Vec::len).sum::<usize>(), 133);
+    // At the Keccak size the hand-derived packing and its exact totals; at any
+    // other `WHIR_GC_INPUT_BITS`, the greedy packing and no pinned totals.
+    let input_bits = input_bits();
+    let golden = input_bits == KECCAK_INPUT_BITS;
+    let total_digits = input_bits.div_ceil(BITS_PER_ADAPTOR_SIGNATURE);
+    let packing = if golden { globally_optimized_reveal_packing() } else { greedy_packing(total_digits) };
     assert_eq!(packing.iter().flatten().sum::<usize>(), total_digits);
     assert!(packing.iter().flatten().all(|&digits| digits <= MAX_DIGITS));
+    assert_eq!(packing.len(), total_digits.div_ceil(5_855), "the transaction lower bound");
+    if golden {
+        assert_eq!(input_bits % BITS_PER_ADAPTOR_SIGNATURE, 0);
+        assert_eq!(total_digits, 130_128);
+        assert_eq!(packing.len(), 23);
+        assert_eq!(packing.iter().map(Vec::len).sum::<usize>(), 133);
+    }
     assert_eq!(386u64 + 235 * 6 + 68 * 5_855, 399_936);
     assert_eq!(386u64 + 235 * 6 + 68 * 5_856, 400_004);
     // Even granting every item the four-byte CompactSize saving possible for
     // a tiny leaf, seven or more inputs cannot fit 5,856 digits.
     assert!(386u64 + 231 * 7 + 68 * 5_856 > MAX_STANDARD_TX_WEIGHT);
-    assert!(22 * 5_855 < total_digits, "22 transactions cannot suffice");
+    assert!((packing.len() - 1) * 5_855 < total_digits, "one transaction fewer cannot suffice");
 
     let secp = Secp256k1::new();
     let evaluator_secret = evaluator_secret(&secp);
@@ -1021,18 +1062,21 @@ fn adaptor_globally_optimized_reveal_is_2_222_213_vbytes() {
         transactions.push(tx);
     }
 
-    assert_eq!(next_input, 133);
-    assert_eq!(max_peak, MAX_STACK_ITEMS);
-    assert_eq!(weights[..17], [399_936; 17]);
-    assert_eq!(weights[17], 385_520);
-    assert_eq!(weights[18..], [340_881; 5]);
-    assert_eq!(vsizes[..17], [99_984; 17]);
-    assert_eq!(vsizes[17], 96_380);
-    assert_eq!(vsizes[18..], [85_221; 5]);
-    assert_eq!(weights.iter().sum::<u64>(), 8_888_837);
-    assert_eq!(vsizes.iter().sum::<usize>(), 2_222_213);
+    assert!(max_peak <= MAX_STACK_ITEMS);
+    if golden {
+        assert_eq!(next_input, 133);
+        assert_eq!(max_peak, MAX_STACK_ITEMS);
+        assert_eq!(weights[..17], [399_936; 17]);
+        assert_eq!(weights[17], 385_520);
+        assert_eq!(weights[18..], [340_881; 5]);
+        assert_eq!(vsizes[..17], [99_984; 17]);
+        assert_eq!(vsizes[17], 96_380);
+        assert_eq!(vsizes[18..], [85_221; 5]);
+        assert_eq!(weights.iter().sum::<u64>(), 8_888_837);
+        assert_eq!(vsizes.iter().sum::<usize>(), 2_222_213);
+    }
     eprintln!(
-        "{INPUT_BITS} bits via adaptor signatures: {} digits, {} signed P2TR inputs in \
+        "{input_bits} bits via adaptor signatures: {} digits, {} signed P2TR inputs in \
          {} two-output transactions; {} WU; {} vB; max tx {} WU",
         total_digits,
         next_input,

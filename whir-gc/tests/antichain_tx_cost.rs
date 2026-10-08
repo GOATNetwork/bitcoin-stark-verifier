@@ -44,7 +44,15 @@ use rand08::SeedableRng;
 use rand_chacha08::ChaCha20Rng;
 use std::str::FromStr;
 
-const INPUT_BITS: usize = 1_041_024;
+/// The measured Keccak verifier's input; the golden totals are pinned at this size.
+const KECCAK_INPUT_BITS: usize = 1_041_024;
+
+/// The input size to serialize: `WHIR_GC_INPUT_BITS`, else the Keccak verifier's.
+fn input_bits() -> usize {
+    std::env::var("WHIR_GC_INPUT_BITS")
+        .ok()
+        .map_or(KECCAK_INPUT_BITS, |s| s.parse().expect("WHIR_GC_INPUT_BITS is a bit count"))
+}
 const BITS_PER_DIGIT: usize = 4;
 const MAX_DIGITS_PER_INPUT: usize = 332;
 const INPUTS_PER_TX: usize = 6;
@@ -509,11 +517,15 @@ fn signed_acw_d332_capacity_and_full_input_packing() {
         .0
     );
 
-    let total_digits = INPUT_BITS / BITS_PER_DIGIT;
-    assert_eq!(INPUT_BITS % BITS_PER_DIGIT, 0);
-    assert_eq!(total_digits, 260_256);
-    assert_eq!(total_digits / MAX_DIGITS_PER_INPUT, 783);
-    assert_eq!(total_digits % MAX_DIGITS_PER_INPUT, 300);
+    let input_bits = input_bits();
+    let golden = input_bits == KECCAK_INPUT_BITS;
+    let total_digits = input_bits.div_ceil(BITS_PER_DIGIT);
+    if golden {
+        assert_eq!(input_bits % BITS_PER_DIGIT, 0);
+        assert_eq!(total_digits, 260_256);
+        assert_eq!(total_digits / MAX_DIGITS_PER_INPUT, 783);
+        assert_eq!(total_digits % MAX_DIGITS_PER_INPUT, 300);
+    }
 
     let funding_txid = std::env::var("WHIR_GC_FUNDING_TXID")
         .ok()
@@ -553,7 +565,8 @@ fn signed_acw_d332_capacity_and_full_input_packing() {
         let (tx, prevouts) = sign_transaction(unsigned, &leaves, &keypair, &secp);
         let weight = tx.weight().to_wu();
         assert!(weight <= MAX_STANDARD_TX_WEIGHT);
-        if transaction_count < 130 {
+        if !golden {
+        } else if transaction_count < 130 {
             assert_eq!(tx.input.len(), 6);
             assert_eq!(serialize(&tx).len(), 361_736);
             assert_eq!(weight, 362_762);
@@ -580,15 +593,19 @@ fn signed_acw_d332_capacity_and_full_input_packing() {
         transactions.push(tx);
     }
 
-    assert_eq!(transaction_count, 131);
-    assert_eq!(input_count, 784);
-    assert_eq!(next_funding_index, 784);
-    assert_eq!(max_tx_weight, 362_762);
-    assert_eq!(serialized_bytes, 47_261_078);
-    assert_eq!(summed_weight, 47_395_238);
-    assert_eq!(summed_vsize, 11_848_875);
+    assert_eq!(input_count, total_digits.div_ceil(MAX_DIGITS_PER_INPUT));
+    assert_eq!(transaction_count, input_count.div_ceil(INPUTS_PER_TX));
+    if golden {
+        assert_eq!(transaction_count, 131);
+        assert_eq!(input_count, 784);
+        assert_eq!(next_funding_index, 784);
+        assert_eq!(max_tx_weight, 362_762);
+        assert_eq!(serialized_bytes, 47_261_078);
+        assert_eq!(summed_weight, 47_395_238);
+        assert_eq!(summed_vsize, 11_848_875);
+    }
     eprintln!(
-        "{INPUT_BITS} bits via safe ACW(2,16): {input_count} signed P2TR inputs in \
+        "{input_bits} bits via safe ACW(2,16): {input_count} signed P2TR inputs in \
          {transaction_count} two-output transactions; {serialized_bytes} serialized bytes; \
          {summed_weight} WU; {summed_vsize} vB; max tx {max_tx_weight} WU"
     );

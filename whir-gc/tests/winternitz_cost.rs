@@ -16,6 +16,12 @@ use rand_chacha::ChaCha20Rng;
 define_pushable!();
 
 /// Checksum digits for `n` message digits of `d` bits.
+/// The input size the totals are for: `WHIR_GC_INPUT_BITS`, else the measured
+/// Keccak verifier's 1,041,024 bits. The per-bit figures do not depend on it.
+fn input_bits() -> usize {
+    std::env::var("WHIR_GC_INPUT_BITS").ok().map_or(1_041_024, |s| s.parse().expect("WHIR_GC_INPUT_BITS is a bit count"))
+}
+
 fn checksum_digits(n: usize, d: usize) -> usize {
     let max = n * ((1 << d) - 1);
     let mut c = 0;
@@ -76,7 +82,7 @@ const TX_OVERHEAD_WU: usize = 10 * 4 + 2 + 43 * 4;
 #[test]
 fn winternitz_reveal_cost_per_bit() {
     let mut rng = ChaCha20Rng::seed_from_u64(7);
-    let input_bits = 1_041_024usize;
+    let input_bits = input_bits();
     eprintln!("digit | chains per input | script B/chain | witness B/chain | modeled WU per bit | bits in 400k-WU envelope | bits in 4M-WU envelope | component WU for {input_bits} bits");
     for d in 2usize..=8 {
         let w = 1usize << d;
@@ -161,7 +167,7 @@ fn verify_chunks(pks: &[[u8; 20]]) -> bitcoin::ScriptBuf {
 #[test]
 fn chunked_winternitz_reveal_cost_per_bit() {
     let mut rng = ChaCha20Rng::seed_from_u64(8);
-    let input_bits = 1_041_024usize;
+    let input_bits = input_bits();
     // Chunks per input under the 1000-item limit: 68 witness items per chunk
     // and the widest ladder on top.
     let chunks = (1000 - 34) / (2 * (CHUNK_DIGITS + 2));
@@ -239,7 +245,7 @@ fn verify_chunk(pks: &[[u8; 20]], d: usize) -> bitcoin::ScriptBuf {
 #[test]
 fn unverified_reveal_and_response_on_demand() {
     let mut rng = ChaCha20Rng::seed_from_u64(9);
-    let input_bits = 1_041_024usize;
+    let input_bits = input_bits();
     let chunks = input_bits.div_ceil(128);
 
     // One input of plain data under the stack limit: 998 items of 520 bytes,

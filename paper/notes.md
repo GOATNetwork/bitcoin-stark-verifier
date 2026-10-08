@@ -1583,6 +1583,31 @@ From the binary stage's 2.36 Mbit at level 2, the input is down 4.2x.
 Not done: moving Rewire's per-bit writes so the bus product GKR loses a level
 (estimated -1.2%).
 
+**On-chain reveal at 564,552 bits, serialized (2026-10-08).** The three
+input-publication fixtures and the Winternitz model now take
+`WHIR_GC_INPUT_BITS`. The default is 1,041,024, where every golden total
+still holds. At other sizes the adaptor fixture uses greedy packing, which
+meets the transaction lower bound ceil(digits / 5,855). Log in local
+`data/run-reveal-cost-narrow.txt`.
+
+| mechanism | inputs | reveal transactions | weight | vsize | at 2.2 sat/vB, $95,500 |
+|---|---:|---:|---:|---:|---:|
+| Schnorr adaptor, 8-bit | 73 | 13 | 4,820,865 WU | 1,205,217 vB | $2,532 |
+| Antichain (2,16), worst case | 426 | 71 | 25,702,886 WU | 6,425,757 vB | $13,500 |
+| Lamport | 566 | 95 | 37,452,826 WU | 9,363,254 vB | $19,671 |
+| Lamport join (95 parents) | | 1 | 28,619 WU | 7,155 vB | |
+| Disprove | | 1 | | 97 vB | |
+| plain Winternitz, 4-bit (model) | | | 13.0M WU | 3.26 MvB | $6,850 |
+
+- **Fixture rows:** every transaction is signed and every leaf is executed
+  under the 1,000-item stack limit. They were not replayed in Bitcoin Core.
+- **Winternitz row:** 23.06 WU per bit from one executed input, not a
+  serialized fixture. Plain Winternitz also cannot deliver labels safely
+  without a translation layer (2026/1684), whose 128-bit chunked form models
+  at 14.0M WU in 4,411 chunks.
+- These match the other session's figures (2026-10-07), which were run on
+  deleted temporary copies.
+
 **Why the provers need so much memory.** Every peak measured fits about 16 B
 (one GF(2^128) element) per witness bit, main plus preprocessed, times about
 1.7: the binary stage, 18.9 Gbit, peaked at 285-290 GB (16 B per bit alone is

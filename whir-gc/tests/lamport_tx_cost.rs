@@ -38,7 +38,15 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::str::FromStr;
 
-const INPUT_BITS: usize = 1_041_024;
+/// The measured Keccak verifier's input; the golden totals are pinned at this size.
+const KECCAK_INPUT_BITS: usize = 1_041_024;
+
+/// The input size to serialize: `WHIR_GC_INPUT_BITS`, else the Keccak verifier's.
+fn input_bits() -> usize {
+    std::env::var("WHIR_GC_INPUT_BITS")
+        .ok()
+        .map_or(KECCAK_INPUT_BITS, |s| s.parse().expect("WHIR_GC_INPUT_BITS is a bit count"))
+}
 const INPUTS_PER_TX: usize = 6;
 const MAX_STACK_ITEMS: usize = 1_000;
 const MAX_STANDARD_TX_WEIGHT: u64 = 400_000;
@@ -428,10 +436,12 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
     let authorization_keypair = authorization_keypair(&secp);
     let (authorization_key, _) = authorization_keypair.x_only_public_key();
     let mut rng = ChaCha20Rng::seed_from_u64(2026);
-    let keys = Lamport::new(INPUT_BITS, &mut rng);
+    let input_bits = input_bits();
+    let golden = input_bits == KECCAK_INPUT_BITS;
+    let keys = Lamport::new(input_bits, &mut rng);
     // Any bit pattern has the same serialized size.  Alternating values also
     // exercises both sides of every Lamport pair.
-    let bits: Vec<bool> = (0..INPUT_BITS).map(|i| i % 2 == 1).collect();
+    let bits: Vec<bool> = (0..input_bits).map(|i| i % 2 == 1).collect();
     let published = keys.publish(&bits);
 
     let funding_txid = std::env::var("WHIR_GC_FUNDING_TXID")
@@ -464,7 +474,7 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
         pending.push(input);
 
         if pending.len() == INPUTS_PER_TX
-            || (input_index + 1) * BITS_PER_SCRIPT >= INPUT_BITS
+            || (input_index + 1) * BITS_PER_SCRIPT >= input_bits
         {
             let unsigned = Transaction {
                 version: Version::TWO,
@@ -541,9 +551,13 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
     assert!(pending.is_empty());
 
     let leaves = keys.hashes.len().div_ceil(BITS_PER_SCRIPT);
-    assert_eq!(leaves, 1_044);
-    assert_eq!(transactions.len(), 174);
-    assert!(transactions.iter().all(|tx| tx.input.len() == INPUTS_PER_TX));
+    assert_eq!(transactions.len(), leaves.div_ceil(INPUTS_PER_TX));
+    assert!(max_stack_items <= MAX_STACK_ITEMS);
+    if golden {
+        assert_eq!(leaves, 1_044);
+        assert_eq!(transactions.len(), 174);
+        assert!(transactions.iter().all(|tx| tx.input.len() == INPUTS_PER_TX));
+    }
 
     let serialized_bytes: usize = transactions.iter().map(|tx| serialize(tx).len()).sum();
     let serialized_sizes: Vec<usize> =
@@ -555,7 +569,7 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
     let vsizes: Vec<usize> = transactions.iter().map(Transaction::vsize).collect();
 
     eprintln!(
-        "{INPUT_BITS} authenticated bits: {leaves} P2TR inputs in {} transactions; \
+        "{input_bits} authenticated bits: {leaves} P2TR inputs in {} transactions; \
          scripts {total_script_bytes} B; serialized {serialized_bytes} B; base {base_bytes} B; \
          total {weight} WU; summed vsize {vsize} vB; peak stack {max_stack_items}; \
          first/full tx {} WU ({} vB); final tx {} WU ({} vB)",
@@ -566,18 +580,20 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
         transactions[transactions.len() - 1].vsize(),
     );
 
-    assert_eq!(max_stack_items, 1_000);
-    assert_eq!(total_script_bytes, 51_046_716);
-    assert_eq!(serialized_bytes, 68_906_116);
-    assert_eq!(base_bytes, 52_026);
-    assert_eq!(weight, 69_062_194);
-    assert_eq!(vsize, 17_265_635);
-    assert_eq!(serialized_sizes[..173], [396_349; 173]);
-    assert_eq!(serialized_sizes[173], 337_739);
-    assert_eq!(weights[..173], [397_246; 173]);
-    assert_eq!(weights[173], 338_636);
-    assert_eq!(vsizes[..173], [99_312; 173]);
-    assert_eq!(vsizes[173], 84_659);
+    if golden {
+        assert_eq!(max_stack_items, 1_000);
+        assert_eq!(total_script_bytes, 51_046_716);
+        assert_eq!(serialized_bytes, 68_906_116);
+        assert_eq!(base_bytes, 52_026);
+        assert_eq!(weight, 69_062_194);
+        assert_eq!(vsize, 17_265_635);
+        assert_eq!(serialized_sizes[..173], [396_349; 173]);
+        assert_eq!(serialized_sizes[173], 337_739);
+        assert_eq!(weights[..173], [397_246; 173]);
+        assert_eq!(weights[173], 338_636);
+        assert_eq!(vsizes[..173], [99_312; 173]);
+        assert_eq!(vsizes[173], 84_659);
+    }
 
     // A compact join transaction demonstrates the graph edge that cannot be
     // relayed while the 174 large parents are all unconfirmed under the Core
@@ -610,9 +626,11 @@ fn serialized_lamport_assert_component_for_measured_verifier() {
         &secp,
     );
     assert!(finalization.weight().to_wu() < MAX_STANDARD_TX_WEIGHT);
-    assert_eq!(serialize(&finalization).len(), 30_679);
-    assert_eq!(finalization.weight().to_wu(), 52_240);
-    assert_eq!(finalization.vsize(), 13_060);
+    if golden {
+        assert_eq!(serialize(&finalization).len(), 30_679);
+        assert_eq!(finalization.weight().to_wu(), 52_240);
+        assert_eq!(finalization.vsize(), 13_060);
+    }
     eprintln!(
         "finalization: {} parents, {} B serialized, {} WU, {} vB",
         finalization.input.len(),

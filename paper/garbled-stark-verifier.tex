@@ -1610,10 +1610,17 @@ by Plonky3's assessment in the Johnson regime, with up to 46 bits of grinding
 per term at level 4, which halves under quantum search. The circuit checks only
 the last proof, so the statement's soundness also composes over the earlier
 levels. Proving level 4 alone took 1.8 hours on 64 cores with four GPUs
-grinding and about 470\,GB of memory. At the measured mechanisms' per-bit costs
-(Table~\ref{tab:onchain}), 564{,}552 bits would be about 1.20\,MvB with the
-8-bit adaptor baseline and 6.42--9.37\,MvB per hash-key set; these are
-scalings, not fixtures.
+grinding and about 470\,GB of memory. Serializing the input-publication fixtures of
+Table~\ref{tab:onchain} at 564{,}552 bits, with every transaction signed and
+every leaf executed under the stack limit, gives 1{,}205{,}217\,vB for the 8-bit
+adaptor baseline (73 inputs in 13 reveal transactions), 6{,}425{,}757\,vB for
+Antichain $(2,16)$ (426 inputs in 71) and 9{,}363{,}254\,vB for Lamport (566
+inputs in 95), plus a 7{,}155\,vB Lamport join; Disprove is one 97\,vB
+transaction. Plain 4-bit Winternitz, modeled from one executed input at
+23.06 weight units per bit, would be about 3.26\,MvB, but it cannot deliver
+garbled labels without a translation layer. These reveals were not replayed in
+Bitcoin Core, and the accounting boundary is that of
+Table~\ref{tab:onchain}.
 
 \paragraph{Comparison.} Table~\ref{tab:compare} places the result among
 approaches to verifying proofs on Bitcoin (\S\ref{sec:related}). For the
