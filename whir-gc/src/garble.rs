@@ -14,7 +14,9 @@
 //! - **OR**, one ciphertext: `c0 = H(a1) ⊕ Δ`, `ct = H(a1) ⊕ H(a0) ⊕ b1`; the
 //!   evaluator outputs `H(a)` for `x = 1`, `H(a) ⊕ ct ⊕ b` for `x = 0`.
 //!
-//! with `H(l) = Blake3(l ‖ gid)` (`S::hash_ext`, the `_blake3` PRF). This is
+//! with `H(l) = Blake3(l ‖ gid)` (`S::hash_ext`, the `_blake3` PRF), `gid`
+//! counting the non-free gates as `bitvm-gc`'s streaming garbler does, so both
+//! backends give the same ciphertexts for the same circuit, `Δ` and labels. This is
 //! privacy-free garbling: the evaluator knows every plaintext value and uses
 //! it to pick the branch, which is the BitVM3 setting, where the proof is
 //! public and the point is that the *true* label of the output wire can be
@@ -63,12 +65,12 @@ pub fn garble(circuit: &CircuitAdapter, inputs: usize, output: usize) -> Garbled
         *l = S::random();
     }
     let mut ciphertexts = Vec::new();
-    for (gid, g) in circuit.get_gates().iter().enumerate() {
-        let gid = u32::try_from(gid).expect("gate ids fit in u32");
+    for g in circuit.get_gates() {
         let GateOperation::Base(op) = g else { panic!("custom gates are not used") };
         match *op {
             Operation::Add(d, x, y) => label0[d] = label0[x] ^ label0[y],
             Operation::Mul(d, x, y) | Operation::Or(d, x, y) => {
+                let gid = u32::try_from(ciphertexts.len()).expect("gate ids fit in u32");
                 let gate_type = if matches!(*op, Operation::Or(..)) { GateType::Or } else { GateType::And };
                 let (c0, ct) = gate_garbled_with_delta(label0[x], label0[y], gid, gate_type, delta, None);
                 label0[d] = c0;
@@ -121,8 +123,7 @@ pub fn evaluate_labels(
         label[2 + i] = l;
     }
     let mut next_ct = 0;
-    for (gid, g) in circuit.get_gates().iter().enumerate() {
-        let gid = u32::try_from(gid).expect("gate ids fit in u32");
+    for g in circuit.get_gates() {
         let GateOperation::Base(op) = g else { panic!("custom gates are not used") };
         match *op {
             Operation::Add(d, x, y) => {
@@ -132,6 +133,7 @@ pub fn evaluate_labels(
             Operation::Mul(d, x, y) | Operation::Or(d, x, y) => {
                 let is_or = matches!(*op, Operation::Or(..));
                 let gate_type = if is_or { GateType::Or } else { GateType::And };
+                let gid = u32::try_from(next_ct).expect("gate ids fit in u32");
                 let ct = ciphertexts[next_ct];
                 next_ct += 1;
                 value[d] = if is_or { value[x] | value[y] } else { value[x] & value[y] };

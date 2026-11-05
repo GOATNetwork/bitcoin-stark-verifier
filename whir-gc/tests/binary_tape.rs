@@ -4,7 +4,7 @@
 //! garbling with the streaming garbler.
 //!
 //! The tape is dumped by Ziren's `crates/prover/tests/dump_binary_tape.rs` (added by
-//! `patches/ziren-9398469a.patch`): the binary
+//! `patches/ziren-dumper.patch`): the binary
 //! stage's verifier (`binary_tape.bin`, level 1) or the narrow recursion's
 //! verifier (`narrow_tape.bin`, level 2). Set `BINARY_TAPE_DUMP` or put it at
 //! `target/binary-tape.bin`. Run with
@@ -15,10 +15,18 @@ use garbled_snark_verifier::circuits::sect233k1::stream::{Plan, Streaming};
 use whir_gc::binary_tape::{self, BTape, Options, Report};
 use whir_gc::ziren::{Count, Eval};
 
+/// The tape, or `None` with a `SKIPPED` note when it is not there: the tape
+/// is not in the repository, so a run without it checks nothing.
 fn tape() -> Option<BTape> {
     let path = std::env::var("BINARY_TAPE_DUMP")
         .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../target/binary-tape.bin").into());
-    Some(binary_tape::parse(&std::fs::read(path).ok()?))
+    match std::fs::read(&path) {
+        Ok(bytes) => Some(binary_tape::parse(&bytes)),
+        Err(e) => {
+            eprintln!("SKIPPED: no tape at {path} ({e}); set BINARY_TAPE_DUMP");
+            None
+        }
+    }
 }
 
 fn print(name: &str, r: &Report, and: usize, or: usize, xor: usize, wires: usize, secs: f64) {

@@ -50,9 +50,10 @@ verifier off-chain. Existing garbled-verifier and witness-encryption designs
 check elliptic-curve SNARKs, which do not resist a quantum adversary. A
 hash-based STARK verifier removes that dependency but is difficult to garble:
 it branches on data, its transcript is defined by an implementation, hashing
-dominates its cost, and a stored circuit of $10^8$ gates does not fit in memory.
-We garble the Plonky3 verifier path exercised by a Keccak-$f$ algebraic
-intermediate representation (AIR) over WHIR,
+and field multiplications dominate its cost, and a stored circuit of $10^8$
+gates does not fit in memory. We garble the Plonky3 verifier path exercised by
+a Keccak-$f$ algebraic intermediate representation (AIR) without public values
+over WHIR,
 using the binary tower field $\F$ and Blake3 for commitments, the transcript and
 garbling. Additions are free under free-XOR, a multiplication costs $2{,}187$
 \AND{} gates, a Blake3 compression costs $10{,}281$, and a streaming garbler
@@ -88,7 +89,9 @@ post-quantum. Thus the artifact is a measured hash-based verifier and a cost
 study, not a complete post-quantum Bitcoin protocol. Recursing a zkVM proof
 through a narrow tape machine, with experimental and unreviewed changes to the
 proof system that we list, brings the garbled verifier's input to 564{,}552
-bits in 218.0M non-free gates.
+bits in 218.0M non-free gates. Each of its proofs meets 100 bits by Plonky3's
+assessment, which does not count those changes, and the circuit binds neither
+the zkVM program nor its outputs.
 \end{abstract}
 
 % =====================================================================
@@ -133,10 +136,10 @@ first be wrapped in such a SNARK, which reintroduces both.
 cheap by choosing its field. Under free-XOR~\cite{ks08} a garbled circuit pays
 only for non-linear gates, and in a field of characteristic two every addition
 is an \XOR. A STARK over the binary tower field $\F$ with Blake3 commitments
-therefore costs, as a garbled circuit, little more than its hashes and a
-moderate number of field multiplications. Its algebraic checks rest on WHIR
-over $\F$, while Blake3 instantiates the commitments, Fiat--Shamir transcript
-and garbling PRF.
+therefore costs, as a garbled circuit, its hashes and field multiplications,
+with additions free. Its algebraic checks rest on WHIR over $\F$, while Blake3
+instantiates the commitments, the Fiat--Shamir transcript and the garbling hash,
+modeled as circular correlation robust (\S\ref{sec:security}).
 
 \paragraph{Challenges.} Four problems stand between this idea and a working
 garbled verifier.
@@ -148,7 +151,7 @@ garbled verifier.
     sample exactly the bytes that the prover's implementation does, or Fiat--Shamir
     soundness is lost, and that byte schedule is specified nowhere outside the
     implementation.
-  \item[C3] \emph{Hashing dominates.} Merkle paths, leaf rows and the transcript
+  \item[C3] \emph{Hashing is expensive.} Merkle paths, leaf rows and the transcript
     are Blake3 compressions, and a compression costs more than four field
     multiplications.
   \item[C4] \emph{Memory.} A verifier of $10^8$ non-free gates has several
@@ -244,8 +247,8 @@ The garbled circuit is one 16-byte ciphertext per \AND{} or \textsf{OR} gate.
 
 Two details matter in practice. First, $\Delta$ must be secret and fresh for
 each garbling: with a public $\Delta$ any label yields its complement, and the
-output's other label is free to compute. Second, a hash-based PRF gives labels
-no algebraic structure. RSA-based garbling proposals for BitVM3 were broken
+output's other label is free to compute. Second, a hash modeled as circular correlation
+robust (\S\ref{sec:security}) gives labels no algebraic structure. RSA-based garbling proposals for BitVM3 were broken
 exactly through such structure: label forgery by extended Euclid on coprime
 exponents, and by the Franklin--Reiter related-message
 attack~\cite{flb25}.
@@ -785,14 +788,16 @@ components, not an end-to-end Bitcoin protocol.}
 \end{table}
 
 \paragraph{Setup.} The operator garbles $N$ instances of $C$ from independent
-seeds. A challenger chooses $N-M$ of them to open, re-garbles each opened
-instance from its seed and compares. The streaming garbler does this in one
-garbling pass per instance, reusing the plan that all instances share
-(\S\ref{sec:streaming}). The challenger stores the $M$ kept instances, 1.5\,GB
-each at $2^{18}$ rows. For each kept instance $j$ the operator commits
-$h_j=\mathrm{SHA256}(\ell^j_0)$, the hash of the label of output value 0
-(reject). The intended protocol also fixes one-time keys for the input bits of
-$C$. Publishing bit $b$ of input $i$ must give a challenger only the label of
+seeds. Before any instance is opened, it commits for every instance $j$ the
+hash of its garbled tables, $h_j=\mathrm{SHA256}(\ell^j_0)$, the hash of the
+label of output value 0 (reject), and the instance's input-key material: the
+hashes of its one-time keys and its label translations. A challenger then
+chooses $N-M$ instances to open, re-garbles each opened instance from its seed
+and checks every commitment of that instance; only then is the transaction
+graph signed. The streaming garbler re-garbles in one garbling pass per instance, reusing the plan that all
+instances share (\S\ref{sec:streaming}). The challenger stores the $M$ kept
+instances, 1.5\,GB each at $2^{18}$ rows. The intended protocol fixes one-time
+keys for the input bits of $C$. Publishing bit $b$ of input $i$ must give a challenger only the label of
 value $b$ on wire $i$ in every kept instance. Mosaic provides this correlation
 for its adaptor-signature path~\cite{mosaic26}; the corresponding hash-based
 soldering is open here. The intended transactions would be pre-signed at setup
@@ -923,8 +928,10 @@ single complementary label breaks authenticity (\S\ref{sec:security}),
 (iii)~be \emph{binding}: $\mathsf{G}$ can publish at most one value per wire,
 and the publication is at the same time the authorization of the spending
 transaction, and (iv)~be \emph{public}: any observer can recover $\pi$ and
-check that the published object is well formed, so that a missing or malformed
-publication is itself a Disprove condition. Lamport achieves (i)--(iv) with one
+check that the published object is well formed. A malformed publication does
+not satisfy the Assert script and cannot be spent, and a missing one forfeits
+the operator's stake through AssertTimeout; Disprove is reserved for the reject
+label. Lamport achieves (i)--(iv) with one
 preimage per bit, and its cost is the per-bit script. Figure~\ref{fig:adaptorseq}
 is the adaptor construction of BitVM3 and Mosaic~\cite{bitvm3paper,mosaic26},
 which achieves them with one signature per $k$-bit digit and no per-bit script.
@@ -1003,8 +1010,8 @@ soft fork of Table~\ref{tab:pqsel}.}
 
 The two protocols publish the same amount of selection material per digit:
 one 64-byte completion for Figure~\ref{fig:adaptorseq}, two $n$-byte nodes for
-Figure~\ref{fig:hashseq}. At $k=8$ and $n=16$ both are 8 bytes of
-witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
+Figure~\ref{fig:hashseq}. With the adaptor at $k=8$ and the hash-based
+fixture at $k=4$, $n=16$, both are 8 bytes of witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
 64-bit hash records of our fixtures are both exactly 8{,}458{,}320 bytes. They
 differ in where the remaining cost sits. The adaptor's selection is verified by
 one \texttt{CHECKSIG} per digit, 3 bytes of script, and its binding is the same
@@ -1198,10 +1205,10 @@ Garbling was single-threaded. Every run up to $2^{18}$ rows was allocated
 an AMD EPYC 9355 limited to 128\,GB and 32 cores.
 
 \paragraph{Artifact availability.} The source repository includes the locked
-dependencies, benchmark commands, raw measurement logs and their SHA-256
-manifest. The commands and memory caps are listed in
-\texttt{whir-gc/README.md}, and \texttt{paper/data/README.md} maps tables and
-figures to raw logs, and \texttt{patches/} holds the experimental Plonky3 and
+dependencies and benchmark commands; the commands and memory caps are listed in
+\texttt{whir-gc/README.md}. The raw measurement logs, with a SHA-256 manifest
+and a map from tables and figures to logs, are archived separately and
+available on request. \texttt{patches/} holds the experimental Plonky3 and
 Ziren changes behind Table~\ref{tab:recursion}. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
@@ -1557,7 +1564,12 @@ and Blake3, the program that verifies a shrunk zkVM proof, and its
 straight-line tape over $\F$. A five-table tape machine (ledger, arithmetic,
 rewiring, Blake3 message and round tables) proves a run of a tape, and its own
 verifier is recorded and proved again: narrow recursion. We translate a tape
-gate by gate (\texttt{whir-gc/src/binary\_tape.rs}). For a Fibonacci program the
+gate by gate (\texttt{whir-gc/src/binary\_tape.rs}), trusting Ziren's recorder
+to capture Plonky3's verifier. The tape machine binds no
+public values, so from level 2 on the binary stage's public-value digest, which
+commits to the zkVM program's verifying key and outputs, is a private witness.
+The circuit therefore attests that some zkVM proof verifies, not which program
+ran or what it output. For a Fibonacci program the
 binary stage's verifier has 3.37G non-free gates and 18{,}050{,}304 input bits;
 after three rounds of narrow recursion the verifier of the last proof has the
 sizes in Table~\ref{tab:recursion}. Every row is the verifier of a real proof:
@@ -1572,7 +1584,7 @@ the Keccak verifier's, in 218.0M non-free gates and 3.49\,GB.
 \begin{tabular}{lrrr}\toprule
 verifier & input bits & non-free gates & garbled\\\midrule
 binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
-narrow recursion, level 2, Ziren \texttt{f6137ecc} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
+narrow recursion, level 2, Ziren \texttt{9398469a} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
 level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
 \quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
 \quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
@@ -1634,19 +1646,21 @@ streaming garbler. It has $481.6$M non-free gates and $1.92\times10^9$ wires,
 with at most $15.6$M live, and used 2.2\,GB peak working memory in under six
 minutes. The circuit accepted the
 valid proof and rejected it with one witness bit flipped; built as a stored
-circuit, the same verifier needed more than 64\,GB. The recursion verifier
-we compare (Table~\ref{tab:recursion}) has $2.2\times$ fewer non-free gates,
-and about $14\times$ fewer than the Boolean-garbled Groth16 verifier; the
-Keccak verifier has $5.1\times$ and $30\times$ fewer. Native-group garbling of
+circuit, the same verifier needed more than 64\,GB. The Keccak verifier has
+$5.1\times$ fewer non-free gates, and $30\times$ fewer than the Boolean-garbled
+Groth16 verifier; the experimental recursion verifier
+(Table~\ref{tab:recursion}) has $2.2\times$ and about $14\times$ fewer. Native-group garbling of
 Groth16~\cite{kflt26native} and witness encryption~\cite{babe2026} produce far smaller
 artifacts, of megabytes, and their proofs need far fewer input bits; both rely
 on pairings and a trusted setup.
 On-chain, the comparison inverts. The Groth16 designs publish 508 to 1{,}019
 input bits and report dispute paths of a few to a few tens of kilobytes, under
-\$60; our dispute publishes 564{,}552 bits and its input component alone is
-about 1.20\,MvB with adaptor signatures or 6.42\,MvB hash-based, one to three
-orders of magnitude more (about $38\times$ deferred binding's 32\,kvB with
-adaptors), before the unconstructed remainder of the
+\$60. Our Keccak dispute publishes 1{,}041{,}024 bits, and its Core-tested
+input component alone is 2.22\,MvB with adaptor signatures or 11.85\,MvB
+hash-based; the recursion verifier's 564{,}552 bits serialize to 1.21 and
+6.43\,MvB, not replayed in Bitcoin Core. That is one to three orders of
+magnitude more (about $38\times$ deferred binding's 32\,kvB even for the
+recursion verifier with adaptors), before the unconstructed remainder of the
 graph. That is the price of verifying the STARK directly rather than wrapping
 it, and \S\ref{sec:protocol} and \S\ref{sec:discussion} are about reducing it.
 
@@ -1659,7 +1673,8 @@ garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & n/r & e
 BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & Assert 9{,}240\,vB, ChallengeAssert 17{,}400\,vB, WronglyChallenged 149\,vB: 26.8\,kvB, \$56.90 at 2.2\,sat/vB & pairings (GGM+RO), trusted setup\\\addlinespace[2pt]
 deferred-binding WE~\cite{goatpbwe} & Groth16, late inputs & 0.92\,GiB$^{\dagger}$ & 768 & Assert 2{,}154\,B, ChallengeAssert 14{,}312\,B witness and 109{,}393\,B script, WronglyChallenged 64\,B; about 32\,kvB & BABE + DLog\\\addlinespace[2pt]
 PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & one hash in Assert, one signature in Disprove; no size reported & heuristic\\\addlinespace[2pt]
-\textbf{this work} & \textbf{STARK recursion proof over $\F$} & \textbf{3.49\,GB} & \textbf{564{,}552} & \textbf{input publication 1.20\,MvB (adaptor, DLog) or 6.42\,MvB (hash-based), about \$2{,}500 or \$13{,}500 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity; unreviewed proof-system changes}$^{\ddagger}$\\\bottomrule
+\textbf{this work} & \textbf{Keccak-$f$ STARK over $\F$, $2^{18}$ rows} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{input publication 2.22\,MvB (adaptor, DLog) or 11.85\,MvB (hash-based), about \$4{,}700 or \$24{,}900 at 2.2\,sat/vB, Core-replayed; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity}$^{\ddagger}$\\\addlinespace[2pt]
+this work, narrow recursion (experimental, not Core-replayed) & STARK recursion proof over $\F$ & 3.49\,GB & 564{,}552 & input publication 1.21\,MvB (adaptor, DLog) or 6.43\,MvB (hash-based), about \$2{,}500 or \$13{,}500 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete$^{\S}$ & as above, plus unreviewed proof-system changes$^{\ddagger}$\\\bottomrule
 \\
 \end{tabularx}
 \caption{Comparison of verifier artifacts, dispute inputs and on-chain dispute
@@ -1671,20 +1686,21 @@ garbled circuits ($r\pi_1$, $Q=x_D L_D+B$ and $rQ$) plus adaptor tables, as the
 implementation report measures it; a 3.83\,GiB circuit artifact is shared by
 all instances. Its on-chain entry is witness and script bytes as reported; the
 kvB figure is our arithmetic.
-$^{\S}$Our on-chain entry scales the Core-tested per-bit funding-plus-reveal
-costs of Table~\ref{tab:onchain}, measured on the Keccak verifier's
-1{,}041{,}024 input bits, to the recursion verifier's 564{,}552, plus the
-Core-tested reject-label Disprove, for one key set; the challenge, completion, timeout and anchor transactions and the
-multi-copy soldering are not constructed (\S\ref{sec:protocol}), so it is a
-lower bound on the dispute path, not a total. $^{\ddagger}$Verifier assumptions
+$^{\S}$For one key set. The Keccak entry is the Core-tested reveals of
+Table~\ref{tab:onchain}. The recursion entry serializes the same fixtures at
+564{,}552 bits, with every transaction signed and every leaf executed under the
+stack limit, but was not replayed in Bitcoin Core (\S\ref{sec:eval}). Both add
+the Core-tested reject-label Disprove; the challenge, completion, timeout and
+anchor transactions and the multi-copy soldering are not constructed
+(\S\ref{sec:protocol}), so each is a lower bound on the dispute path, not a
+total. $^{\ddagger}$Verifier assumptions
 only. A surrounding protocol additionally uses discrete-logarithm signatures, or
 requires the unimplemented hash-based multi-copy soldering and a post-quantum
-transaction-authorization mechanism. Our figures are for the verifier of the
-last narrow-recursion proof of Ziren's binary stage (Table~\ref{tab:recursion}),
-without public values, with the experimental proof-system changes listed in
-\S\ref{sec:eval}; the $2^{18}$-row Keccak-$f$ verifier has 1.5\,GB, 94.1M
-non-free gates and 1{,}041{,}024 input bits, 2.22\,MvB with adaptors or
-11.88\,MvB hash-based.}
+transaction-authorization mechanism. Neither statement has public values; the
+recursion row binds neither the zkVM program nor its outputs. The
+recursion row is the verifier of the last narrow-recursion proof of Ziren's
+binary stage (Table~\ref{tab:recursion}), with the experimental proof-system
+changes listed in \S\ref{sec:eval}.}
 \label{tab:compare}
 \end{table}
 

@@ -10,10 +10,17 @@
 
 use whir_gc::ziren::{self, Count, Dump, Eval, Options, Report, Translator, Tree};
 
+/// The dump, or `None` with a `SKIPPED` note when it is not there: the dump
+/// is not in the repository, so a run without it checks nothing.
 fn dump() -> Option<Dump> {
     let path = std::env::var("ZIREN_SHRINK_DUMP").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../target/ziren-shrink.bin").into());
-    let bytes = std::fs::read(&path).ok()?;
-    Some(ziren::parse(&bytes))
+    match std::fs::read(&path) {
+        Ok(bytes) => Some(ziren::parse(&bytes)),
+        Err(e) => {
+            eprintln!("SKIPPED: no shrink dump at {path} ({e}); set ZIREN_SHRINK_DUMP");
+            None
+        }
+    }
 }
 
 /// Fixed frontier per tree depth: mean + 8 standard deviations of the
