@@ -4,7 +4,7 @@
 //! garbling with the streaming garbler.
 //!
 //! The tape is dumped by Ziren's `crates/prover/tests/dump_binary_tape.rs` (added by
-//! `patches/ziren-9398469a.patch`): the binary
+//! `patches/ziren-dumper.patch`): the binary
 //! stage's verifier (`binary_tape.bin`, level 1) or the narrow recursion's
 //! verifier (`narrow_tape.bin`, level 2). Set `BINARY_TAPE_DUMP` or put it at
 //! `target/binary-tape.bin`. Run with

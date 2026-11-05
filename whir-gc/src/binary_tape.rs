@@ -32,7 +32,7 @@
 //! selector is 1 bit, and every other is 128.
 //!
 //! The dump this reads is written by Ziren's `crates/prover/tests/dump_binary_tape.rs`,
-//! which `patches/ziren-9398469a.patch` adds.
+//! which `patches/ziren-dumper.patch` adds.
 
 use garbled_snark_verifier::circuits::sect233k1::blake3_ckt as blake3;
 use garbled_snark_verifier::circuits::sect233k1::builder::CircuitTrait;
