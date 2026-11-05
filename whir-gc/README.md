@@ -30,7 +30,8 @@ streaming garbler, and its gate garbling and evaluation.
 - **Correctness:** every circuit accepts its real proof. Rejection of changed
   inputs is tested at 2^5 and 2^8 rows and at level 4.
 - **Narrow recursion:** its figures depend on the unreviewed Plonky3 and Ziren
-  changes in [`../patches/`](../patches/README.md).
+  changes on Ziren `80af2779` and Plonky3 `be1c6f92`
+  ([`../patches/`](../patches/README.md)).
 - **On-chain cost:** publishing the 564,552 input bits at dispute time costs
   1.21 MvB with Schnorr adaptor signatures, 6.43 MvB with Antichain Winternitz
   and 9.36 MvB with Lamport. The paper gives the accounting boundaries and

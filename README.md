@@ -29,7 +29,8 @@ measurement.
   recursion bring the statement to a level-4 proof of a zkVM run. Its verifier
   is 218.0M non-free gates and 3.49 GB garbled, and reads 564,552 input bits.
   The proofs meet 100 bits in the Johnson regime. The reduction rests on
-  unreviewed Plonky3 and Ziren changes, kept in [`patches/`](patches/README.md).
+  unreviewed Plonky3 and Ziren changes, on Ziren `feat/binary-whir-blake3`
+  `80af2779` and Plonky3 `zkm/binary-whir` `be1c6f92` ([`patches/`](patches/README.md)).
 - **Dispute-time input publication at 564,552 bits.** Schnorr adaptor
   signatures take 1.21 MvB, Antichain Winternitz 6.43 MvB and Lamport 9.36 MvB.
   Disprove is a 97-vB hashlock spend.

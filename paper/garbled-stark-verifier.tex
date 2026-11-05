@@ -1208,8 +1208,11 @@ an AMD EPYC 9355 limited to 128\,GB and 32 cores.
 dependencies and benchmark commands; the commands and memory caps are listed in
 \texttt{whir-gc/README.md}. The raw measurement logs, with a SHA-256 manifest
 and a map from tables and figures to logs, are archived separately and
-available on request. \texttt{patches/} holds the experimental Plonky3 and
-Ziren changes behind Table~\ref{tab:recursion}. \texttt{Cargo.lock} pins Plonky3 at revision
+available on request. The experimental Plonky3 and Ziren changes behind
+Table~\ref{tab:recursion} are Ziren commit \texttt{80af2779} on
+\texttt{feat/binary-whir-blake3} and Plonky3 commit \texttt{be1c6f92} on
+ProjectZKM's \texttt{zkm/binary-whir}; \texttt{patches/README.md} lists them and
+the commands that rebuild the tapes. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
 are deterministic; wall-clock times are single-run engineering measurements
