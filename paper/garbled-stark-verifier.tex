@@ -1010,8 +1010,8 @@ soft fork of Table~\ref{tab:pqsel}.}
 
 The two protocols publish the same amount of selection material per digit:
 one 64-byte completion for Figure~\ref{fig:adaptorseq}, two $n$-byte nodes for
-Figure~\ref{fig:hashseq}. At $k=8$ and $n=16$ both are 8 bytes of
-witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
+Figure~\ref{fig:hashseq}. With the adaptor at $k=8$ and the hash-based
+fixture at $k=4$, $n=16$, both are 8 bytes of witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
 64-bit hash records of our fixtures are both exactly 8{,}458{,}320 bytes. They
 differ in where the remaining cost sits. The adaptor's selection is verified by
 one \texttt{CHECKSIG} per digit, 3 bytes of script, and its binding is the same
@@ -1205,10 +1205,10 @@ Garbling was single-threaded. Every run up to $2^{18}$ rows was allocated
 an AMD EPYC 9355 limited to 128\,GB and 32 cores.
 
 \paragraph{Artifact availability.} The source repository includes the locked
-dependencies, benchmark commands, raw measurement logs and their SHA-256
-manifest. The commands and memory caps are listed in
-\texttt{whir-gc/README.md}, and \texttt{paper/data/README.md} maps tables and
-figures to raw logs, and \texttt{patches/} holds the experimental Plonky3 and
+dependencies and benchmark commands; the commands and memory caps are listed in
+\texttt{whir-gc/README.md}. The raw measurement logs, with a SHA-256 manifest
+and a map from tables and figures to logs, are archived separately and
+available on request. \texttt{patches/} holds the experimental Plonky3 and
 Ziren changes behind Table~\ref{tab:recursion}. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
@@ -1564,7 +1564,8 @@ and Blake3, the program that verifies a shrunk zkVM proof, and its
 straight-line tape over $\F$. A five-table tape machine (ledger, arithmetic,
 rewiring, Blake3 message and round tables) proves a run of a tape, and its own
 verifier is recorded and proved again: narrow recursion. We translate a tape
-gate by gate (\texttt{whir-gc/src/binary\_tape.rs}). The tape machine binds no
+gate by gate (\texttt{whir-gc/src/binary\_tape.rs}), trusting Ziren's recorder
+to capture Plonky3's verifier. The tape machine binds no
 public values, so from level 2 on the binary stage's public-value digest, which
 commits to the zkVM program's verifying key and outputs, is a private witness.
 The circuit therefore attests that some zkVM proof verifies, not which program
@@ -1583,7 +1584,7 @@ the Keccak verifier's, in 218.0M non-free gates and 3.49\,GB.
 \begin{tabular}{lrrr}\toprule
 verifier & input bits & non-free gates & garbled\\\midrule
 binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
-narrow recursion, level 2, Ziren \texttt{f6137ecc} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
+narrow recursion, level 2, Ziren \texttt{9398469a} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
 level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
 \quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
 \quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
