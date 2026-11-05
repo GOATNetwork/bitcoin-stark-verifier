@@ -9,7 +9,6 @@ description = "A WHIR verifier over the binary tower fields as a boolean circuit
 blake3 = "1"
 garbled-snark-verifier.workspace = true
 p3-air.workspace = true
-poseidon2 = { path = "../poseidon2" }
 p3-binary-field.workspace = true
 p3-field.workspace = true
 
@@ -24,6 +23,7 @@ p3-challenger.workspace = true
 p3-commit.workspace = true
 p3-merkle-tree.workspace = true
 p3-symmetric.workspace = true
+p3-koala-bear.workspace = true
 p3-sumcheck.workspace = true
 p3-keccak-air.workspace = true
 p3-multi-stark.workspace = true

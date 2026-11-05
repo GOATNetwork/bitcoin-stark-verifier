@@ -42,7 +42,7 @@ use garbled_snark_verifier::circuits::sect233k1::builder::{
     CircuitTrait, CustomGateParams, CustomGateType, GateCounts, GateOperation, Template,
 };
 use garbled_snark_verifier::circuits::sect233k1::stream::ValuedBuilder;
-use poseidon2::reference as r;
+use crate::koala_ref as r;
 
 use crate::koala::{self, Ext, Fp, BITS};
 use crate::ziren_constants as zc;

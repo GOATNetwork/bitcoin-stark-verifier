@@ -1,17 +1,16 @@
 # bitcoin-stark-verifier
 
-Two ways to verify a STARK on Bitcoin with today's opcodes, without
-`OP_CAT`:
-
-- **in Bitcoin Script**: Poseidon2 over KoalaBear and a WHIR verifier;
-- **as a garbled circuit**: a binary-field WHIR verifier, garbled off-chain
-  and evaluated in a dispute.
+A hash-based STARK verifier for Bitcoin with today's opcodes, without
+`OP_CAT`: a binary-field WHIR verifier as a garbled circuit, garbled off-chain
+and evaluated in a dispute.
 
 | Crate | What it is |
 | --- | --- |
-| [`poseidon2`](poseidon2/) | Poseidon2 over KoalaBear in Script: the permutation, the degree-4 extension field, row hashing and Merkle paths |
-| [`whir`](whir/) | The WHIR verifier in Script, run end to end against Plonky3's prover |
 | [`whir-gc`](whir-gc/) | STARK verifiers over `GF(2^128)` and Blake3 as Boolean circuits, garbled by streaming on GOAT's [`bitvm-gc`](https://github.com/GOATNetwork/bitvm-gc) |
+
+The earlier verifier in Bitcoin Script (Poseidon2 over KoalaBear and WHIR, the
+`poseidon2` and `whir` crates) is at commit
+[`d45e453`](https://github.com/GOATNetwork/bitcoin-stark-verifier/tree/d45e45386315c4ce927e099c97f51eed48bdc877).
 
 📄 **[Paper: Garbling a Hash-Based STARK Verifier for Bitcoin](paper/garbled-stark-verifier.pdf)**
 has the design, the security analysis, the protocol integration and every
@@ -19,9 +18,6 @@ measurement.
 
 ## Headline numbers
 
-- **Script verifier.** The 2^20 example is 2,162 Poseidon2 permutations, about
-  1.24 GB of script. A standard transaction holds 0.70 of one permutation, so
-  the verifier can only run as a dispute over committed sub-query chunks.
 - **Garbled verifier, Keccak-f trace.** At 2^18 rows and 104 bits of soundness
   it is 94.1M non-free gates and 1.5 GB garbled, in under a minute on one core.
   It reads 1,041,024 input bits.
@@ -50,14 +46,11 @@ cargo test --locked    # the default suite; the heavy tests are ignored
 ```
 
 Run tests under a memory cap; [`whir-gc/README.md`](whir-gc/README.md) gives
-the command and lists the ignored tests. The Script verifier's details are in
-[`whir/README.md`](whir/README.md) and [`poseidon2/README.md`](poseidon2/README.md).
+the command and lists the ignored tests.
 
 ## Credits
 
 [Plonky3](https://github.com/Plonky3/Plonky3) for the specification and the
-prover, [BitVM](https://github.com/bitvm/bitvm) and
-[`rust-bitcoin-m31`](https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-m31)
-for the Script field-arithmetic technique, GOAT's
+prover, [BitVM](https://github.com/bitvm/bitvm) for the Script tooling, GOAT's
 [`bitvm-gc`](https://github.com/GOATNetwork/bitvm-gc) for the garbling code,
 and [Ziren](https://github.com/ProjectZKM/Ziren) for the recursion stages.

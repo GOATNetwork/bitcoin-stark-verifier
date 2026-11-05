@@ -9,6 +9,7 @@ pub mod binary_tape;
 pub mod circuit;
 pub mod garble;
 pub mod koala;
+pub(crate) mod koala_ref;
 pub mod pruned;
 pub mod reference;
 pub mod stark;
