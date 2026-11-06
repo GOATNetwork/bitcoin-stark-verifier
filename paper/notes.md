@@ -1683,7 +1683,7 @@ transaction. Bitcoin Core 31.1 strict regtest replay
 | 1,041,024 | 38,211 vB | 81 tx, 886 inputs, 7,861,144 vB | 7,899,355 vB | 7.55 |
 | 564,552 (not replayed) | | 44 tx, 481 inputs, 4,263,180 vB | | 7.55 |
 
-That is $16,597 at 2.2 sat/vB, and about 55.3 MvB for seven key sets
+That is $16,516 at 2.2 sat/vB for the reveals, and 55.03 MvB (7 × reveals) for seven key sets
 (Antichain 82.94, Lamport 120.86).
 
 **Off chain** (`wots_translation_table.rs`; Ryzen 7 8845H, 16 threads). Per
@@ -1709,7 +1709,7 @@ key check.
 
 **Open.** One WOTS key serves every instance, and an opened table can't be
 audited without seeds that expose the others. 2026/1684 uses a key per
-evaluated circuit. So 7.90 MvB is one key set, and the rest of the dispute
+evaluated circuit. So 7.86 MvB of reveals is one key set, and the rest of the dispute
 graph is not built.
 
 ## 8. To fix or check before release
