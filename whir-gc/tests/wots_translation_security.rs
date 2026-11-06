@@ -14,10 +14,13 @@
 
 mod dispute;
 
-use dispute::wots_translation::{self, CHAINS, CHUNK_BITS, D, DIGITS, GRID, K, RADIX, W_MAX, WotsKeys};
+use bitcoin_script::{define_pushable, script};
+use dispute::wots_translation::{self, Node, Signature, CHAINS, CHUNK_BITS, D, DIGITS, GRID, K, RADIX, W_MAX, WotsKeys};
 use garbled_snark_verifier::core::s::S;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+
+define_pushable!();
 
 /// Chunk bits whose digits are `x`.
 fn bits_of(x: &[u8; DIGITS]) -> Vec<bool> {
@@ -384,4 +387,122 @@ fn polynomial_ids_are_unique() {
             assert!(seen.insert(wots_translation::id(bit, value)), "bit {bit} value {value}");
         }
     }
+}
+
+#[test]
+fn kappa_steps_are_salted() {
+    // One κ stepped under another instance, chunk or index gives another
+    // value: a preimage found for one step is of no use at any other, and
+    // the 43,376 chunks of an instance are not one target set.
+    let mut rng = ChaCha20Rng::seed_from_u64(1690);
+    let (tag_a, tag_b): ([u8; 16], [u8; 16]) = (rng.random(), rng.random());
+    let k: [u8; 16] = rng.random();
+    let base = wots_translation::kappa_step(&tag_a, 0, 0, &k);
+    assert_ne!(base, wots_translation::kappa_step(&tag_b, 0, 0, &k), "instance");
+    assert_ne!(base, wots_translation::kappa_step(&tag_a, 1, 0, &k), "chunk");
+    assert_ne!(base, wots_translation::kappa_step(&tag_a, 0, 1, &k), "index");
+    // And the table uses it: every chunk still recovers exactly its labels
+    // (one_chunk_recovers_exactly_its_labels, chunks_have_independent_thresholds).
+}
+
+/// Run `chunk_lock(ends)` on WOTS items `items`, bottom first, as Script.
+fn chunk_script_accepts(ends: &[Node; CHAINS], items: &[Vec<u8>]) -> bool {
+    let s = script! {
+        for item in items { { item.clone() } }
+        { wots_translation::chunk_lock(ends) }
+        OP_TRUE
+    };
+    bitcoin_scriptexec::execute_script(s).success
+}
+
+#[test]
+fn chained_keys_fool_the_script_and_fail_the_key_check() {
+    // A malicious operator seeds chain 1 with chain 0's end. Then digit 9 of
+    // chain 0 `OP_PICK`s chain 1's node, which is chain 0's end, and chain 1
+    // with digit 0 hashes it to its own end: the Assert script accepts a
+    // chunk with a digit above 7, which the challenger's table cannot read.
+    // The setup key check rejects the key.
+    let mut rng = ChaCha20Rng::seed_from_u64(1691);
+    let mut seeds: [Node; CHAINS] = core::array::from_fn(|_| rng.random());
+    seeds[1] = wots_translation::forward(&seeds[0], K);
+    let keys = WotsKeys::from_seeds(vec![seeds]);
+    let ends = keys.ends[0];
+    // 9 + 0 + 6 * 1 + 8 * 5 + 1 = 56.
+    let values: [u8; CHAINS] = [9, 0, 1, 1, 1, 1, 1, 1, 5, 1];
+    let nodes: [Node; CHAINS] = core::array::from_fn(|i| wots_translation::forward(&seeds[i], usize::from(values[i]).min(K)));
+    assert_eq!(nodes[1], ends[0]);
+    let items = wots_translation::stack(&[values], &[nodes]);
+    assert!(chunk_script_accepts(&ends, &items), "the script is fooled");
+    assert!(!wots_translation::chunk_verifies(&ends, &values, &nodes), "the table cannot read it");
+    assert_eq!(wots_translation::check_key(&keys.ends), Err((0, 1)), "the key check catches it");
+
+    // The same witness under an honest key fails, as the script comment says.
+    let honest = WotsKeys::new(1, &mut rng);
+    let mut forged = nodes;
+    forged[1] = honest.ends[0][0];
+    let items = wots_translation::stack(&[values], &[forged]);
+    assert!(!chunk_script_accepts(&honest.ends[0], &items));
+}
+
+#[test]
+fn key_check_accepts_honest_keys_and_every_chained_offset() {
+    let mut rng = ChaCha20Rng::seed_from_u64(1692);
+    let honest = WotsKeys::new(200, &mut rng);
+    assert_eq!(wots_translation::check_key(&honest.ends), Ok(()));
+    // An end 0..=7 hashes behind another, in another chunk, at every offset;
+    // 8 hashes is out of OP_PICK's reach and passes.
+    for j in 0..=K + 1 {
+        let mut seeds = honest.seeds().to_vec();
+        seeds[150][4] = wots_translation::forward(&seeds[20][7], j);
+        let ends = WotsKeys::from_seeds(seeds).ends;
+        let got = wots_translation::check_key(&ends);
+        if j <= K {
+            let (a, b) = got.expect_err("chained end caught");
+            assert_eq!([a.min(b), a.max(b)], [20 * CHAINS + 7, 150 * CHAINS + 4], "offset {j}");
+        } else {
+            assert_eq!(got, Ok(()), "offset {j}");
+        }
+    }
+}
+
+#[test]
+fn digits_decode_as_consensus_reads_them() {
+    for v in 0..=K as u8 {
+        let minimal = if v == 0 { vec![] } else { vec![v] };
+        assert_eq!(wots_translation::decode_digit(&minimal), Some(v));
+        for pad in 1..=3 {
+            let mut padded = vec![v];
+            padded.extend(std::iter::repeat_n(0, pad));
+            assert_eq!(wots_translation::decode_digit(&padded), Some(v), "{v} padded to {} B", padded.len());
+            // The sign bit set on the padding: -v, which OP_PICK rejects, or
+            // negative zero, which it reads as 0.
+            *padded.last_mut().unwrap() |= 0x80;
+            assert_eq!(wots_translation::decode_digit(&padded), if v == 0 { Some(0) } else { None });
+        }
+    }
+    assert_eq!(wots_translation::decode_digit(&[0x80]), Some(0), "negative zero");
+    assert_eq!(wots_translation::decode_digit(&[0x81]), None, "-1");
+    assert_eq!(wots_translation::decode_digit(&[8]), None);
+    assert_eq!(wots_translation::decode_digit(&[7, 0, 0, 0, 0]), None, "over 4 bytes");
+    assert_eq!(wots_translation::decode_digit(&[0; 20]), None, "a node");
+
+    // A padded Assert reads to the honest signature, so its labels too.
+    let mut rng = ChaCha20Rng::seed_from_u64(1693);
+    let keys = WotsKeys::new(2, &mut rng);
+    let delta = S(rng.random());
+    let (table, labels0) = wots_translation::build(&keys, &rng.random(), delta);
+    let bits: Vec<bool> = (0..2 * CHUNK_BITS).map(|_| rng.random()).collect();
+    let sig = keys.sign(&bits);
+    let mut items = wots_translation::stack(&sig.values, &sig.nodes);
+    for item in items.iter_mut().skip(1).step_by(2) {
+        if item.is_empty() { *item = vec![0x80] } else { item.extend([0, 0]) }
+    }
+    let read = Signature::from_stack(&items, 2).expect("a consensus-valid Assert decodes");
+    assert_eq!((read.values.clone(), read.nodes.clone()), (sig.values.clone(), sig.nodes.clone()));
+    for (b, (value, l)) in wots_translation::read_labels(&keys.ends, &table, &read).into_iter().enumerate() {
+        assert_eq!(value, bits[b]);
+        assert_eq!(l, if value { labels0[b] ^ delta } else { labels0[b] });
+    }
+    // A raw-byte reading would have seen other digits.
+    assert!(items.iter().skip(1).step_by(2).any(|i| i.len() > 1));
 }

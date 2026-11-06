@@ -513,6 +513,7 @@ final results.
 | Antichain Winternitz (2,16) | 11.38 | Core-tested all-nonzero full signed transaction set after funding confirmation | hash plus non-PQ tx authorization | 0.256 kB per bit |
 | Antichain Winternitz (4,16) | 8.36 | 2026/1568 Table 1, marginal rate | hash | 43.8 kB per bit |
 | Winternitz + translation gadget | 7.38 | 2026/1684: Assert of 508 bits is 3,748 vB | hash | table quadratic per chunk; about 1.9 MiB per 127-bit chunk per instance [derived from their 97.93 vs 45.57 MiB over 28 chunk tables] |
+| WOTS translation, 3-bit digits, 8 per chunk (§7o) | 7.55 | Core-tested all-nonzero 886-input/81-transaction full signed set after funding confirmation | hash plus non-PQ tx authorization | 1,830 B per bit per instance (43,920 B per 24-bit chunk), measured |
 | Schnorr adaptor, 8-bit digits | 2.37 | 2026/933 §8.1, complete 1,024-bit Assert tx rate | discrete log | 256 adaptors of 65 B per byte |
 | Schnorr adaptor, packed fixture | 2.13 | Core-tested 133-input/23-transaction full signed set after funding confirmation | discrete log | one completed adaptor per byte |
 
@@ -1664,6 +1665,52 @@ sends junk, and Bitcoin cannot tell. The hash check stops equivocation, not
 withholding; the per-bit reveal exists to force label release. Labels bound
 to a short digest are laconic OT or witness encryption (§7f), both algebraic
 (DDH/LWE; pairings in BABE and deferred binding), outside the hash-only scope.
+
+## 7o. WOTS translation input layer: measured (2026-11-06)
+
+**Construction** (`whir-gc/tests/dispute/wots_translation.rs`). The
+translation gadget of ePrint 2026/1684 (`docs/2026-1684.pdf`) at 3-bit digits,
+8 per chunk, checksum W = 8u + r on two chains: 10 HASH160 chains per 24 bits.
+The paper's own layout (4-bit digits, 32 per chunk) is in §7g.
+
+**On chain** (`wots_translation_tx_cost.rs`). Same envelope as the Antichain
+fixture. All-nonzero worst case, 49 chunks per input, 11 inputs per
+transaction. Bitcoin Core 31.1 strict regtest replay
+(`data/run-wots-core31-regtest.sh`), identical before and after the fixes:
+
+| input bits | funding | reveals | total | vB/bit |
+|---|---:|---:|---:|---:|
+| 1,041,024 | 38,211 vB | 81 tx, 886 inputs, 7,861,144 vB | 7,899,355 vB | 7.55 |
+| 564,552 (not replayed) | | 44 tx, 481 inputs, 4,263,180 vB | | 7.55 |
+
+That is $16,597 at 2.2 sat/vB, and about 55.3 MvB for seven key sets
+(Antichain 82.94, Lamport 120.86).
+
+**Off chain** (`wots_translation_table.rs`; Ryzen 7 8845H, 16 threads). Per
+instance, so multiply by the kept copies:
+
+| input bits | table | B/bit | build | key check | recovery | peak RSS |
+|---|---:|---:|---:|---:|---:|---:|
+| 1,041,024 | 1.905 GB | 1,830 | 38.3 s | 0.14 s | 12.4 s | 3.80 GB |
+| 564,552 | 1.033 GB | 1,830 | 20.8 s | 0.07 s | 6.8 s | 2.07 GB |
+
+**Fixes** (no change to the on-chain bytes):
+1. Digits are decoded as consensus CScriptNum (`decode_digit`). Minimal
+   encoding is only policy, and Core mined a padded `[07 00]`.
+2. `check_key` rejects any chain end 0 to 7 hashes behind another. Without
+   it, a chained key lets the script accept a digit above 7 that the table
+   cannot read.
+3. The κ step is salted, H(tag ‖ chunk ‖ m ‖ κ_m). 2026/1684 leaves it
+   unsalted. Cost: 3-5% time, no size.
+
+**Security.** 2026/1684 claims 105 bits, with the proof deferred. Our
+derivation gives about 128 bits classical / 64 quantum with the salt and the
+key check.
+
+**Open.** One WOTS key serves every instance, and an opened table can't be
+audited without seeds that expose the others. 2026/1684 uses a key per
+evaluated circuit. So 7.90 MvB is one key set, and the rest of the dispute
+graph is not built.
 
 ## 8. To fix or check before release
 

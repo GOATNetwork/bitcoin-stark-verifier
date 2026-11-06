@@ -174,10 +174,23 @@ fn execute_input(
     tapscript: &ScriptBuf,
     arguments: Vec<Vec<u8>>,
 ) -> (bool, usize) {
+    execute_input_as(tx, prevouts, input_index, tapscript, arguments, true)
+}
+
+/// `execute_input` with minimal encoding required, as policy does, or not,
+/// as consensus does in Tapscript.
+fn execute_input_as(
+    tx: &Transaction,
+    prevouts: &[TxOut],
+    input_index: usize,
+    tapscript: &ScriptBuf,
+    arguments: Vec<Vec<u8>>,
+    require_minimal: bool,
+) -> (bool, usize) {
     let leaf_hash = TapLeafHash::from_script(tapscript.as_script(), LeafVersion::TapScript);
     let mut exec = Exec::new(
         ExecCtx::Tapscript,
-        Options { enforce_stack_limit: true, ..Options::default() },
+        Options { enforce_stack_limit: true, require_minimal, ..Options::default() },
         TxTemplate {
             tx: tx.clone(),
             prevouts: prevouts.to_vec(),
@@ -345,10 +358,8 @@ fn signed_wots_chunk_executes_and_rejects_forgery_and_tampering() {
     assert!(!execute_input(&tx, &prevouts, 0, &leaf.tapscript, arguments_with(&lie, &leaf.nodes, &signature)).0);
 
     // Digit items no honest signer posts, in chunk 0's chain 0 (top of the
-    // WOTS stack, under the signature): out of range, negative, a node, and
-    // non-minimal encodings of the signed value 1. Each is rejected, so the
-    // challenger's reading of a digit as one byte, or none for 0, is the only
-    // one an accepted witness allows.
+    // WOTS stack, under the signature): out of range, negative and a node
+    // are rejected outright.
     let digit_at = arguments.len() - 2;
     assert_eq!(arguments[digit_at], [1]);
     for (item, what) in [
@@ -357,13 +368,31 @@ fn signed_wots_chunk_executes_and_rejects_forgery_and_tampering() {
         (vec![15], "15"),
         (vec![0x81], "-1"),
         (leaf.nodes[0][1].to_vec(), "a node"),
-        (vec![1, 0], "1 in two bytes"),
-        (vec![0x80], "negative zero"),
     ] {
         let mut forged = arguments.clone();
         forged[digit_at] = item;
-        assert!(!execute_input(&tx, &prevouts, 0, &leaf.tapscript, forged).0, "digit {what}");
+        assert!(!execute_input_as(&tx, &prevouts, 0, &leaf.tapscript, forged, false).0, "digit {what}");
     }
+    // Padded encodings of the signed value 1 are rejected only by policy:
+    // Tapscript leaves minimal encoding to policy, so a miner may include
+    // them (Core 31.1 mines `[07 00]`). The challenger reads digits as
+    // consensus does, `decode_digit`, and so the same signature.
+    for (item, what) in [(vec![1u8, 0], "1 in two bytes"), (vec![1, 0, 0, 0], "1 in four bytes")] {
+        let mut padded = arguments.clone();
+        padded[digit_at] = item;
+        assert!(!execute_input(&tx, &prevouts, 0, &leaf.tapscript, padded.clone()).0, "policy rejects {what}");
+        assert!(execute_input_as(&tx, &prevouts, 0, &leaf.tapscript, padded.clone(), false).0, "consensus accepts {what}");
+        let read = wots_translation::Signature::from_stack(&padded[..padded.len() - 1], 1).expect("decodes");
+        assert_eq!((read.values, read.nodes), (leaf.values.clone(), leaf.nodes.clone()), "{what}");
+    }
+    let mut five = arguments.clone();
+    five[digit_at] = vec![1, 0, 0, 0, 0];
+    assert!(!execute_input_as(&tx, &prevouts, 0, &leaf.tapscript, five, false).0, "over 4 bytes is no number");
+
+    // An item left below the chunk fails Tapscript's clean-stack rule.
+    let mut extra = arguments.clone();
+    extra.insert(0, leaf.nodes[0][0].to_vec());
+    assert!(!execute_input_as(&tx, &prevouts, 0, &leaf.tapscript, extra, false).0, "clean stack");
 
     // A digit above 7 makes `OP_PICK` read below its own ladder: 8 reaches
     // the next chain's digit, 9 its node, 10 and 11 the chain after. The
@@ -432,7 +461,17 @@ fn signed_wots_chunk_executes_and_rejects_forgery_and_tampering() {
     let (with_zero, zero_prevouts, zero_leaf) =
         signed_single_input(&mut rng, &secp, &keypair, 1, &[[0, 1, 1, 1, 1, 1, 1, 3]]);
     assert_eq!(zero_leaf.values[0][DIGITS..], [5, 7]);
-    assert!(execute_input(&with_zero, &zero_prevouts, 0, &zero_leaf.tapscript, witness_arguments(&with_zero.input[0].witness)).0);
+    let zero_arguments = witness_arguments(&with_zero.input[0].witness);
+    assert!(execute_input(&with_zero, &zero_prevouts, 0, &zero_leaf.tapscript, zero_arguments.clone()).0);
+    // Negative zero for that digit: policy rejects it, consensus reads 0.
+    let zero_at = zero_arguments.len() - 2;
+    assert!(zero_arguments[zero_at].is_empty());
+    let mut negative_zero = zero_arguments.clone();
+    negative_zero[zero_at] = vec![0x80];
+    assert!(!execute_input(&with_zero, &zero_prevouts, 0, &zero_leaf.tapscript, negative_zero.clone()).0);
+    assert!(execute_input_as(&with_zero, &zero_prevouts, 0, &zero_leaf.tapscript, negative_zero.clone(), false).0);
+    let read = wots_translation::Signature::from_stack(&negative_zero[..zero_at + 1], 1).expect("decodes");
+    assert_eq!(read.values, zero_leaf.values);
     let (nonzero, _, _) = signed_single_input(&mut rng, &secp, &keypair, 1, &[CANONICAL_DIGITS]);
     assert_eq!(nonzero.weight().to_wu(), with_zero.weight().to_wu() + 1);
 }

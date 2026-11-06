@@ -4,9 +4,10 @@
 //! Every chunk's table has the same shape, so its size is exact from a few
 //! built chunks: 24 bits of 112 points and 57 grid cells, 16 bytes each. The
 //! totals follow at both verifiers' input sizes, with the challenger's
-//! storage of table and garbled circuit. The ignored test builds the whole
-//! table at `WHIR_GC_INPUT_BITS`, checks its size against that, and times the
-//! operator's build and the challenger's recovery.
+//! storage of table and garbled circuit. The full-build test builds the
+//! whole table at `WHIR_GC_INPUT_BITS` (about 37 s and 2 GB on 16 threads),
+//! checks its size against that, and times the operator's build, the
+//! challenger's setup key check and the challenger's recovery.
 
 mod dispute;
 
@@ -65,6 +66,10 @@ fn translation_table_full_build() {
     let build = start.elapsed();
     assert_eq!(table.bytes(), chunks * CHUNK_BYTES, "the built table is the size the per-chunk count gives");
 
+    let start = Instant::now();
+    wots_translation::check_key(&keys.ends).expect("an honest key passes the challenger's check");
+    let key_check = start.elapsed();
+
     let message: Vec<bool> = (0..chunks * CHUNK_BITS).map(|_| rng.random()).collect();
     let sig = keys.sign(&message);
     let start = Instant::now();
@@ -75,9 +80,10 @@ fn translation_table_full_build() {
         assert_eq!(*label, if *value { labels0[b] ^ delta } else { labels0[b] }, "bit {b}");
     }
     eprintln!(
-        "{bits} bits, {chunks} chunks: table {} B; build {:.1} s, recovery {:.1} s on {} threads",
+        "{bits} bits, {chunks} chunks: table {} B; build {:.1} s, key check {:.2} s, recovery {:.1} s on {} threads",
         table.bytes(),
         build.as_secs_f64(),
+        key_check.as_secs_f64(),
         recover.as_secs_f64(),
         p3_maybe_rayon::prelude::current_num_threads(),
     );
