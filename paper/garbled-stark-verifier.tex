@@ -90,8 +90,8 @@ study, not a complete post-quantum Bitcoin protocol. Recursing a zkVM proof
 through a narrow tape machine, with experimental and unreviewed changes to the
 proof system that we list, brings the garbled verifier's input to 564{,}552
 bits in 218.0M non-free gates. Each of its proofs meets 100 bits by Plonky3's
-assessment, which does not count those changes, and the circuit binds neither
-the zkVM program nor its outputs.
+assessment, which does not count those changes, and the measured circuit binds
+neither the zkVM program nor its outputs.
 \end{abstract}
 
 % =====================================================================
@@ -195,7 +195,8 @@ last three study its Bitcoin integration, security boundaries and measurements.
   \item \textbf{Measurements.} Real Keccak-$f$ proofs from $2^5$ to $2^{20}$ rows,
     a gate profile, an ablation of the gadget and memory choices, measurements
     of the one-key-set input-authentication components, seven-key-set
-    projections, a comparison with pairing-based designs, and the garbled
+    projections, a comparison with pairing-based designs and with estimated garbled
+    STARK verifiers, and the garbled
     verifier of a recursion proof of Ziren's binary stage at 564{,}552 input
     bits (\S\ref{sec:eval}).
 \end{itemize}
@@ -1014,7 +1015,7 @@ soft fork of Table~\ref{tab:pqsel}.}
 The two protocols publish the same amount of selection material per digit:
 one 64-byte completion for Figure~\ref{fig:adaptorseq}, two $n$-byte nodes for
 Figure~\ref{fig:hashseq}. With the adaptor at $k=8$ and the hash-based
-fixture at $k=4$, $n=16$, both are 8 bytes of witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
+fixture at $k=4$, $n=16$, both are about 8.1 bytes of witness per bit, and indeed the 130{,}128 adaptor completions and 16{,}266
 64-bit hash records of our fixtures are both exactly 8{,}458{,}320 bytes. They
 differ in where the remaining cost sits. The adaptor's selection is verified by
 one \texttt{CHECKSIG} per digit, 3 bytes of script, and its binding is the same
@@ -1048,9 +1049,8 @@ cross-batch splicing and padding; nothing in it is executable by Bitcoin Core.
 Table~\ref{tab:pqsel} gives the results together with a projection whose model
 reproduces both serialized fixtures within $0.03\%$. The operative row is
 $n=32$, $k=8$: full-width nodes, about 117 quantum bits for the selection, and
-the same 2.13\,MvB as the Schnorr adaptor, at the price of up to 510 hash
-steps per byte inside the opcode, about $6.6\times10^7$ compressions for the
-input. Its setup is two seeds per digit rather than the adaptor's $2^k$
+the same 2.13\,MvB as the Schnorr adaptor, at the price of 255 hash steps per
+byte inside the opcode, about $3.3\times10^7$ compressions for the input. Its setup is two seeds per digit rather than the adaptor's $2^k$
 secrets, so widening $k$ does not grow the choice table; only the translation
 table grows, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
 $k=8$. The delivery and soldering of that table across the $M$ kept
@@ -1061,7 +1061,7 @@ garblings is the same open item as for every other row.
 selection & consensus & $n$ & $k$ & vB/bit & component & selection security, quantum\\\midrule
 Schnorr adaptor (Fig.~\ref{fig:adaptorseq}) & current & -- & 8 & 2.14 & 2.23\,MvB & broken (Shor)\\
 WOTS translation~\cite{wotstranslation26} in Script & current & 20 & 3 & 7.59 & 7.90\,MvB & $\approx64$ bits ($\kappa$ chain; nodes $\approx70$)\\
-Antichain $(2,16)$ in Script (Fig.~\ref{fig:hashseq}) & current & 16 & 4 & 11.38 & 11.88\,MvB & $\approx53$ bits\\
+Antichain $(2,16)$ in Script (Fig.~\ref{fig:hashseq}) & current & 16 & 4 & 11.41 & 11.88\,MvB & $\approx53$ bits\\
 batched selector, one record per item & P2MR, 0xC2, batch opcode & 16 & 4 & 2.05 & 2.13\,MvB & $\approx53$ bits\\
 batched selector, 11-record items & same & 16 & 4 & 2.04 & 2.12\,MvB & $\approx53$ bits\\
 batched selector, 5-record items & same & 24 & 4 & 3.05 & 3.17\,MvB & $\approx85$ bits\\
@@ -1210,7 +1210,8 @@ trace (Table~\ref{tab:main}, Figure~\ref{fig:scaling}), where its gates go
 (Table~\ref{tab:profile}), how much each design choice contributes (the
 ablation), how the circuit-input authentication component projects and how far it shrinks
 (Tables~\ref{tab:onchain} and~\ref{tab:inputs}), and how it compares with
-pairing-based designs (Table~\ref{tab:compare}).
+estimated STARK verifiers and pairing-based designs (Tables~\ref{tab:starkgc}
+and~\ref{tab:compare}).
 
 \paragraph{Setup.} We proved Keccak-$f$ permutations with Plonky3's
 1{,}625-column characteristic-2 Keccak AIR (booleanity is not constrained,
@@ -1595,11 +1596,13 @@ proof as a straight-line tape over $\F$. A five-table tape machine (ledger, arit
 rewiring, Blake3 message and round tables) proves a run of a tape, and its own
 verifier is recorded and proved again: narrow recursion. We translate a tape
 gate by gate (\texttt{whir-gc/src/binary\_tape.rs}), trusting Ziren's recorder
-to capture Plonky3's verifier. The tape machine binds no
-public values, so from level 2 on the binary stage's public-value digest, which
-commits to the zkVM program's verifying key and outputs, is a private witness.
-The circuit therefore attests that some zkVM proof verifies, not which program
-ran or what it output. For a Fibonacci program the
+to capture Plonky3's verifier. The tape machine can bind up to
+eight of a tape's first inputs as public values, enough for the binary stage's
+public-value digest, which commits to the zkVM program's verifying key and
+outputs. Our runs bind none, so from level 2 on that digest is a private
+witness, and the measured circuit attests that some zkVM proof verifies, not
+which program ran or what it output. Binding the digest would add at most
+1{,}024 input bits. For a Fibonacci program the
 binary stage's verifier has 3.37G non-free gates and 18{,}050{,}304 input bits;
 after three rounds of narrow recursion the verifier of the last proof has the
 sizes in Table~\ref{tab:recursion}. Every row is the verifier of a real proof:
@@ -1632,48 +1635,115 @@ changes listed in the text.}
 \label{tab:recursion}
 \end{table}
 
+\begin{table}[t]\centering\small
+\begin{tabular}{lrrr}\toprule
+verifier (hash) & non-free gates & garbled & input bits\\\midrule
+RISC Zero 3.0.5 (Poseidon2) & 15{,}640M & 233.0\,GiB & 1.78M\\
+RISC Zero 3.0.5 (Blake3) & 1{,}560M & 23.3\,GiB & 1.78M\\
+SP1 6.3.1 shrink (Poseidon2) & 28{,}200M & 420.2\,GiB & 7.13M\\
+SP1 6.3.1 shrink (Blake3) & 2{,}810M & 41.8\,GiB & 7.13M\\
+Stwo \texttt{49f8e037} (Blake2s) & 7{,}130M & 106.2\,GiB & 4.37M\\
+Stwo \texttt{49f8e037} (Blake3) & 7{,}060M & 105.2\,GiB & 4.37M\\\midrule
+this work, narrow recursion (Blake3) & 218.0M & 3.25\,GiB & 0.56M\\\bottomrule
+\end{tabular}
+\caption{Garbled verifiers of zkVM recursion proofs, at 16 bytes per non-free
+gate. The first six rows are the estimates of~\cite{tf26pq}, counted from the
+verifiers' operations, at the 96--100 classical bits their configurations
+report; their Blake3 rows assume the internal hash replaced with field
+arithmetic and proof size unchanged, and their input is the proof size. The last
+row is measured: the verifier of the last narrow-recursion proof
+(Table~\ref{tab:recursion}, 3.49\,GB), whose run binds no public values and
+whose proof system carries the unreviewed changes of \S\ref{sec:eval}.}
+\label{tab:starkgc}
+\end{table}
+
+\begin{table}[p]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{1.7cm}rr>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.7cm}}\toprule
+approach & statement & off-chain size & input bits & on-chain dispute path, as reported & assumptions\\\midrule
+Boolean garbled verifier~\cite{bit25b} & Groth16 & 42\,GiB & 1{,}019 & Assert 2.4\,kvB and Disprove 93\,vB, about \$5 at 2\,sat/vB~\cite{bitvm3paper}; the published experiment normalized to \$37.65~\cite{babe2026} & pairings, trusted setup\\
+native-group garbling~\cite{kflt26native} & Groth16 & 2.4\,MiB & n/r & n/r & pairings, trusted setup\\\addlinespace[2pt]
+garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & n/r & elliptic curves, secret trapdoor\\\addlinespace[2pt]
+BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & Assert 9{,}240\,vB, ChallengeAssert 17{,}400\,vB, WronglyChallenged 149\,vB: 26.8\,kvB, \$56.90 at 2.2\,sat/vB & pairings (GGM+RO), trusted setup\\\addlinespace[2pt]
+deferred-binding WE~\cite{goatpbwe} & Groth16, late inputs & 0.92\,GiB$^{\dagger}$ & 768 & Assert 2{,}154\,B, ChallengeAssert 14{,}312\,B witness and 109{,}393\,B script, WronglyChallenged 64\,B; about 32\,kvB & BABE + DLog\\\addlinespace[2pt]
+PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & one hash in Assert, one signature in Disprove; no size reported & heuristic\\\addlinespace[2pt]
+\textbf{this work} & \textbf{Keccak-$f$ STARK over $\F$, $2^{18}$ rows} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{input publication 2.22\,MvB (adaptor, DLog) or 7.86\,MvB (hash-based), about \$4{,}700 or \$16{,}500 at 2.2\,sat/vB, Core-replayed; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity}$^{\ddagger}$\\\addlinespace[2pt]
+this work, narrow recursion & STARK recursion proof over $\F$ & 3.49\,GB & 564{,}552 & input publication 1.21\,MvB (adaptor, DLog) or 4.26\,MvB (hash-based), about \$2{,}500 or \$9{,}000 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete$^{\S}$ & as above, plus unreviewed proof-system changes$^{\ddagger}$\\\bottomrule
+\\
+\end{tabularx}
+\caption{Approaches to verifying proofs on Bitcoin: off-chain artifact per
+instance (garbled circuits at 16 bytes per non-free gate), input bits published
+at dispute time, and on-chain dispute path, each as its source reports it; n/r:
+not reported. $^{\dagger}$One instance: 59.3M non-free gates in three garbled
+circuits plus adaptor tables, sharing a 3.83\,GiB circuit artifact; the kvB
+total is our arithmetic. $^{\S}$One key set; the hash-based figure is WOTS
+translation, whose table adds 1.9\,GB (Keccak) or 1.0\,GB (recursion) per
+instance. Both rows serialize the reveal fixtures of Table~\ref{tab:onchain} and add the
+reject-label Disprove; the rest of the graph is not constructed
+(\S\ref{sec:protocol}), so each is a lower bound. $^{\ddagger}$Verifier
+assumptions only; the protocol adds discrete-logarithm signatures, or the
+unimplemented hash-based soldering and post-quantum authorization. Neither
+measured run binds public values (\S\ref{sec:eval}). The recursion row, the
+last proof of Table~\ref{tab:recursion}, uses the unreviewed changes of
+\S\ref{sec:eval}, and its statement, a Ziren proof, rests on an elliptic-curve
+digest~\cite{duan26ziren}.}
+\label{tab:compare}
+\end{table}
+
 The steps combine recording choices with changes to the proof system. The
-recorder reads opened values the verifier knows (padding and constant
+recorder reads opened values the verifier already knows (padding and constant
 preprocessed columns) as constants, and reads the fixed preprocessed Merkle
-tree down to 18 layers below its root as circuit constants, chosen by a one-hot
-of the query's top index bits. The schedule folds 4, 5, 4, 4 variables per WHIR
-round at 46 bits of grinding. The protocol changes are five. Ring-switch claims
-at points sharing the coordinates one packed element absorbs send one tensor,
-weighted by powers of a challenge drawn after the points, and a pair's main and
-preprocessed switches run as one over both packings behind a selector variable.
-Merkle digests are Blake3 truncated to 200 bits, which keeps collisions at
-$2^{100}$ work classically and $2^{66.7}$ under BHT search. Each table sends one
-value per linear form of its columns that its constraints and buses read,
-derived from the symbolic AIR, and a sumcheck over the column index reduces them
-to the table's ring-switch claim; the verifier rebuilds the columns with a
-constant right inverse, which costs only \XOR{}s. Preprocessed forms are cut
-to those independent over the fixed trace's GF(2) column basis and the
-all-ones column, the rest rebuilt by an affine inverse, and one sumcheck over
-the widest table's column index serves every table. Bus product-GKR rounds send
-the round polynomial without its linear eq factor. Each change passes Plonky3's
-and Ziren's tests and tamper tests of its own, but none has been reviewed; the
-patches are in the repository. Each proof meets 100 bits of composed soundness
-by Plonky3's assessment in the Johnson regime, with up to 46 bits of grinding
-per term at level 4, which halves under quantum search. The circuit checks only
-the last proof, so the statement's soundness also composes over the earlier
-levels and over the zkVM proof itself. For the latter, Ziren reports more than
-100 bits of interactive soundness per proof stage and 93.5 bits for an
-illustrative tree of 150 proofs in its measured Poseidon2 configuration, gives no numerical bound for the non-interactive proof, and claims
-no post-quantum security, because its cross-shard digest is an elliptic-curve
-multiset hash~\cite{duan26ziren}. Proving level 4 alone took 1.8 hours on 64 cores with four GPUs
-grinding and about 470\,GB of memory. Serializing the input-publication fixtures of
-Table~\ref{tab:onchain} at 564{,}552 bits, with every transaction signed and
-every leaf executed under the stack limit, gives 1{,}205{,}217\,vB for the 8-bit
-adaptor baseline (73 inputs in 13 reveal transactions), 4{,}263{,}180\,vB for
-WOTS translation (481 inputs in 44), 6{,}425{,}757\,vB for
-Antichain $(2,16)$ (426 inputs in 71) and 9{,}363{,}254\,vB for Lamport (566
-inputs in 95), plus a 7{,}155\,vB Lamport join; Disprove is one 97\,vB
-transaction. Plain 4-bit Winternitz, modeled from one executed input at
-23.06 weight units per bit, would be about 3.26\,MvB, but it cannot deliver
-garbled labels without the translation table, whose 1.03\,GB per instance at
-this input is the price of the WOTS-translation row. These reveals were not replayed in
-Bitcoin Core, and the accounting boundary is that of
-Table~\ref{tab:onchain}.
+tree, down to 18 layers below its root, as circuit constants selected by a
+one-hot of the query's top index bits. The schedule folds 4, 5, 4 and 4
+variables per WHIR round at 46 bits of grinding. The five protocol changes are:
+(i)~ring-switch claims at points sharing the coordinates that one packed element
+absorbs send a single tensor, weighted by powers of a challenge drawn after the
+points, and a pair's main and preprocessed switches run as one over both
+packings behind a selector variable; (ii)~Merkle digests are Blake3 truncated to
+200 bits, which keeps collisions at $2^{100}$ work classically and $2^{66.7}$
+under BHT search; (iii)~each table sends one value per linear form of its
+columns that its constraints and buses read, derived from the symbolic AIR, and
+a sumcheck over the column index reduces them to the table's ring-switch claim,
+the verifier rebuilding the columns with a constant right inverse that costs
+only \XOR{}s; (iv)~preprocessed forms are cut to those independent over the
+fixed trace's GF(2) column basis and the all-ones column, the rest are rebuilt
+by an affine inverse, and one sumcheck over the widest table's column index
+serves every table; and (v)~bus product-GKR rounds send the round polynomial
+without its linear eq factor. Each change passes Plonky3's and Ziren's tests and
+its own tamper tests, but none has been reviewed; the patches are in the
+repository.
+
+Each proof meets 100 bits of composed soundness by Plonky3's assessment in the
+Johnson regime, with up to 46 bits of grinding per term at level 4, which halves
+under quantum search. Because the circuit checks only the last proof, the
+statement's soundness also composes over the earlier levels and over the zkVM
+proof itself. For the zkVM proof, Ziren reports more than 100 bits of
+interactive soundness per proof stage and 93.5 bits for an illustrative tree of
+150 proofs in its measured Poseidon2 configuration; it gives no numerical bound
+for the non-interactive proof and claims no post-quantum security, because its
+cross-shard digest is an elliptic-curve multiset hash~\cite{duan26ziren}.
+Proving level 4 alone took 1.8 hours on 64 cores with four GPUs grinding, and
+about 470\,GB of memory.
+
+At 564{,}552 bits, the input-publication fixtures of Table~\ref{tab:onchain},
+with every transaction signed and every leaf executed under the stack limit,
+serialize to 1{,}205{,}217\,vB for the 8-bit adaptor baseline (73 inputs in 13
+reveal transactions), 4{,}263{,}180\,vB for WOTS translation (481 inputs in 44),
+6{,}425{,}757\,vB for Antichain $(2,16)$ (426 inputs in 71) and
+9{,}363{,}254\,vB for Lamport (566 inputs in 95, plus a 7{,}155\,vB join);
+Disprove is one 97\,vB transaction. Plain 4-bit Winternitz, modeled from one
+executed input at 23.06 weight units per bit, would be about 3.26\,MvB, but it
+cannot deliver garbled labels without a translation table, which for WOTS
+translation costs 1.03\,GB per instance at this input. The accounting boundary
+is that of Table~\ref{tab:onchain}.
+
+Tiwari and Feickert~\cite{tf26pq} estimate the Boolean verifiers of three zkVMs'
+recursion proofs by counting their operations (Table~\ref{tab:starkgc}). The
+smallest, RISC~Zero's with Blake3 in place of its internal hash, has 1.56G
+non-free gates. Our recursion verifier, measured on real proofs, has
+$7.2\times$ fewer non-free gates and $3.2\times$ fewer input bits than RISC~Zero's
+proof has bits, although its
+measured run binds no public values and its proof system carries unreviewed
+changes.
 
 \paragraph{Comparison.} Table~\ref{tab:compare} places the result among
 approaches to verifying proofs on Bitcoin (\S\ref{sec:related}). For the
@@ -1699,49 +1769,6 @@ magnitude more (about $38\times$ deferred binding's 32\,kvB even for the
 recursion verifier with adaptors), before the unconstructed remainder of the
 graph. That is the price of verifying the STARK directly rather than wrapping
 it, and \S\ref{sec:protocol} and \S\ref{sec:discussion} are about reducing it.
-
-\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{1.7cm}rr>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.7cm}}\toprule
-approach & statement & off-chain size & input bits & on-chain dispute path, as reported & assumptions\\\midrule
-Boolean garbled verifier~\cite{bit25b} & Groth16 & 42\,GiB & 1{,}019 & Assert 2.4\,kvB and Disprove 93\,vB, about \$5 at 2\,sat/vB~\cite{bitvm3paper}; the published experiment normalized to \$37.65~\cite{babe2026} & pairings, trusted setup\\
-native-group garbling~\cite{kflt26native} & Groth16 & 2.4\,MiB & n/r & n/r & pairings, trusted setup\\\addlinespace[2pt]
-garbled DV-Pari (bitvm-gc, our measurement) & DV-SNARK & 7.7\,GB & n/r & n/r & elliptic curves, secret trapdoor\\\addlinespace[2pt]
-BABE~\cite{babe2026} & Groth16 & 22.2\,MiB & 508 & Assert 9{,}240\,vB, ChallengeAssert 17{,}400\,vB, WronglyChallenged 149\,vB: 26.8\,kvB, \$56.90 at 2.2\,sat/vB & pairings (GGM+RO), trusted setup\\\addlinespace[2pt]
-deferred-binding WE~\cite{goatpbwe} & Groth16, late inputs & 0.92\,GiB$^{\dagger}$ & 768 & Assert 2{,}154\,B, ChallengeAssert 14{,}312\,B witness and 109{,}393\,B script, WronglyChallenged 64\,B; about 32\,kvB & BABE + DLog\\\addlinespace[2pt]
-PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (estimate) & one hash & one hash in Assert, one signature in Disprove; no size reported & heuristic\\\addlinespace[2pt]
-\textbf{this work} & \textbf{Keccak-$f$ STARK over $\F$, $2^{18}$ rows} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{input publication 2.22\,MvB (adaptor, DLog) or 7.86\,MvB (hash-based), about \$4{,}700 or \$16{,}500 at 2.2\,sat/vB, Core-replayed; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3/RO; assumed CCR and adaptive authenticity}$^{\ddagger}$\\\addlinespace[2pt]
-this work, narrow recursion (experimental, not Core-replayed) & STARK recursion proof over $\F$ & 3.49\,GB & 564{,}552 & input publication 1.21\,MvB (adaptor, DLog) or 4.26\,MvB (hash-based), about \$2{,}500 or \$9{,}000 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete$^{\S}$ & as above, plus unreviewed proof-system changes$^{\ddagger}$\\\bottomrule
-\\
-\end{tabularx}
-\caption{Comparison of verifier artifacts, dispute inputs and on-chain dispute
-cost. Off-chain artifact per instance, in bytes (garbled circuits at 16 bytes
-per non-free gate); the number of input bits published on-chain at dispute
-time; and the on-chain dispute path, each as its source reports it; n/r: not
-reported. $^{\dagger}$One finalized instance: 59.3M non-free gates across three
-garbled circuits ($r\pi_1$, $Q=x_D L_D+B$ and $rQ$) plus adaptor tables, as the
-implementation report measures it; a 3.83\,GiB circuit artifact is shared by
-all instances. Its on-chain entry is witness and script bytes as reported; the
-kvB figure is our arithmetic.
-$^{\S}$For one key set. The hash-based figure is WOTS translation, whose
-off-chain table adds 1.9\,GB (Keccak) or 1.0\,GB (recursion) per instance.
-The Keccak entry is the Core-tested reveals of
-Table~\ref{tab:onchain}. The recursion entry serializes the same fixtures at
-564{,}552 bits, with every transaction signed and every leaf executed under the
-stack limit, but was not replayed in Bitcoin Core (\S\ref{sec:eval}). Both add
-the Core-tested reject-label Disprove; the challenge, completion, timeout and
-anchor transactions and the multi-copy soldering are not constructed
-(\S\ref{sec:protocol}), so each is a lower bound on the dispute path, not a
-total. $^{\ddagger}$Verifier assumptions
-only. A surrounding protocol additionally uses discrete-logarithm signatures, or
-requires the unimplemented hash-based multi-copy soldering and a post-quantum
-transaction-authorization mechanism. The recursion row's statement, a Ziren
-proof, also rests on an elliptic-curve digest~\cite{duan26ziren}. Neither statement has public values; the
-recursion row binds neither the zkVM program nor its outputs. The
-recursion row is the verifier of the last narrow-recursion proof of Ziren's
-binary stage (Table~\ref{tab:recursion}), with the experimental proof-system
-changes listed in \S\ref{sec:eval}.}
-\label{tab:compare}
-\end{table}
 
 % =====================================================================
 \section{Related work}\label{sec:related}
@@ -1782,7 +1809,9 @@ made cut-and-choose maliciously secure with an on-chain footprint independent of
 the number of garbled copies, and Antichain Winternitz~\cite{antichain26} published
 input labels on-chain at a cost up to $52.9\%$ lower than Lamport signatures. Both
 are independent of the garbled circuit; \S\ref{sec:protocol} prices both for our
-million-bit input.
+million-bit input. Tiwari and Feickert~\cite{tf26pq} assess the post-quantum
+cost of such bridges, estimate Boolean STARK verifier sizes, and find proof
+size the main obstacle to on-chain feasibility.
 
 \paragraph{Quantum-safe transaction authorization.}
 QSB~\cite{levy26qsb} constructs a hash-based authorization path under existing
@@ -1994,7 +2023,8 @@ Verifying the last of three narrow-recursion proofs of Ziren's binary stage
 takes 564{,}552 input bits and 218.0M non-free gates, measured on real proofs
 but resting on experimental, unreviewed changes to Plonky3 and Ziren: shared
 ring-switch tensors, 200-bit digests, linear-form openings with affine
-preprocessed forms and eq-factored bus rounds.
+preprocessed forms and eq-factored bus rounds. Its measured run binds neither
+the zkVM program nor its outputs.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}

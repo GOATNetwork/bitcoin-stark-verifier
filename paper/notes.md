@@ -709,20 +709,21 @@ measured funding shell reproduces the exact fixtures within 0.03%
 (2,122,619 vs 2,122,693; 3,172,251 vs 3,172,934). Changing the digit width k
 changes the chain length to 2^k - 1:
 
-| n | k | payload B/bit | reveal tx | est. total vB | vs adaptor | hashes per digit, worst case |
+| n | k | payload B/bit | reveal tx | est. total vB | vs adaptor | hashes per digit (always 2^k - 1) |
 |---:|---:|---:|---:|---:|---:|---:|
-| 16 | 4 | 8.125 | 22 | 2.12 M | -4.7% | 30 |
-| 16 | 8 | 4.125 | 11 | 1.08 M | -51.6% | 510 |
-| 24 | 4 | 12.125 | 32 | 3.17 M | +42.4% | 30 |
-| 24 | 8 | 6.125 | 17 | 1.60 M | -28.0% | 510 |
-| 32 | 4 | 16.125 | 43 | 4.23 M | +89.7% | 30 |
-| 32 | 8 | 8.125 | 22 | 2.13 M | -4.4% | 510 |
+| 16 | 4 | 8.125 | 22 | 2.12 M | -4.7% | 15 |
+| 16 | 8 | 4.125 | 11 | 1.08 M | -51.6% | 255 |
+| 24 | 4 | 12.125 | 32 | 3.17 M | +42.4% | 15 |
+| 24 | 8 | 6.125 | 17 | 1.60 M | -28.0% | 255 |
+| 32 | 4 | 16.125 | 43 | 4.23 M | +89.7% | 15 |
+| 32 | 8 | 8.125 | 22 | 2.13 M | -4.4% | 255 |
 
 The useful row is **n=32, k=8**: full 256-bit nodes, 117 quantum bits
 multi-target, and the same 2.13 MvB as the Schnorr adaptor. The price is
-moved into the opcode: up to 510 hash steps per byte, about 66M SHA-256
-compressions for the whole input and about 3M per full reveal, against about
-7.8M total at k=4. Whether that fits a 0xC2 varops budget is the open
+moved into the opcode: 255 hash steps per byte (a digit's two openings always
+sum to 2^k - 1 steps; counted on the real verifier at k=4: 15 per digit), about
+33M SHA-256 compressions for the whole input and about 1.5M per full reveal,
+against about 3.9M total at k=4. Whether that fits a 0xC2 varops budget is the open
 consensus question; the setup cost is unchanged (one 2-node pair key per
 digit, no 2^k table), which is the structural advantage over the wider
 adaptor's 2^k choice table (§7i).
