@@ -6,11 +6,11 @@
 //! Multi-operand sums are kept as weight-indexed columns of bits and reduced
 //! by carry-save compression (one AND per full adder); modular reduction
 //! folds `2^31 ≡ 2^24 - 1` and finishes with conditional subtractions.
-//! Everything is checked against the `poseidon2` crate's reference, itself
+//! Everything is checked against the reference in `koala_ref`, itself
 //! checked against Plonky3.
 
 use garbled_snark_verifier::circuits::sect233k1::builder::CircuitTrait;
-use poseidon2::constants::{EXTERNAL_FINAL, EXTERNAL_INITIAL, INTERNAL, P, WIDTH};
+use crate::koala_ref::{EXTERNAL_FINAL, EXTERNAL_INITIAL, INTERNAL, P, WIDTH};
 
 pub const BITS: usize = 31;
 /// An element: 31 wires, LSB first, canonical.
@@ -366,7 +366,7 @@ pub fn div_2exp<T: CircuitTrait>(b: &mut T, x: &Fp, k: u32) -> Fp {
         let mut inv = 1u32;
         let half = ((P as u64 + 1) / 2) as u32;
         for _ in 0..k {
-            inv = poseidon2::reference::mul(inv, half);
+            inv = crate::koala_ref::mul(inv, half);
         }
         mul_const(b, x, inv)
     }
@@ -495,7 +495,7 @@ pub fn internal_linear<T: CircuitTrait>(b: &mut T, state: &mut [Fp; WIDTH]) {
     state[15] = sub(b, &full_sum, &h);
 }
 
-/// The permutation, as `poseidon2::reference::permute`.
+/// The permutation, as `koala_ref::permute`.
 pub fn permute<T: CircuitTrait>(b: &mut T, state: &mut [Fp; WIDTH]) {
     permute_with(b, state, &EXTERNAL_INITIAL, &INTERNAL, &EXTERNAL_FINAL);
 }
@@ -589,7 +589,7 @@ pub fn ext_mul<T: CircuitTrait>(b: &mut T, x: &Ext, y: &Ext) -> Ext {
 mod tests {
     use super::*;
     use garbled_snark_verifier::circuits::sect233k1::builder::CircuitAdapter;
-    use poseidon2::reference as r;
+    use crate::koala_ref as r;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 

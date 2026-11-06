@@ -3,8 +3,8 @@
 //! honest values on a real binary-stage proof, a tampered proof, and a full
 //! garbling with the streaming garbler.
 //!
-//! The tape is dumped by Ziren's `crates/prover/tests/dump_binary_tape.rs` (added by
-//! `patches/ziren-dumper.patch`): the binary
+//! The tape is dumped by Ziren's `crates/prover/tests/dump_binary_tape.rs` (Ziren
+//! `feat/binary-whir-blake3` `80af2779`): the binary
 //! stage's verifier (`binary_tape.bin`, level 1) or the narrow recursion's
 //! verifier (`narrow_tape.bin`, level 2). Set `BINARY_TAPE_DUMP` or put it at
 //! `target/binary-tape.bin`. Run with

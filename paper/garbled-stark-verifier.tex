@@ -1228,8 +1228,11 @@ an AMD EPYC 9355 limited to 128\,GB and 32 cores.
 dependencies and benchmark commands; the commands and memory caps are listed in
 \texttt{whir-gc/README.md}. The raw measurement logs, with a SHA-256 manifest
 and a map from tables and figures to logs, are archived separately and
-available on request. \texttt{patches/} holds the experimental Plonky3 and
-Ziren changes behind Table~\ref{tab:recursion}. \texttt{Cargo.lock} pins Plonky3 at revision
+available on request. The experimental Plonky3 and Ziren changes behind
+Table~\ref{tab:recursion} are Ziren commit \texttt{80af2779} on
+\texttt{feat/binary-whir-blake3} and Plonky3 commit \texttt{be1c6f92} on
+ProjectZKM's \texttt{zkm/binary-whir}; \texttt{patches/README.md} lists them and
+the commands that rebuild the tapes. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
 are deterministic; wall-clock times are single-run engineering measurements
@@ -1709,8 +1712,8 @@ fixed trace's GF(2) column basis and the all-ones column, the rest are rebuilt
 by an affine inverse, and one sumcheck over the widest table's column index
 serves every table; and (v)~bus product-GKR rounds send the round polynomial
 without its linear eq factor. Each change passes Plonky3's and Ziren's tests and
-its own tamper tests, but none has been reviewed; the patches are in the
-repository.
+its own tamper tests, but none has been reviewed; they are the Ziren and
+Plonky3 commits cited above.
 
 Each proof meets 100 bits of composed soundness by Plonky3's assessment in the
 Johnson regime, with up to 46 bits of grinding per term at level 4, which halves
@@ -1822,8 +1825,8 @@ and requires direct miner inclusion. It authorizes a specially constructed
 spend; adapting it to a multi-transaction, pre-signed and timelocked dispute
 graph remains open.
 
-\paragraph{Verifying a STARK in Script.} Our companion work, in the same
-repository as this paper's code, verifies the same kind of proof directly in
+\paragraph{Verifying a STARK in Script.} Our companion work, in an earlier
+version of this paper's repository, verifies the same kind of proof directly in
 Bitcoin Script, with Poseidon2 over KoalaBear and WHIR and without
 \texttt{OP\_CAT}~\cite{goatscriptverifier}. It needs no garbling and no
 trusted party, but its $2^{20}$ example configuration requires 1.24\,GB of
