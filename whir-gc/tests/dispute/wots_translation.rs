@@ -14,7 +14,10 @@
 //! on two more chains, so raising a digit needs a lower checksum node.
 //!
 //! **Table, per chunk.**
-//! - A chain `κ_0 → … → κ_56`, `κ_{m+1} = H(κ_m)`, from the instance seed.
+//! - A chain `κ_0 → … → κ_56` from the instance seed, each step salted with
+//!   the instance tag, the chunk and its index, `κ_{m+1} = H(tag ‖ c ‖ m ‖
+//!   κ_m)`, so a preimage is a target of one step of one chunk of one
+//!   instance. ePrint 2026/1684 §9.2 leaves the step unsalted.
 //! - An entry grid: cell `(u, r)`, `8u + r ≤ 56`, holds `κ_{8u+r}` under the
 //!   checksum nodes `S_1^(u)` and `S_2^(r)`. The signed `(u, r)` opens `κ_W`,
 //!   and hashing forward every later `κ`, never an earlier one.
@@ -33,6 +36,16 @@
 //! The pads and coefficients are Blake3 under a one-byte domain tag; every
 //! input is fixed-length after it. They carry a public instance tag, so two
 //! garblings under one WOTS key share no pad.
+//!
+//! **Challenger's checks.** Two things the Assert script leaves to the
+//! challenger, both off chain and free on chain:
+//! - At setup, the operator's key: no chain end lies 0 to 7 hashes forward of
+//!   another end (`check_key`). Otherwise a digit above 7 can `OP_PICK` a
+//!   later chain's node that is this chain's end, and the script accepts a
+//!   chunk the table cannot read.
+//! - At dispute, the digits as consensus reads them (`decode_digit`):
+//!   minimal encoding is policy in Tapscript, not consensus, so a mined
+//!   Assert may carry `[07 00]` or `0x80`.
 
 use bitcoin::hashes::{hash160, Hash};
 use bitcoin_script::{define_pushable, script};
@@ -115,15 +128,16 @@ fn x_of(l: usize) -> Ghash128 {
     Ghash128::from_le_bytes((l as u128 + 1).to_le_bytes())
 }
 
-fn kappa_step(k: &Block) -> Block {
-    prf(KAPPA_STEP, &[k])
+/// `κ_{m+1}` from `κ_m`, salted by the instance, the chunk and `m`.
+pub fn kappa_step(tag: &Block, chunk: usize, m: usize, k: &Block) -> Block {
+    prf(KAPPA_STEP, &[tag, &(chunk as u64).to_le_bytes(), &[m as u8], k])
 }
 
-/// `κ_from .. κ_W_MAX` from `κ_from`, indexed from `from`.
-fn kappa_chain(kappa: Block, from: usize) -> Vec<Block> {
+/// `κ_from .. κ_W_MAX` of `chunk` from `κ_from`, indexed from `from`.
+fn kappa_chain(tag: &Block, chunk: usize, kappa: Block, from: usize) -> Vec<Block> {
     let mut chain = vec![kappa];
-    for _ in from..W_MAX {
-        let next = kappa_step(chain.last().unwrap());
+    for m in from..W_MAX {
+        let next = kappa_step(tag, chunk, m, chain.last().unwrap());
         chain.push(next);
     }
     chain
@@ -209,6 +223,17 @@ impl WotsKeys {
         Self { seeds, ends }
     }
 
+    /// A key from given seeds, honest or not: a malicious operator picks its
+    /// own.
+    pub fn from_seeds(seeds: Vec<[Node; CHAINS]>) -> Self {
+        let ends = seeds.iter().map(|s| s.map(|n| forward(&n, K))).collect();
+        Self { seeds, ends }
+    }
+
+    pub fn seeds(&self) -> &[[Node; CHAINS]] {
+        &self.seeds
+    }
+
     pub fn chunks(&self) -> usize {
         self.seeds.len()
     }
@@ -231,6 +256,76 @@ pub fn chunk_verifies(ends: &[Node; CHAINS], values: &[u8; CHAINS], nodes: &[Nod
     let chains = (0..CHAINS).all(|i| values[i] as usize <= K && forward(&nodes[i], K - values[i] as usize) == ends[i]);
     let digits: usize = values[..DIGITS].iter().map(|&x| x as usize).sum();
     chains && digits + RADIX * values[DIGITS] as usize + values[DIGITS + 1] as usize == W_MAX
+}
+
+/// The challenger's setup check of the operator's key: no chain end is 0 to
+/// `K` hashes forward of another, so a digit above `K` cannot `OP_PICK` a
+/// later chain's node that hashes to its own end and equals this chain's.
+/// Returns the first offending pair `(c, c')`, flat chain indices with
+/// `forward(end_c, j) == end_c'`. Honest keys pass but with probability
+/// about `2^-160` per pair.
+pub fn check_key(ends: &[[Node; CHAINS]]) -> Result<(), (usize, usize)> {
+    let flat: Vec<&Node> = ends.iter().flatten().collect();
+    let mut index = std::collections::HashMap::with_capacity(flat.len());
+    for (c, end) in flat.iter().enumerate() {
+        if let Some(&first) = index.get(*end) {
+            return Err((first, c));
+        }
+        index.insert(**end, c);
+    }
+    flat.par_iter().enumerate().try_for_each(|(c, end)| {
+        let mut node = **end;
+        for _ in 0..K {
+            node = hash_node(&node);
+            if let Some(&other) = index.get(&node) {
+                return Err((c, other));
+            }
+        }
+        Ok(())
+    })
+}
+
+/// A digit item as consensus reads it: a script number of at most 4 bytes,
+/// little-endian magnitude with the sign in the top bit of the last byte.
+/// Tapscript checks minimal encoding only as policy, so `[07 00]` is 7 and
+/// `0x80`, negative zero, is 0. `None` for what `OP_PICK` cannot take as a
+/// digit: over 4 bytes, negative, or above `K`.
+pub fn decode_digit(item: &[u8]) -> Option<u8> {
+    if item.len() > 4 {
+        return None;
+    }
+    let Some((&last, _)) = item.split_last() else { return Some(0) };
+    let magnitude = item.iter().enumerate().fold(0u32, |acc, (i, &b)| {
+        let b = if i + 1 == item.len() { b & 0x7f } else { b };
+        acc | (u32::from(b) << (8 * i))
+    });
+    if last & 0x80 != 0 && magnitude != 0 {
+        return None;
+    }
+    (magnitude as usize <= K).then_some(magnitude as u8)
+}
+
+impl Signature {
+    /// The challenger's reading of an Assert's WOTS items, the inverse of
+    /// `stack`: bottom of the stack first, every digit through
+    /// `decode_digit`. `None` if the items are not `chunks` chunks of nodes
+    /// and digits.
+    pub fn from_stack(items: &[Vec<u8>], chunks: usize) -> Option<Self> {
+        if items.len() != 2 * CHAINS * chunks {
+            return None;
+        }
+        let mut values = vec![[0u8; CHAINS]; chunks];
+        let mut nodes = vec![[[0u8; 20]; CHAINS]; chunks];
+        let mut pairs = items.chunks(2);
+        for c in (0..chunks).rev() {
+            for i in (0..CHAINS).rev() {
+                let pair = pairs.next()?;
+                nodes[c][i] = pair[0].as_slice().try_into().ok()?;
+                values[c][i] = decode_digit(&pair[1])?;
+            }
+        }
+        Some(Self { values, nodes })
+    }
 }
 
 /// The translation table, all public: per chunk `GRID` cells, per input bit
@@ -265,7 +360,7 @@ pub fn build(keys: &WotsKeys, seed: &[u8; 32], delta: S) -> (Table, Vec<S>) {
     let per_chunk: Vec<(Vec<Block>, Vec<Block>, Vec<S>)> = (0..keys.chunks())
         .into_par_iter()
         .map(|c| {
-            let kappa = kappa_chain(prf(KAPPA0, &[seed, &(c as u64).to_le_bytes()]), 0);
+            let kappa = kappa_chain(&tag, c, prf(KAPPA0, &[seed, &(c as u64).to_le_bytes()]), 0);
             let nodes: [[Node; K + 1]; CHAINS] = keys.seeds[c].map(|s| core::array::from_fn(|k| forward(&s, k)));
             let mut grid = Vec::with_capacity(GRID);
             for u in 0..RADIX {
@@ -349,7 +444,7 @@ pub fn recover_with_shift(table: &Table, chunk: usize, view: &View, j: usize, p:
     let bit = chunk * CHUNK_BITS + D * j + p;
     let ident = id(bit, value);
     let t = view.w + d;
-    let kappa = kappa_chain(view.kappa, view.w);
+    let kappa = kappa_chain(&table.tag, chunk, view.kappa, view.w);
     // c_m for m ≥ t, from κ_{m-δ}, m - δ ≥ W.
     let known: Vec<Ghash128> =
         (t..W_MAX + shift(value)).map(|m| coefficient(&table.tag, &ident, &kappa[m - d - view.w])).collect();
@@ -427,8 +522,12 @@ pub fn read_labels(ends: &[[Node; CHAINS]], table: &Table, sig: &Signature) -> V
 /// picks the one that must be the end. The digit is not range-checked: one
 /// outside `0..=7` makes `OP_PICK` fail or reach a deeper item, a later
 /// chain's node or digit. The attacker may put this chain's end there, but
-/// that later chain then checks it: as a node it must hash to its own end, a
-/// HASH160 preimage, and as a digit 20 bytes are no number.
+/// that later chain then checks it: as a digit 20 bytes are no number, and
+/// as a node it must hash to its own end in at most 7 steps. For keys that
+/// pass `check_key` no end does, so that is a HASH160 preimage; an operator
+/// that chains one end into another key can do it, which is why the
+/// challenger checks the key. Extra items below the chunks do not help:
+/// Tapscript's clean-stack rule rejects a leaf that leaves them.
 pub fn verify_chain(end: &Node) -> bitcoin::ScriptBuf {
     let w = K + 1;
     script! {
@@ -460,8 +559,9 @@ pub fn assert_lock(ends: &[[Node; CHAINS]]) -> bitcoin::ScriptBuf {
 }
 
 /// The witness items of chunks `values`/`nodes`, bottom of the stack first,
-/// so that chunk 0's chain 0 digit is on top. A digit is a minimal ScriptNum:
-/// 0 is the empty item.
+/// so that chunk 0's chain 0 digit is on top. A digit is a minimal ScriptNum,
+/// 0 the empty item, as the honest signer posts it and policy requires;
+/// consensus also accepts padded encodings, which `decode_digit` reads.
 pub fn stack(values: &[[u8; CHAINS]], nodes: &[[Node; CHAINS]]) -> Vec<Vec<u8>> {
     let mut items = Vec::with_capacity(2 * CHAINS * values.len());
     for (v, n) in values.iter().zip(nodes).rev() {
