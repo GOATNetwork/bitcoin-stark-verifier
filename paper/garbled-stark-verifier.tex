@@ -1586,10 +1586,12 @@ requires no new AIR or input-delivery protocol.
 
 \paragraph{Recursion into a narrow machine.} The floor above belongs to the
 statement, so we also garbled the verifier of a statement built to be verified
-cheaply. Ziren's binary stage~\cite{ziren} proves, over $\F$ with Boolean WHIR
-and Blake3, the program that verifies a shrunk zkVM proof, and its
-\texttt{binary-recursion} crate records Plonky3's verifier of such a proof as a
-straight-line tape over $\F$. A five-table tape machine (ledger, arithmetic,
+cheaply. The binary stage of the MIPS32 zkVM Ziren~\cite{duan26ziren,ziren}
+proves, over $\F$ with Boolean WHIR and Blake3, the program that verifies a
+shrunk zkVM proof, emulating the shrink verifier's KoalaBear arithmetic over
+bits, and its
+\texttt{binary-recursion} crate records Plonky3's verifier of a binary-stage
+proof as a straight-line tape over $\F$. A five-table tape machine (ledger, arithmetic,
 rewiring, Blake3 message and round tables) proves a run of a tape, and its own
 verifier is recorded and proved again: narrow recursion. We translate a tape
 gate by gate (\texttt{whir-gc/src/binary\_tape.rs}), trusting Ziren's recorder
@@ -1654,7 +1656,11 @@ patches are in the repository. Each proof meets 100 bits of composed soundness
 by Plonky3's assessment in the Johnson regime, with up to 46 bits of grinding
 per term at level 4, which halves under quantum search. The circuit checks only
 the last proof, so the statement's soundness also composes over the earlier
-levels. Proving level 4 alone took 1.8 hours on 64 cores with four GPUs
+levels and over the zkVM proof itself. For the latter, Ziren reports more than
+100 bits of interactive soundness per proof stage and 93.5 bits for an
+illustrative tree of 150 proofs in its measured Poseidon2 configuration, gives no numerical bound for the non-interactive proof, and claims
+no post-quantum security, because its cross-shard digest is an elliptic-curve
+multiset hash~\cite{duan26ziren}. Proving level 4 alone took 1.8 hours on 64 cores with four GPUs
 grinding and about 470\,GB of memory. Serializing the input-publication fixtures of
 Table~\ref{tab:onchain} at 564{,}552 bits, with every transaction signed and
 every leaf executed under the stack limit, gives 1{,}205{,}217\,vB for the 8-bit
@@ -1728,7 +1734,8 @@ anchor transactions and the multi-copy soldering are not constructed
 total. $^{\ddagger}$Verifier assumptions
 only. A surrounding protocol additionally uses discrete-logarithm signatures, or
 requires the unimplemented hash-based multi-copy soldering and a post-quantum
-transaction-authorization mechanism. Neither statement has public values; the
+transaction-authorization mechanism. The recursion row's statement, a Ziren
+proof, also rests on an elliptic-curve digest~\cite{duan26ziren}. Neither statement has public values; the
 recursion row binds neither the zkVM program nor its outputs. The
 recursion row is the verifier of the last narrow-recursion proof of Ziren's
 binary stage (Table~\ref{tab:recursion}), with the experimental proof-system
