@@ -604,7 +604,12 @@ tested against that log; \S\ref{sec:eval} reports the measurements.
 
 This section places the garbled verifier in a BitVM3-style
 dispute~\cite{bitvm3paper,mosaic26}, in which the operator garbles and
-challengers evaluate, with a bridge as the motivating application. It fixes
+challengers evaluate, with a bridge as the motivating application. The roles
+follow from the construction: evaluation is one Blake3 call per non-free gate
+and needs no secret, so any party holding the kept garblings can check a claim
+and stop a fraud, and the garbler's cost is paid once at setup. The reverse
+assignment would also make the operator's payment depend on a challenger
+handing over its input labels. It fixes
 the setup and the intended dispute, states the label-selection task that any
 way of publishing the proof must solve, compares the adaptor-signature and
 hash-based solutions on the same terms, and prices four one-time input schemes
@@ -632,8 +637,13 @@ the hashes of its one-time keys and label translations. A challenger chooses
 $N-M$ instances to open, re-garbles each from its seed in one pass of the plan
 that all instances share (\S\ref{sec:eval}) and checks every commitment;
 only then is the transaction graph signed, by a committee as in
-BitVM2~\cite{laa25bitvm2}, whose enforcement needs one honest signer. The
-challenger stores the $M$ kept instances, 1.5\,GB each at $2^{18}$ rows.
+BitVM2~\cite{laa25bitvm2}, whose enforcement needs one honest signer. At
+$(N,M)=(181,7)$ and $2^{18}$ rows the operator garbles 181 instances at about
+57\,s each, 2.9 core-hours or about 11 minutes on 16 cores, and a challenger
+stores the 7 kept instances, 1.5\,GB each or 10.5\,GB; BitVM3 reports 3 hours
+24 minutes on 16 cores and 288.4\,GB for the Boolean-garbled Groth16 verifier
+at the same parameters~\cite{bitvm3paper}. These setup figures are derived from
+the measured garbling time, not measured end to end.
 Publishing bit $b$ of input $i$ must give a challenger only the label of value
 $b$ on wire $i$ in every kept instance; Mosaic provides this correlation for
 its adaptor-signature path~\cite{mosaic26}, and the hash-based soldering is
@@ -1467,22 +1477,6 @@ deployment, the construction needs public-input support, an implemented and
 measured multi-copy input layer, a serialized and policy-tested Assert graph,
 post-quantum graph authorization, and a measured parameter set with an
 enlarged field and labels, a wider-state hash and stronger cut-and-choose.
-
-\paragraph{Why the operator garbles.} With a challenger garbling and the
-operator evaluating its own proof for an accept label, the operator would need
-its input labels from the garbler: publishing both labels of every wire would
-disclose $\Delta$ and with it every label, and handing them over on request
-lets the garbler withhold them, so that the operator's payment depends on the
-challenger's cooperation. With the operator as garbler, a withheld label only
-hurts the party that withholds it. Keeping that garbler honest is
-cut-and-choose, linear in the garbled circuit: at $(N,M)=(181,7)$ and $2^{18}$
-rows the operator garbles 181 instances at about 57\,s each, 2.9 core-hours
-or about 11 minutes on 16 cores, and a challenger stores the 7 kept instances,
-10.5\,GB, against BitVM3's 3 hours 24 minutes on 16 cores and 288.4\,GB for
-the Boolean-garbled Groth16 verifier at the same
-parameters~\cite{bitvm3paper}; native-group garbling~\cite{kflt26native} and
-BABE have setups of megabytes. These figures are derived from the measured
-garbling time, not measured end to end.
 
 \paragraph{Open input-layer directions.} TinyLabels compresses honest
 selected-label delivery to $|x|+\operatorname{poly}(\lambda)$ online bits
