@@ -95,7 +95,7 @@ a result, and a challenger disputes it only if it is wrong.
 BitVM2~\cite{laa25bitvm2} settles a dispute by bisecting the verifier's
 execution trace on-chain, which is secure but expensive: a mainnet experiment
 put the unhappy path at over \$14{,}000~\cite{babe2026}. BitVM3 moves the
-verifier off-chain into a \emph{garbled circuit}~\cite{lin25bitvm3,bitvm3paper,che25sok}.
+verifier off-chain into a \emph{garbled circuit}~\cite{bitvm3paper,che25sok}.
 At setup the verifier circuit is garbled. At dispute time the proof is published
 under one-time signatures that give the evaluator the circuit's input labels, and
 the outcome depends on which output label the evaluation yields. For the
@@ -173,7 +173,7 @@ choice of hash and the input schemes.
     remove $37$--$58\%$, batching amortizes the input per permutation
     $3.76\times$, and garbling the verifier of a narrow-recursion proof of
     Ziren's binary stage brings the input to $564{,}552$ bits, $0.54\times$,
-    on real proofs, with the effect of every recursion step listed
+    on real proofs, with the effect of each level-4 change listed
     (\S\ref{sec:reduce}, \S\ref{sec:eval}, Appendix~\ref{app:recursion}).
   \item \textbf{A fixed-shape circuit for the measured verifier path (C3).}
     We implement the path through Plonky3's STARK
@@ -208,19 +208,19 @@ We group prior work by how it verifies a proof on Bitcoin: by garbling a verifie
 by witness encryption, or through small pairing-based SNARKs that both approaches
 rely on. We close with the garbling techniques we use.
 
-\paragraph{BitVM.} BitVM2~\cite{laa25bitvm2} verified
-optimistically by bisecting the verifier's trace on-chain, and
-BitVMX~\cite{bitvmx24} bisected the trace of a general CPU in the same way.
-ColliderVM~\cite{collidervm25} left the optimistic model: it placed the
-computation on-chain in validity form and passed state between transactions
-through hash-collision puzzles, without fraud proofs, at an on-chain cost that
-its authors did not claim to be viable. Delbrag~\cite{delbrag25} first proposed
-replacing BitVM's fraud proof by the off-chain evaluation of a garbled circuit
-whose outcome is revealed as a secret, at the price of more off-chain exchange
-and of expensive proofs of circuit correctness. BitVM3 took up that idea and
-garbled the verifier~\cite{lin25bitvm3,che25sok}, and its formal treatment defined
-BitVM3-CORE as a sound and complete on-chain proof system with on-chain costs of
-about \$9~\cite{bitvm3paper}.
+\paragraph{BitVM.} BitVM2~\cite{laa25bitvm2} verified optimistically: the
+operator commits to every intermediate value of the verifier, and a challenger
+disproves one wrong step on-chain. BitVMX~\cite{bitvmx24} located a disputed
+step of a general CPU's trace (RISC-V or MIPS) by an n-ary search over a hash
+chain of the trace. ColliderVM~\cite{collidervm25} left the optimistic model: it
+placed the computation on-chain in validity form and passed state between
+transactions through hash-collision puzzles, without fraud proofs, at a script
+length its authors estimate as nearly practical for STARK verification.
+Delbrag~\cite{delbrag25} proposed replacing BitVM's fraud proof by the
+off-chain evaluation of a garbled circuit whose outcome is revealed as a
+secret, proving the circuit's correctness in zero knowledge. BitVM3 took up that idea and
+garbled the verifier~\cite{bitvm3paper,che25sok}, defining BitVM3-CORE as a
+sound and complete on-chain proof system with on-chain costs of about \$9.
 
 \paragraph{Garbled verifiers.} The Boolean-garbled Groth16 verifier~\cite{bit25b}
 has about $3\times10^9$ non-free gates, 42\,GiB, with cut-and-choose setup of over
@@ -243,8 +243,7 @@ cut-and-choose and a universal-composability analysis. It too rests on pairings.
 
 \paragraph{Garbling on Bitcoin: security and inputs.} Futoransky, Larotonda and
 Barbara~\cite{flb25} broke the authenticity of the RSA-based garbling proposed for
-BitVM3~\cite{lin25bitvm3}, of the label forward-propagation variant~\cite{fdz25},
-and of linear adaptors: coprime public exponents let the evaluator forge labels by
+BitVM3 and of linear adaptors: coprime public exponents let the evaluator forge labels by
 extended Euclid, and linear adaptors fall to the Franklin--Reiter related-message
 attack. Our hash-based garbling has no such label algebra. Mosaic~\cite{mosaic26}
 made cut-and-choose maliciously secure with an on-chain footprint independent of
@@ -306,7 +305,8 @@ who evaluates an invalid proof stop the operator's claim.
 
 The garbler may cheat, so the garbling is checked by cut-and-choose, as in
 BABE~\cite{babe2026}, Mosaic~\cite{mosaic26} and bitvm-gc~\cite{bitvmgc}; its cost
-is linear in the size of the garbled circuit, which this paper reduces.
+is linear in the size of the garbled circuit, which our gadgets keep small
+(\S\ref{sec:gadgets}).
 Section~\ref{sec:protocol} gives the integration sketch, the verifier
 circuit, the accounted input-publication components and the unresolved
 deployment requirements.
@@ -418,12 +418,6 @@ commitment;
 only then is the transaction graph signed, by a committee as in
 BitVM2~\cite{laa25bitvm2}, whose enforcement needs one honest signer.
 
-At $(N,M)=(181,7)$ and $2^{18}$ rows the operator garbles 181 instances at about
-57\,s each, 2.9 core-hours or about 11 minutes on 16 cores, and a challenger
-stores the 7 kept instances, 1.5\,GB each or 10.5\,GB; BitVM3 reports 3 hours
-24 minutes on 16 cores and 288.4\,GB for the Boolean-garbled Groth16 verifier
-at the same parameters~\cite{bitvm3paper}. These setup figures are derived from
-the measured garbling time, not measured end to end.
 Publishing bit $b$ of input $i$ must give a challenger only the label of value
 $b$ on wire $i$ in every kept instance; Mosaic provides this correlation for
 its adaptor-signature path~\cite{mosaic26}, and the hash-based soldering is
@@ -700,8 +694,9 @@ selection pays 2 bytes of script per hash step and a separate transaction
 signature, which makes the Antichain row 5.3 times the adaptor row in
 Table~\ref{tab:onchain}. Table~\ref{tab:bytes} sets the four schemes side by
 side. With a native batch opcode, a hash-based transaction signature and
-full-width nodes, the hash-based selection would match the adaptor's
-2.13\,MvB at about 117 quantum bits; we serialized that construction, but
+full-width nodes, the hash-based selection would cost about 2.13\,MvB, just
+below the adaptor's 2.23\,MvB on the same accounting (Table~\ref{tab:pqsel}),
+at about 117 quantum bits; we serialized that construction, but
 none of its three ingredients exists on Bitcoin today (Table~\ref{tab:pqsel},
 Appendix~\ref{app:pqsel}).
 
@@ -1028,8 +1023,8 @@ single-input changes.
 \begin{tabular}{lrrr}\toprule
 verifier & input bits & non-free gates & garbled\\\midrule
 binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
-narrow recursion, level 2, Ziren \texttt{9398469a} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
-level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
+narrow recursion, level 2 & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
+level 4, rate $1/1024$ & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
 \quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
 \quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
 \quad + 200-bit Merkle digests & 895{,}504 & 220.2M & 3.52\,GB\\
@@ -1041,8 +1036,8 @@ level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,G
 \end{tabular}
 \caption{Narrow recursion removes the statement's width from the garbled
 verifier's input. Exact counts for Ziren's binary stage and for the verifier of its narrow-recursion proofs (level 2 with 26-bit addresses, the
-smallest that fit the real tape); the rows below the third use the experimental
-changes listed in Appendix~\ref{app:recursion}.}
+smallest that fit the real tape); the rows from the third on use the experimental
+changes listed in Appendix~\ref{app:recursion}, measured on an earlier, unpublished Ziren commit (Appendix~\ref{app:artifact}).}
 \label{tab:recursion}
 \end{table}
 
@@ -1065,10 +1060,16 @@ designated-verifier pairing SNARK we garbled bitvm-gc's circuit: $481.6$M
 non-free gates; it accepted the valid proof and rejected it with one witness
 bit flipped. The Keccak verifier has $5.1\times$ fewer
 non-free gates, and $30\times$ fewer than the Boolean-garbled Groth16 verifier;
-the recursion verifier has $2.2\times$ and about $14\times$ fewer.
+the recursion verifier has $2.2\times$ and about $13\times$ fewer.
 Native-group garbling of Groth16~\cite{kflt26native} and witness
 encryption~\cite{babe2026} produce artifacts of megabytes and need far fewer
 input bits, on pairings and a trusted setup.
+For setup, at $(N,M)=(181,7)$ and $2^{18}$ rows the operator garbles 181 instances at about
+57\,s each, 2.9 core-hours or about 11 minutes on 16 cores, and a challenger
+stores the 7 kept instances, 1.5\,GB each or 10.5\,GB; BitVM3 reports 3 hours
+24 minutes on 16 cores and 288.4\,GB for the Boolean-garbled Groth16 verifier
+at the same parameters~\cite{bitvm3paper}. These setup figures are derived from
+the measured garbling time, not measured end to end.
 
 On-chain, the comparison inverts:
 the Groth16 designs publish 508 to 1{,}019 input bits and report dispute paths
@@ -1316,12 +1317,10 @@ $|x|+\operatorname{poly}(\lambda)$ online bits under Ring-LWE, about
 malformed delivery aborts instead of yielding the reject label that opens
 Disprove. Segmented verification would commit once to the proof, locate a
 faulty verifier segment by bisection and authenticate only the challenged
-chunk, but 530{,}560 of the input bits are global to the verifier, so every
+chunk, but only the WHIR Merkle paths and leaf rows split by query; the rest,
+more than half the input (Table~\ref{tab:inputs}), is global to the verifier, so every
 layer would need segmenting with bound boundary states, and the worst case
-remains the full input. On the circuit side, the ring switch closing, a third
-of the gates, is the first target, and the recursion of
-Table~\ref{tab:recursion} shows that a narrower statement reduces the
-hashing and column terms together.
+remains the full input.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}
@@ -1479,7 +1478,7 @@ cross-batch splicing and padding; nothing in it is executable by Bitcoin Core.
 Table~\ref{tab:pqsel} gives the results together with a projection whose model
 reproduces both serialized fixtures within $0.03\%$. The operative row is
 $n=32$, $k=8$: full-width nodes, about 117 quantum bits for the selection, and
-the same 2.13\,MvB as the Schnorr adaptor, at the price of 255 hash steps per
+about 2.13\,MvB against the Schnorr adaptor's 2.23\,MvB, at the price of 255 hash steps per
 byte inside the opcode, about $3.3\times10^7$ compressions for the input. Its setup is two seeds per digit rather than the adaptor's $2^k$
 secrets, so widening $k$ does not grow the choice table; only the translation
 table grows, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
@@ -1597,10 +1596,10 @@ dependencies and benchmark commands; the commands and memory caps are listed in
 \texttt{whir-gc/README.md}. The raw measurement logs, with a SHA-256 manifest
 and a map from tables and figures to logs, are archived separately and
 available on request. The experimental Plonky3 and Ziren changes behind
-Table~\ref{tab:recursion} are Ziren commit \texttt{80af2779} on
+Table~\ref{tab:recursion} are public in Ziren commit \texttt{80af2779} on
 \texttt{feat/binary-whir-blake3} and Plonky3 commit \texttt{be1c6f92} on
-ProjectZKM's \texttt{zkm/binary-whir}; \texttt{patches/README.md} lists them and
-the commands that rebuild the tapes. \texttt{Cargo.lock} pins Plonky3 at revision
+ProjectZKM's \texttt{zkm/binary-whir}. The figures were measured on an earlier,
+unpublished Ziren commit. \texttt{Cargo.lock} pins Plonky3 at revision
 \texttt{ca4da2daa2e0dfdd31419af5c870813083398955} and bitvm-gc at revision
 \texttt{10083d4a63eb08a344dc40ee84bc11394b218a89}. Gate, wire and input counts
 are deterministic; wall-clock times are single-run engineering measurements
