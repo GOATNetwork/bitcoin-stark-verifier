@@ -85,14 +85,12 @@ Bitcoin cannot verify a succinct proof economically within current Script and
 policy limits, but a trust-minimized bridge needs such verification. Consider a
 withdrawal from a rollup: an operator has paid out a user on Bitcoin and must
 prove, to a Bitcoin script, that the rollup's state authorizes the payment; the
-proof is a STARK over the rollup's execution. This bridge is the motivating
-application. The implementation evaluated in this paper verifies a Keccak-$f$
-AIR without public values, so it does not yet bind a proof to a withdrawal.
-Hashing dominates such statements, and we evaluate on a hash-heavy standard case,
+proof is a STARK over the rollup's execution. Hashing dominates such statements, and we evaluate on a hash-heavy standard case,
 proofs of Keccak-$f$ permutations~\cite{fips202}.
 
-A SNARK verifier written in Script takes hundreds of megabytes~\cite{babe2026}.
-The BitVM line of work therefore verifies \emph{optimistically}: a prover claims
+A SNARK verifier written in Script takes hundreds of megabytes~\cite{babe2026},
+and our own STARK verifier in Script needs 1.24\,GB of script at $2^{20}$
+rows~\cite{goatscriptverifier}. The BitVM line of work therefore verifies \emph{optimistically}: a prover claims
 a result, and a challenger disputes it only if it is wrong.
 BitVM2~\cite{laa25bitvm2} settles a dispute by bisecting the verifier's
 execution trace on-chain, which is secure but expensive: a mainnet experiment
@@ -255,26 +253,10 @@ input labels on-chain at a cost up to $52.9\%$ lower than Lamport signatures. Bo
 are independent of the garbled circuit; \S\ref{sec:input} prices both for our
 million-bit input. Tiwari and Feickert~\cite{tf26pq} assessed the post-quantum
 cost of such bridges, estimated Boolean STARK verifier sizes, and found proof
-size the main obstacle to on-chain feasibility.
-
-\paragraph{Quantum-safe transaction authorization.}
-QSB~\cite{levy26qsb} constructed a hash-based authorization path under existing
-legacy-Script consensus rules by combining commitments in the style of HORS
-(hash to obtain a random subset) with transaction-bound hash-to-signature
-grinding. A QSB spend was mined on Bitcoin
-mainnet in August 2026~\cite{starkware26qsb}. The construction is non-standard
-and requires direct miner inclusion. It authorizes a specially constructed
-spend; adapting it to a multi-transaction, pre-signed and timelocked dispute
-graph remains open.
-
-\paragraph{Verifying a STARK in Script.} Our companion work, in an earlier
-version of this paper's repository, verifies the same kind of proof directly in
-Bitcoin Script, with Poseidon2 over KoalaBear and WHIR and without
-\texttt{OP\_CAT}~\cite{goatscriptverifier}. It needs no garbling and no
-trusted party, but its $2^{20}$ example configuration requires 1.24\,GB of
-script, equivalent to 309 blocks; moreover, a standard transaction holds less
-than one Poseidon2 permutation, so it must be split into sub-query steps.
-Garbling moves that cost off-chain.
+size the main obstacle to on-chain feasibility. QSB~\cite{levy26qsb}
+constructed a hash-based, non-standard authorization path under existing
+consensus rules, mined on mainnet in August 2026~\cite{starkware26qsb}; a
+pre-signed, timelocked dispute graph is not yet within its reach.
 
 \paragraph{Witness encryption.} BABE~\cite{babe2026} replaced the garbled
 Groth16 verifier with witness encryption for linear pairing
@@ -293,13 +275,6 @@ the constraint count, about 338\,TB for a 14{,}371-constraint pairing-SNARK
 verifier, under a heuristic security analysis. All witness-encryption designs
 are smaller off-chain than a garbled verifier, but all need a pairing SNARK,
 so a STARK would first be wrapped in one, and none is post-quantum.
-
-\paragraph{Small SNARK verifiers.} Pari~\cite{garudapari} gave the smallest
-known pairing-based proofs, two $\mathbb{G}_1$ and two field elements, and
-underlies bitvm-gc's designated-verifier SNARK, Glock and the AADP
-construction; its designated-verifier form on a binary curve needs no pairing
-but still rests on discrete logarithms. Groth16~\cite{gro16} remains the
-deployed baseline.
 
 \paragraph{Binary-field proof systems and garbling.} Binius~\cite{dp25binius}
 built succinct arguments over binary towers, and ring
@@ -350,11 +325,9 @@ has no ciphertext. An \AND{} gate $c=a\wedge b$ sets
 \[
   c_0 = H(a_0,g), \qquad \mathit{ct} = H(a_1,g)\oplus H(a_0,g)\oplus b_0 .
 \]
-An evaluator holding the label $a$ of value $x$, and $b$ of value $y$, outputs
-$H(a,g)$ if $x=0$ and $H(a,g)\oplus\mathit{ct}\oplus b$ if $x=1$. In both cases
-this is the label of $x\wedge y$. An \textsf{OR} gate is symmetric, with
-$c_0=H(a_1,g)\oplus\Delta$ and $\mathit{ct}=H(a_1,g)\oplus H(a_0,g)\oplus b_1$.
-The garbled circuit is one 16-byte ciphertext per \AND{} or \textsf{OR} gate.
+The evaluator recovers the output label from its two input labels, the
+ciphertext and one hash~\cite{zre15}; an \textsf{OR} gate is symmetric. The
+garbled circuit is one 16-byte ciphertext per non-free gate.
 
 Two details matter in practice. First, $\Delta$ must be secret and fresh for
 each garbling: with a public $\Delta$ any label yields its complement, and the
@@ -381,21 +354,7 @@ down to bits. The trace is committed as bits: a Boolean column is packed into
 $\F$ elements, and WHIR commits to the packed multilinear polynomial on an
 additive (Cantor) evaluation domain~\cite{cantor89,lch14}. Binary towers and
 ring switching come from Binius~\cite{dp25binius,dp24ringswitch}.
-
-\paragraph{Terms.} An \emph{AIR} (algebraic intermediate representation) is a
-set of polynomial constraints over a trace's current and next rows. A
-\emph{zerocheck}~\cite{hyperplonk23} proves that the constraints vanish on every
-row by a sumcheck~\cite{lfkn92}
-against the equality polynomial $\mathrm{eq}(\tau,\cdot)$ at a random point
-$\tau$. \emph{WHIR}~\cite{whir25} is a Reed--Solomon proximity test used as a multilinear
-polynomial commitment. Its \emph{STIR queries}~\cite{stir24} open the committed, folded
-codeword at random positions, and its \emph{out-of-domain} (OOD) samples bind the
-committed polynomial at points outside the evaluation domain. The \emph{Cantor
-basis} is the $\mathbb{F}_2$-basis $v_0=1$, $v_i^2+v_i=v_{i-1}$, which gives
-binary fields an additive FFT domain. The \emph{bit ring switch} turns a claim
-about a polynomial's bits into a claim about its packed $\F$ representation.
-\emph{Johnson list-decoding regime} refers to the proximity parameters for which
-the soundness bounds are proven via the Johnson bound, without conjectures.
+Appendix~\ref{app:terms} defines the terms used below.
 
 \paragraph{Verification.} The verifier:
 \begin{enumerate}
@@ -470,63 +429,14 @@ $b$ on wire $i$ in every kept instance; Mosaic provides this correlation for
 its adaptor-signature path~\cite{mosaic26}, and the hash-based soldering is
 open here.
 
-Figure~\ref{fig:graph} summarizes the intended logical outcomes for one claim.
-The Assert node is a placeholder for an unconstructed transaction subgraph.
+Appendix~\ref{app:graph} gives the intended transaction graph and the
+semantics of its branches; its Assert node is a placeholder for an
+unconstructed publication subgraph.
 
-\begin{figure}[t!]\centering
-\begin{tikzpicture}[node distance=5mm and 9mm, font=\footnotesize,
-  tx/.style={draw, rounded corners=2pt, minimum height=6mm, inner sep=3pt, fill=gray!8},
-  arr/.style={-{Stealth[length=2mm]}}]
-\node[tx] (kick) {Kickoff};
-\node[tx, above right=2mm and 9mm of kick] (take1) {Take1};
-\node[tx, below right=2mm and 9mm of kick] (chal) {Challenge};
-\node[tx, dashed, right=of chal] (assert) {Assert$_1,\dots,$Assert$_k$};
-\node[tx, above right=2mm and 9mm of assert] (take2) {Take2};
-\node[tx, right=of assert] (disprove) {Disprove$_j$};
-\node[tx, below=4mm of assert] (noassert) {AssertTimeout};
-\draw[arr] (kick) -- node[above, sloped] {$\Delta_C$} (take1);
-\draw[arr] (kick) -- (chal);
-\draw[arr] (chal) -- (assert);
-\draw[arr] (chal) |- node[pos=0.75, below] {$\Delta_A$} (noassert);
-\draw[arr] (assert) -- node[above, sloped] {$\Delta_D$} (take2);
-\draw[arr] (assert) -- node[below] {$\ell^j_0$} (disprove);
-\end{tikzpicture}
-\caption{Logical outcomes of the proposed dispute. The dashed
-Assert$_1,\ldots,$Assert$_k$ node denotes an unspecified publication subgraph.
-The figure does not define its UTXO dependencies, completion anchor, timeout
-enforcement or fee management, all of which remain to be constructed and
-policy-tested.}
-\label{fig:graph}
-\end{figure}
-
-\paragraph{Required transaction semantics.} The intended branches are:
-\begin{itemize}
-  \item \emph{Kickoff}: the operator claims reimbursement for a withdrawal it has
-    paid. If no challenge follows within $\Delta_C$, \emph{Take1} pays it. This is
-    the happy path.
-  \item \emph{Challenge}: any challenger may spend Kickoff's challenge output,
-    paying the operator a bond that covers the cost of Assert, as BitVM2's
-    crowdfunded challenge does~\cite{laa25bitvm2}.
-  \item \emph{Assert$_1,\dots,$Assert$_k$}: the operator must publish every
-    authenticated circuit-input bit. Because the payload exceeds one standard
-    transaction, a concrete construction needs a subgraph whose terminal output
-    is spendable only after every chunk has been published. We do not specify
-    that fanout, chaining or completion mechanism here.
-  \item \emph{AssertTimeout}: if the operator fails to create the completion
-    output before $\Delta_A$, a timeout branch should transfer its stake. The
-    enforceable condition for ``all chunks published'' depends on the missing
-    subgraph and is not specified by Figure~\ref{fig:graph}.
-  \item \emph{Disprove$_j$}: after such a completion output exists, a challenger
-    holding $\ell^j_0$ would open the corresponding hashlock before $\Delta_D$;
-    otherwise Take2 would pay the operator. The required transaction
-    dependencies and relative timelocks remain unimplemented.
-\end{itemize}
-The complete graph must be tested against the release policy targeted for
-deployment; current policy limits a standard transaction to 400{,}000 weight
-units and an unconfirmed cluster to 101 virtual
-kilobytes~\cite{bitcoincorepolicy}.
-
-\paragraph{Intended dispute.} A challenger reads the published bits, derives
+\paragraph{Intended dispute.} The operator's Kickoff claims a reimbursement;
+a challenger may spend its challenge output within $\Delta_C$, after which the
+operator must publish every authenticated input bit through Assert or lose
+its stake on timeout. A challenger then reads the published bits, derives
 the input labels of every kept instance and evaluates each off-chain, one
 Blake3 call per non-free gate, 17\,s at $2^8$ rows (\S\ref{sec:eval}). An
 invalid proof yields $\ell^j_0$ from a correctly garbled instance, which opens
@@ -717,19 +627,10 @@ circuit rejects where the reference verifier would continue, never the reverse.
 The WHIR layer checks every proof-of-work witness. It hashes every opened row and
 walks it up its Merkle path to the root absorbed in the transcript. It then folds
 each queried row with the round's folding randomness, and checks the final
-queries against the final polynomial and the closing sumcheck identity.
-
-The prover sends Merkle openings pruned: siblings that another query can recompute are left out.
-Our implementation expands the proof outside the circuit into one full path per
-query. This is an engineering choice rather than an inherent limitation of a
-fixed circuit: a fixed upper-bound circuit could verify a padded frontier with
-data-dependent routing. A million-trial simulation of the actual stratified
-queries and cap forest, however, reduces the expected path from 1{,}354 to
-1{,}335.71 digests, only 4{,}683 input bits or $0.45\%$ of the total, before the
-routing and padding overhead. When the commitment uses a Merkle cap of $2^h$
-roots, the transcript
-absorbs all of them, and each query selects its root with a multiplexer on the
-top $h$ index bits: $256(2^h-1)$ \AND{} gates, against $h$ compressions saved.
+queries against the final polynomial and the closing sumcheck identity. The
+prover's pruned Merkle openings are expanded into one full path per query
+outside the circuit, and a Merkle cap of $2^h$ roots trades $h$ compressions
+per query for a multiplexer (Appendix~\ref{app:profile}).
 
 \subsection{Publishing the input}\label{sec:input}
 
@@ -789,26 +690,19 @@ every candidate value.}
 \label{fig:adaptorseq}
 \end{figure}
 
-Both protocols publish the same selection material per digit, one 64-byte
-completion or two $n$-byte nodes: at $k=8$ for the adaptor and $k=4$, $n=16$
-for the hash-based fixture, about 8.1 bytes of witness per bit, and the
-130{,}128 adaptor completions and 16{,}266 hash records of our fixtures are
-both exactly 8{,}458{,}320 bytes. They differ in where the remaining cost sits.
+Both protocols publish the same selection material per digit: the 130{,}128
+adaptor completions at $k=8$ and the 16{,}266 hash records at $k=4$, $n=16$ of
+our fixtures are both exactly 8{,}458{,}320 bytes. They differ in the rest.
 The adaptor's selection is verified by one \texttt{CHECKSIG} per digit, 3
-bytes of script, and its binding is the same signature; its setup holds $2^k$
-secrets and ciphertext bundles per digit, and its exclusivity rests on
-discrete logarithms, which Shor's algorithm removes (\S\ref{sec:pq}). The
-hash-based selection has a two-node setup and hash-only exclusivity, but under
-current consensus every hash step of the verification is 2 bytes of script,
-plus a separate transaction signature; that script makes the Antichain row
-5.3 times the adaptor row in Table~\ref{tab:onchain}. The digit-to-label
-translation table is the same object in both and is not on-chain.
-
-Table~\ref{tab:bytes} sets the four schemes side by side by where their bytes
-go. With a native batch opcode, a hash-based transaction signature and full-width nodes,
-the hash-based selection would match the adaptor's 2.13\,MvB at about 117
-quantum bits; we serialized that construction exactly, but none of its three
-ingredients exists on Bitcoin today (Table~\ref{tab:pqsel},
+bytes of script that is also the transaction binding, on a discrete-logarithm
+assumption that Shor's algorithm removes (\S\ref{sec:pq}); the hash-based
+selection pays 2 bytes of script per hash step and a separate transaction
+signature, which makes the Antichain row 5.3 times the adaptor row in
+Table~\ref{tab:onchain}. Table~\ref{tab:bytes} sets the four schemes side by
+side. With a native batch opcode, a hash-based transaction signature and
+full-width nodes, the hash-based selection would match the adaptor's
+2.13\,MvB at about 117 quantum bits; we serialized that construction, but
+none of its three ingredients exists on Bitcoin today (Table~\ref{tab:pqsel},
 Appendix~\ref{app:pqsel}).
 
 \begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
@@ -898,7 +792,7 @@ the circuit of \S\ref{sec:construction} and garble it.
 \section{Evaluation}\label{sec:eval}
 
 The experiments answer five questions: how the garbled verifier scales with the
-trace (Table~\ref{tab:main}, Figure~\ref{fig:scaling}), where its gates go and
+trace (Table~\ref{tab:main}), where its gates go and
 what the adder saves, how the circuit-input authentication
 component projects (Table~\ref{tab:onchain}), how far the input shrinks, and
 how the result compares with estimated STARK verifiers and pairing-based
@@ -928,38 +822,12 @@ the columns and constraints; all sizes are for this 1{,}625-column AIR, a
 demanding case, whereas a Groth16 verifier's circuit is fixed for a given
 verifying key and public-input arity.
 
-\paragraph{Scaling.} Table~\ref{tab:main} and Figure~\ref{fig:scaling} give the
-measured verifier configuration from $2^5$ to $2^{20}$ rows. Every circuit
+\paragraph{Scaling.} Table~\ref{tab:main} gives the measured verifier
+configuration from $2^5$ to $2^{20}$ rows. Every circuit
 accepted its proof, and at $2^5$ and $2^8$ we also checked that it rejected the
 proof with one opened value changed. Growing the trace $32{,}768$-fold grew the
 circuit $2.2$-fold, because the verifier depends on the trace length only
 through the logarithmic number of variables.
-
-\begin{figure}[t!]\centering
-\begin{tikzpicture}
-\begin{axis}[width=0.72\textwidth, height=5.2cm,
-  xlabel={$\log_2$ trace rows},
-  ylabel={non-free gates ($10^6$, log scale)},
-  xtick={5,8,12,16,18,20},
-  ymode=log, log basis y=10, ymin=30, ymax=5000,
-  ytick={30,100,300,1000,3000},
-  yticklabels={30,100,300,1000,3000},
-  grid=major, grid style={gray!25}, mark size=2pt,
-  legend style={font=\footnotesize, at={(0.98,0.98)}, anchor=north east,
-    fill=white, fill opacity=0.9, text opacity=1}]
-\addplot[thick, mark=*, color=blue!70!black]
-  coordinates {(5,44.573) (8,66.460) (12,77.736) (16,88.681) (18,94.070) (20,99.614)};
-\addlegendentry{measured verifier}
-\addplot[thick, densely dashed, color=black] coordinates {(5,3000) (20,3000)};
-\addlegendentry{Boolean-garbled Groth16 ($\approx3{,}000$M)}
-\end{axis}
-\end{tikzpicture}
-\caption{On a logarithmic vertical axis, the measured verifier grows from 44.6M
-non-free gates at $2^5$ rows to 99.6M at $2^{20}$, a $2.2\times$ increase for a
-$32{,}768\times$ larger trace. The dashed line shows the approximately
-3{,}000M-gate Boolean-garbled Groth16 comparator.}
-\label{fig:scaling}
-\end{figure}
 
 \begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrrrrr}\toprule
@@ -984,17 +852,11 @@ on one core.}
 
 \paragraph{Where the gates go.} Table~\ref{tab:profile} in
 Appendix~\ref{app:profile} breaks the $2^{18}$ circuit down by the verifier
-phase that emits each gate. The stages before WHIR account for $70.8\%$ and
-WHIR for $29.2\%$, including its share of the transcript, or $27.5\%$ without
-it (Figure~\ref{fig:pipeline}). The largest single item is the ring switch closing,
-$33.6\%$: 256 multiplications per packed variable, plus a fixed $11\times512$
-for the column selector. The STARK transcript, the column combination and the
-AIR constraints, $34.9\%$ together, grow with the number of columns, so a
-narrower AIR shrinks them directly. On a standalone instance, the WHIR opening
-of an 18-variable polynomial costs $21.2$M non-free gates with a Merkle cap of
-32 roots, three quarters of it hashing, and rate $1/32$ with folding 4 was the
-smallest configuration in our sweep (Appendix~\ref{app:profile}).
-
+phase that emits each gate. The largest single item is the ring switch
+closing, $33.6\%$: 256 multiplications per packed variable, plus a fixed
+$11\times512$ for the column selector. The STARK transcript, the column
+combination and the AIR constraints, $34.9\%$ together, grow with the number
+of columns, so a narrower AIR shrinks them directly.
 
 \paragraph{Ablation.} Replacing our Blake3 adder with the original two-\AND{}
 adder, with everything else unchanged, grew the circuit by $32\%$ at $2^5$ rows
@@ -1356,23 +1218,8 @@ Blake3 evaluations; with 128-bit labels the garbling, and a hashlock on a
 128-bit output label, offer about 64 quantum bits.
 
 
-\paragraph{The surrounding protocol.} The protocol of \S\ref{sec:protocol}
-publishes input bits under one-time keys. Lamport, Antichain Winternitz and
-translated Winternitz keys rest on \texttt{HASH160} preimages. The familiar $2^{64}$ quantum cost for our
-16-byte preimages is a single-target estimate. One Lamport key set exposes
-$T=1{,}041{,}024\approx2^{20}$ alternative preimages, so generic multi-target
-search costs about $2^{128}/T\approx2^{108}$ classically and
-$\sqrt{2^{128}/T}\approx2^{54}$ quantumly. Seven independent sets lower these
-figures to about $2^{105.2}$ and $2^{52.6}$. Hash-chain alternatives have the
-same multi-target issue; Table~\ref{tab:pqsel} gives the widths that lift the
-selection itself above this bound. Even 20-byte preimages under \texttt{HASH160} are
-capped near 70 quantum bits for one set, rather than 80, once the target count
-is included. Translated Winternitz keys are further bounded by the 128-bit key
-chain of the translation table. Because each step of that chain is salted with
-the instance, the chunk and the step index, an inversion targets a single step,
-and its cost is $2^{128}$ classically and $2^{64}$ quantumly.
-
-The surrounding protocol is not post-quantum as instantiated. Schnorr adaptor
+\paragraph{The surrounding protocol.} The protocol is not post-quantum as
+instantiated. Schnorr adaptor
 signatures, the committee's pre-signed transactions and Taproot key-path spends
 fall to Shor's algorithm. Hash-based input keys avoid the adaptor-signature
 dependency, but their one-key-set cost assumes the unimplemented soldering in
@@ -1382,7 +1229,10 @@ signature. QSB gives a non-standard hash-based authorization path under
 existing consensus rules~\cite{levy26qsb,starkware26qsb}, but whether it can
 replace the authorization of a pre-signed, timelocked dispute graph is outside
 our scope. We therefore treat graph authorization as an explicit open
-assumption rather than a solved component.
+assumption rather than a solved component. The hash-based input keys
+themselves are bounded by multi-target preimage search over the
+$T\approx2^{20}$ published preimages, about 54 quantum bits for one key set
+and 52.6 for seven (Table~\ref{tab:pq}, Appendix~\ref{app:security}).
 
 \begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.4cm}rr>{\raggedright\arraybackslash}X}\toprule
@@ -1458,62 +1308,109 @@ measured multi-copy input layer, a serialized and policy-tested Assert graph,
 post-quantum graph authorization, and a measured parameter set with an
 enlarged field and labels, a wider-state hash and stronger cut-and-choose.
 
-\paragraph{Open input-layer directions.} TinyLabels compresses honest
-selected-label delivery to $|x|+\operatorname{poly}(\lambda)$ online bits
-under Ring-LWE in the random-oracle model~\cite{tinylabels24}; its reported
-batch of 699{,}050 128-bit labels with an approximately 56-KB selector key
-would cover the present input in two batches, roughly 0.24\,MB before Bitcoin
-encoding. The selector key is not publicly verifiable, however, and the
-malicious-2PC wrapper turns malformed delivery into an abort rather than
-public evidence, so a withheld or malicious key leaves the evaluator with
-garbage labels and no reject label that opens \textsf{Disprove}; a publicly
-verifiable or penalizable Batch-Select, consistent across the $M$ kept
-garblings, is open.
-
-Segmented verification would instead commit once to a
-fixed serialization of the proof, locate a faulty verifier segment by
-bisection and authenticate only the challenged chunk: for $N=1{,}041{,}024$
-bits in chunks of at most $B$ bits under a 256-bit Merkle tree, the data-only
-challenged input is $B+256\lceil\log_2\lceil N/B\rceil\rceil+C_{\rm state}$,
-where $C_{\rm state}$ binds the transcript, accumulator and boundary state;
-a 6{,}656-bit first-round query chunk gives 157 chunks, an eight-digest path
-and 8{,}704 bits before state. Query segmentation alone is insufficient,
-since leaf rows and paths are 510{,}464 of the input bits and the remaining
-530{,}560 are global, so the opened rows, sumchecks, ring switch and
-transcript must be segmented and their boundary states bound, with a
-fault-location and withholding-penalty protocol; none is implemented, and the
-worst-case disclosure remains the full $N$ bits.
-
-\paragraph{Reducing the circuit.} Our sizes are for the 1{,}625-column Keccak
-AIR; Plonky3's binary SHA-256 and Blake3 AIRs read no next-row columns, which
-our verifier assumes, and supporting them changes the opening layout. The
-column-dependent terms, about a third of the circuit, scale with the AIR's
-width. The ring switch closing, another third, is the first target, and an
-$\F$ multiplier below Karatsuba's $3^7$ the second: bitvm-gc's
-$\mathbb{F}_{2^{233}}$ multiplier, evaluating, multiplying and interpolating
-over $\mathbb{F}_{2^9}$, costs $2{,}097$ \AND{} gates for a field almost twice
-as wide, at the price of $1.5$M \XOR{}s per product. Per-tree Merkle cap
-heights and a narrower AIR reduce the hashing and column terms; the recursion
-of Table~\ref{tab:recursion} does both, with a preprocessed tree read deep
-below its root and tables whose opened values are linear forms of their
-columns.
-
-At the other end of the graph, a Core-tested false-label-derived
-Taproot pointlock reduces the 16-byte-label Disprove spend from 97 to
-83\,vB when both outputs retain the same timeout sibling, a 14-vB
-micro-optimization that adds the discrete-logarithm assumption, does not
-reveal the false label and cannot by itself constrain the payout outputs.
+\paragraph{Open directions.} Two input-layer ideas could cut the
+published data below the proof's size, and neither is implemented.
+TinyLabels~\cite{tinylabels24} delivers selected labels in
+$|x|+\operatorname{poly}(\lambda)$ online bits under Ring-LWE, about
+0.24\,MB for our input, but its selector key is not publicly verifiable and a
+malformed delivery aborts instead of yielding the reject label that opens
+Disprove. Segmented verification would commit once to the proof, locate a
+faulty verifier segment by bisection and authenticate only the challenged
+chunk, but 530{,}560 of the input bits are global to the verifier, so every
+layer would need segmenting with bound boundary states, and the worst case
+remains the full input. On the circuit side, the ring switch closing, a third
+of the gates, is the first target, and the recursion of
+Table~\ref{tab:recursion} shows that a narrower statement reduces the
+hashing and column terms together.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}
 
 \appendix
 % =====================================================================
+\section{Terms}\label{app:terms}
+
+An \emph{AIR} (algebraic intermediate representation) is a
+set of polynomial constraints over a trace's current and next rows. A
+\emph{zerocheck}~\cite{hyperplonk23} proves that the constraints vanish on every
+row by a sumcheck~\cite{lfkn92}
+against the equality polynomial $\mathrm{eq}(\tau,\cdot)$ at a random point
+$\tau$. \emph{WHIR}~\cite{whir25} is a Reed--Solomon proximity test used as a multilinear
+polynomial commitment. Its \emph{STIR queries}~\cite{stir24} open the committed, folded
+codeword at random positions, and its \emph{out-of-domain} (OOD) samples bind the
+committed polynomial at points outside the evaluation domain. The \emph{Cantor
+basis} is the $\mathbb{F}_2$-basis $v_0=1$, $v_i^2+v_i=v_{i-1}$, which gives
+binary fields an additive FFT domain. The \emph{bit ring switch} turns a claim
+about a polynomial's bits into a claim about its packed $\F$ representation.
+\emph{Johnson list-decoding regime} refers to the proximity parameters for which
+the soundness bounds are proven via the Johnson bound, without conjectures.
+
+% =====================================================================
 \section{Bitcoin integration details}\label{app:protocol}
 
 This appendix holds the material that \S\ref{sec:protocol} summarizes: the
-hash-based label selection, its post-quantum instantiation and the four
-input-publication schemes as fixtures.
+intended transaction graph, the hash-based label selection, its post-quantum
+instantiation and the four input-publication schemes as fixtures.
+
+\subsection{The dispute graph}\label{app:graph}
+
+Figure~\ref{fig:graph} summarizes the intended logical outcomes for one
+claim. The Assert node is a placeholder for an unconstructed transaction
+subgraph.
+
+\begin{figure}[t!]\centering
+\begin{tikzpicture}[node distance=5mm and 9mm, font=\footnotesize,
+  tx/.style={draw, rounded corners=2pt, minimum height=6mm, inner sep=3pt, fill=gray!8},
+  arr/.style={-{Stealth[length=2mm]}}]
+\node[tx] (kick) {Kickoff};
+\node[tx, above right=2mm and 9mm of kick] (take1) {Take1};
+\node[tx, below right=2mm and 9mm of kick] (chal) {Challenge};
+\node[tx, dashed, right=of chal] (assert) {Assert$_1,\dots,$Assert$_k$};
+\node[tx, above right=2mm and 9mm of assert] (take2) {Take2};
+\node[tx, right=of assert] (disprove) {Disprove$_j$};
+\node[tx, below=4mm of assert] (noassert) {AssertTimeout};
+\draw[arr] (kick) -- node[above, sloped] {$\Delta_C$} (take1);
+\draw[arr] (kick) -- (chal);
+\draw[arr] (chal) -- (assert);
+\draw[arr] (chal) |- node[pos=0.75, below] {$\Delta_A$} (noassert);
+\draw[arr] (assert) -- node[above, sloped] {$\Delta_D$} (take2);
+\draw[arr] (assert) -- node[below] {$\ell^j_0$} (disprove);
+\end{tikzpicture}
+\caption{Logical outcomes of the proposed dispute. The dashed
+Assert$_1,\ldots,$Assert$_k$ node denotes an unspecified publication subgraph.
+The figure does not define its UTXO dependencies, completion anchor, timeout
+enforcement or fee management, all of which remain to be constructed and
+policy-tested.}
+\label{fig:graph}
+\end{figure}
+
+\paragraph{Required transaction semantics.} The intended branches are:
+\begin{itemize}
+  \item \emph{Kickoff}: the operator claims reimbursement for a withdrawal it has
+    paid. If no challenge follows within $\Delta_C$, \emph{Take1} pays it. This is
+    the happy path.
+  \item \emph{Challenge}: any challenger may spend Kickoff's challenge output,
+    paying the operator a bond that covers the cost of Assert, as BitVM2's
+    crowdfunded challenge does~\cite{laa25bitvm2}.
+  \item \emph{Assert$_1,\dots,$Assert$_k$}: the operator must publish every
+    authenticated circuit-input bit. Because the payload exceeds one standard
+    transaction, a concrete construction needs a subgraph whose terminal output
+    is spendable only after every chunk has been published. We do not specify
+    that fanout, chaining or completion mechanism here.
+  \item \emph{AssertTimeout}: if the operator fails to create the completion
+    output before $\Delta_A$, a timeout branch should transfer its stake. The
+    enforceable condition for ``all chunks published'' depends on the missing
+    subgraph and is not specified by Figure~\ref{fig:graph}.
+  \item \emph{Disprove$_j$}: after such a completion output exists, a challenger
+    holding $\ell^j_0$ would open the corresponding hashlock before $\Delta_D$;
+    otherwise Take2 would pay the operator. The required transaction
+    dependencies and relative timelocks remain unimplemented.
+\end{itemize}
+The complete graph must be tested against the release policy targeted for
+deployment; current policy limits a standard transaction to 400{,}000 weight
+units and an unconfirmed cluster to 101 virtual
+kilobytes~\cite{bitcoincorepolicy}.
+
 
 \subsection{Hash-based label selection}\label{app:hashsel}
 
@@ -1710,6 +1607,19 @@ are deterministic; wall-clock times are single-run engineering measurements
 on the machines above unless a range is stated.
 
 \subsection{Gate profile, garbling efficiency, WHIR parameters and ablation}\label{app:profile}
+
+\paragraph{Merkle openings and caps.} The prover sends Merkle openings pruned: siblings that another query can recompute are left out.
+Our implementation expands the proof outside the circuit into one full path per
+query. This is an engineering choice rather than an inherent limitation of a
+fixed circuit: a fixed upper-bound circuit could verify a padded frontier with
+data-dependent routing. A million-trial simulation of the actual stratified
+queries and cap forest, however, reduces the expected path from 1{,}354 to
+1{,}335.71 digests, only 4{,}683 input bits or $0.45\%$ of the total, before the
+routing and padding overhead. When the commitment uses a Merkle cap of $2^h$
+roots, the transcript
+absorbs all of them, and each query selects its root with a multiplexer on the
+top $h$ index bits: $256(2^h-1)$ \AND{} gates, against $h$ compressions saved.
+
 
 \paragraph{Garbling efficiency.} To compare garbled verifiers across trace sizes
 and AIRs, we define the \emph{garbling efficiency} of a configuration as
@@ -1942,6 +1852,22 @@ whose proof system carries the unreviewed changes of Appendix~\ref{app:recursion
 This appendix holds the proof-system soundness figures behind
 \S\ref{sec:security} and the derivation of the quantum estimates of
 Table~\ref{tab:pq}.
+
+\paragraph{Hash-based input keys under multi-target search.} The protocol
+of \S\ref{sec:protocol} publishes input bits under one-time keys. Lamport, Antichain Winternitz and
+translated Winternitz keys rest on \texttt{HASH160} preimages. The familiar $2^{64}$ quantum cost for our
+16-byte preimages is a single-target estimate. One Lamport key set exposes
+$T=1{,}041{,}024\approx2^{20}$ alternative preimages, so generic multi-target
+search costs about $2^{128}/T\approx2^{108}$ classically and
+$\sqrt{2^{128}/T}\approx2^{54}$ quantumly. Seven independent sets lower these
+figures to about $2^{105.2}$ and $2^{52.6}$. Hash-chain alternatives have the
+same multi-target issue; Table~\ref{tab:pqsel} gives the widths that lift the
+selection itself above this bound. Even 20-byte preimages under \texttt{HASH160} are
+capped near 70 quantum bits for one set, rather than 80, once the target count
+is included. Translated Winternitz keys are further bounded by the 128-bit key
+chain of the translation table. Because each step of that chain is salted with
+the instance, the chunk and the step index, an inversion targets a single step,
+and its cost is $2^{128}$ classically and $2^{64}$ quantumly.
 
 \paragraph{Soundness of the proof system.} We use Plonky3's own security
 assessment of each configuration as the input to the classical accounting of
