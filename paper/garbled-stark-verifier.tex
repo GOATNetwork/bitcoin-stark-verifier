@@ -31,7 +31,7 @@
 \newcommand{\blake}{\mathrm{Blake3}}
 \newcommand{\todo}[1]{\textcolor{red}{[#1]}}
 
-\title{Garbling a Hash-Based STARK Verifier for Bitcoin}
+\title{Reducing the On-Chain Data of a Garbled STARK Verifier on Bitcoin}
 \author[1, 2]{Stephen Duan\thanks{Corresponding author: \texttt{stephen.d@zkm.io}}}
 \author[1]{Vanhger Pham}
 \author[1]{Blake Hou}
@@ -41,7 +41,7 @@
 \affil[2]{GOAT Network}
 \date{}
 \hypersetup{
-  pdftitle={Garbling a Hash-Based STARK Verifier for Bitcoin},
+  pdftitle={Reducing the On-Chain Data of a Garbled STARK Verifier on Bitcoin},
   pdfauthor={Stephen Duan, Vanhger Pham, Blake Hou, Ethan Zhu, Jingping Yin},
   pdfsubject={A measured hash-based STARK verifier and Bitcoin input-authentication cost study},
   pdfkeywords={STARK, garbled circuits, Bitcoin, Taproot, WHIR, post-quantum cryptography}
@@ -52,29 +52,30 @@
 
 \begin{abstract}
 BitVM-style protocols verify succinct proofs on Bitcoin by garbling a proof
-verifier off-chain. Existing designs check elliptic-curve SNARKs, which a
-quantum adversary breaks and which need a trusted or secret setup. A hash-based
-STARK verifier removes that dependency but is hard to garble: it branches on
-data, its transcript is fixed by an implementation, hashing and field
-multiplication dominate, and a stored circuit of $10^8$ gates does not fit in
-memory. We garble the Plonky3 verifier of a Keccak-$f$ algebraic intermediate
-representation (AIR) without public values over WHIR, in the binary tower field $\F$ with Blake3 throughout, using
-free-XOR gadgets and a streaming garbler that holds one label per live wire.
-For a $2^{18}$-row trace at 104 bits of soundness, the verifier has 94.1M
-non-free gates and garbles to 1.5\,GB in under a minute on one core, about
-$30\times$ fewer non-free gates than the Boolean-garbled Groth16 verifier of a
-different statement. The dominant Bitcoin-side cost is the $1{,}041{,}024$
-input bits: Bitcoin Core-tested fixtures that reveal and authenticate them for
-one key set measure 2.22 million virtual bytes (MvB) with Schnorr adaptors and
-7.86--17.27\,MvB with hash-based one-time keys, against a few kilobytes for
-Groth16. These are measured components, not a total on-chain cost: the dispute
-graph and the soldering of one key set to the kept garblings are not
-constructed. The proof system gives 104 classical and about 52 quantum bits
-under stated assumptions, while cut-and-choose gives about 40 bits and
-Bitcoin's signatures are not post-quantum. Recursing a zkVM proof through a
-narrow tape machine, with unreviewed proof-system changes that we list, brings
-the input to $564{,}552$ bits in 218.0M non-free gates, without binding the
-zkVM program or its outputs.
+verifier off-chain. What reaches the chain in a dispute is the proof itself:
+its bits under one-time keys, the scripts that authenticate them and the
+signatures that bind them to transactions. Existing designs garble
+elliptic-curve SNARK verifiers, which a quantum adversary breaks and which
+need a trusted or secret setup; a hash-based STARK removes both but publishes
+a far larger proof. This paper measures and reduces that on-chain data for a
+garbled STARK verifier. For a $2^{18}$-row Keccak-$f$ algebraic intermediate
+representation (AIR) over WHIR in the binary tower field $\F$ with Blake3
+throughout, the verifier reads $1{,}041{,}024$ input bits. Bitcoin Core-tested
+fixtures that reveal and authenticate them for one key set measure 2.22
+million virtual bytes (MvB) with Schnorr adaptors and 7.86--17.27\,MvB with
+hash-based one-time keys, against a few kilobytes for Groth16. Tuning WHIR removes a fifth of the input, and recursing
+the statement through a narrow tape machine brings it to $564{,}552$ bits,
+with unreviewed proof-system changes that we list and without binding the zkVM
+program or its outputs. The verifier is made garblable by a fixed-shape
+circuit with a transcript recovered from the prover and by free-XOR gadgets
+for tower multiplication and Blake3: 94.1M non-free gates and 1.5\,GB at 104
+bits of soundness, about $30\times$ fewer non-free gates than the
+Boolean-garbled Groth16 verifier of a different statement. These are measured
+components, not a total on-chain cost: the dispute graph and the soldering of
+one key set to the kept garblings are not constructed. The proof system gives
+104 classical and about 52 quantum bits under stated assumptions, while
+cut-and-choose gives about 40 bits and Bitcoin's signatures are not
+post-quantum.
 \end{abstract}
 
 % =====================================================================
@@ -103,6 +104,12 @@ the outcome depends on which output label the evaluation yields. For the
 Groth16-sized instances reported by BitVM3 and BABE, only the signed proof and
 a hashlock remain on-chain, for tens of dollars~\cite{babe2026}.
 
+What a dispute publishes is therefore the proof: its bits under one-time keys, the
+scripts that check them and the signatures that bind them to the transaction.
+This paper is about the size of that data when the proof is a STARK, which is
+a thousand times larger than a Groth16 proof, and about reducing it: fewer
+input bits, less script per bit and fewer signature bytes per bit.
+
 The off-chain side is where the existing designs fall short. A garbled circuit
 has to be generated, stored for the lifetime of the deposit and checked, because
 the garbler may cheat, typically by cut-and-choose over many instances. The
@@ -124,30 +131,53 @@ with additions free. Its algebraic checks rest on WHIR over $\F$, while Blake3
 instantiates the commitments, the Fiat--Shamir transcript and the garbling hash,
 modeled as circular correlation robust (\S\ref{sec:security}).
 
-\paragraph{Challenges.} Three problems stand between this idea and a working
-garbled verifier.
+\paragraph{Challenges.} Three problems stand between this idea and a
+dispute that Bitcoin can settle.
 \begin{itemize}
-  \item[C1] \emph{A fixed circuit for a branching verifier.} A garbled circuit has
-    one shape for all inputs, while the verifier redraws challenges and fixes
-    coordinates depending on sampled values.
-  \item[C2] \emph{A transcript defined only by code.} The circuit must absorb and
-    sample exactly the bytes that the prover's implementation does, or Fiat--Shamir
-    soundness is lost, and that byte schedule is specified nowhere outside the
-    implementation.
-  \item[C3] \emph{Hashing is expensive.} Merkle paths, leaf rows and the transcript
-    are Blake3 compressions, and a compression costs more than four field
+  \item[C1] \emph{On-chain data.} A STARK proof is about a thousand times a
+    Groth16 proof, and in a dispute every bit of it is published under a
+    one-time key: the selection material that reveals the bit, the script that
+    authenticates it and the signature that binds it to the transaction.
+    At a million bits this is megabytes of virtual bytes, where the Groth16
+    designs publish a few kilobytes.
+  \item[C2] \emph{Post-quantum security.} Pairing-based verifiers fall to
+    Shor's algorithm and need a trusted or secret setup. A hash-based verifier
+    removes both only if its commitments, transcript and garbling hash are
+    hash-based too, and the input publication keeps that property only with
+    hash-based keys, which cost more script per bit than adaptor signatures.
+  \item[C3] \emph{Garbling the verifier.} A garbled circuit has one shape for
+    all inputs, while the verifier redraws challenges and fixes coordinates
+    depending on sampled values. The bytes it absorbs and samples are
+    specified nowhere outside the prover's implementation, and a wrong
+    schedule loses Fiat--Shamir soundness. Merkle paths, leaf rows and the
+    transcript are hash compressions, each costing more than four field
     multiplications.
 \end{itemize}
-A fourth, engineering obstacle is memory: a verifier of $10^8$ non-free gates
-has several hundred million wires, and a builder that stores the gate list
-needs tens of gigabytes before garbling starts. A streaming garbler, which
-counts each wire's uses in a plan pass and releases a wire's slot after its
-last use, removes it (\S\ref{sec:eval}).
 
-\paragraph{Contributions.} The first two contributions answer C1--C3; the
-third integrates the verifier with Bitcoin.
+\paragraph{Contributions.} The first two answer C1, the paper's objective;
+the last two answer C3 and make the verifier garblable; C2 runs through the
+choice of hash and the input schemes.
 \begin{itemize}
-  \item \textbf{A fixed-shape circuit for the measured verifier path (C1, C2).}
+  \item \textbf{Bitcoin integration and on-chain cost (C1, C2).} We place the
+    verifier in a BitVM3-style dispute, state the label-selection task that
+    publishing its input must solve, and price four one-time input schemes
+    and two transport baselines as complete signed transactions replayed
+    through Bitcoin Core, accounting for selection material, authentication
+    script and transaction signature per bit and separating the measured
+    one-key-set component from the unimplemented multi-copy soldering and
+    transaction graph (\S\ref{sec:dispute}, \S\ref{sec:input}). The component
+    measures 2.22\,MvB with the 8-bit adaptor baseline and 7.86--17.27\,MvB
+    per hash-based key set, against a few kilobytes for Groth16, and we
+    serialize the hash-based construction that would match the adaptor cost
+    under a batch opcode.
+  \item \textbf{Input reduction (C1).} Sweeping the WHIR parameters removes a
+    fifth of the $1{,}041{,}024$ input bits, narrow-statement layouts would
+    remove $37$--$58\%$, batching amortizes the input per permutation
+    $3.76\times$, and garbling the verifier of a narrow-recursion proof of
+    Ziren's binary stage brings the input to $564{,}552$ bits, $0.54\times$,
+    on real proofs, with the effect of every recursion step listed
+    (\S\ref{sec:reduce}, \S\ref{sec:eval}, Appendix~\ref{app:recursion}).
+  \item \textbf{A fixed-shape circuit for the measured verifier path (C3).}
     We implement the path through Plonky3's STARK
     verifier~\cite{plonky3} exercised by our Keccak-$f$ AIR over the Boolean WHIR
     trace commitment as a Boolean circuit with one output wire: the transcript,
@@ -156,32 +186,22 @@ third integrates the verifier with Bitcoin.
     and the transcript follows a byte schedule recovered from Plonky3's own
     verifier, so one circuit serves every proof of a configuration and can be
     garbled before the proof exists (\S\ref{sec:construction}).
-  \item \textbf{Cheaper gadgets (C3).} Tower-field multiplication at $3^k$ \AND{}
-    gates per $2^k$ bits, with squaring and multiplication by the tower generator
-    free, and a Blake3 circuit at $10{,}281$ \AND{} gates per compression instead
-    of $20{,}657$, with tree mode for long inputs (\S\ref{sec:gadgets}).
-  \item \textbf{Bitcoin integration.} We place the verifier in a BitVM3-style
-    dispute, state the label-selection task that publishing its input must
-    solve, and price four one-time input schemes and two transport baselines
-    as complete signed transactions replayed through Bitcoin Core, separating
-    the measured one-key-set input-authentication component from the
-    unimplemented multi-copy soldering and transaction graph
-    (\S\ref{sec:protocol}). Including signature or preimage witness data and
-    authentication scripts, this component measures 2.22\,MvB with the 8-bit
-    adaptor baseline and 7.86--17.27\,MvB per hash-key set, against a few kilobytes
-    for Groth16. These are not total on-chain footprints. Tuning removes only a
-    fifth of the logical input.
+  \item \textbf{Cheaper gadgets (C2, C3).} Tower-field multiplication at $3^k$
+    \AND{} gates per $2^k$ bits, with squaring and multiplication by the tower
+    generator free, and a Blake3 circuit at $10{,}281$ \AND{} gates per
+    compression instead of $20{,}657$, with tree mode for long inputs, so
+    that one hash serves the commitments, the transcript and the garbling
+    without a number-theoretic assumption (\S\ref{sec:gadgets}).
 \end{itemize}
-Alongside these, \S\ref{sec:pq} analyzes the STARK and garbling components in
+For C2, \S\ref{sec:pq} analyzes the STARK and garbling components in
 the quantum random-oracle model, including Grover search on the garbling
 offset, and separates those bounds from the lower cut-and-choose level and the
 non-post-quantum transaction layer; \S\ref{sec:eval} measures real Keccak-$f$
-proofs from $2^5$ to $2^{20}$ rows, profiles and ablates the circuit, compares
-it with pairing-based designs and estimated garbled STARK verifiers, and
-garbles the verifier of a recursion proof of Ziren's binary stage at
-564{,}552 input bits. The circuit builder and the measurements are open
-source; the streaming garbler, the Blake3 circuit and a label-level evaluator
-are contributed to GOAT's bitvm-gc~\cite{bitvmgc}.
+proofs from $2^5$ to $2^{20}$ rows, profiles and ablates the circuit, and
+compares it with pairing-based designs and estimated garbled STARK verifiers.
+The circuit builder and the measurements are open
+source; the Blake3 circuit and a label-level evaluator are contributed to
+GOAT's bitvm-gc~\cite{bitvmgc}.
 
 % =====================================================================
 \section{Related work}\label{sec:related}
@@ -190,7 +210,7 @@ We group prior work by how it verifies a proof on Bitcoin: by garbling a verifie
 by witness encryption, or through small pairing-based SNARKs that both approaches
 rely on. We close with the garbling techniques we use.
 
-\paragraph{BitVM and garbled verifiers.} BitVM2~\cite{laa25bitvm2} verified
+\paragraph{BitVM.} BitVM2~\cite{laa25bitvm2} verified
 optimistically by bisecting the verifier's trace on-chain, and
 BitVMX~\cite{bitvmx24} bisected the trace of a general CPU in the same way.
 ColliderVM~\cite{collidervm25} left the optimistic model: it placed the
@@ -202,17 +222,20 @@ whose outcome is revealed as a secret, at the price of more off-chain exchange
 and of expensive proofs of circuit correctness. BitVM3 took up that idea and
 garbled the verifier~\cite{lin25bitvm3,che25sok}, and its formal treatment defined
 BitVM3-CORE as a sound and complete on-chain proof system with on-chain costs of
-about \$9~\cite{bitvm3paper}. The Boolean-garbled Groth16 verifier~\cite{bit25b}
+about \$9~\cite{bitvm3paper}.
+
+\paragraph{Garbled verifiers.} The Boolean-garbled Groth16 verifier~\cite{bit25b}
 has about $3\times10^9$ non-free gates, 42\,GiB, with cut-and-choose setup of over
 three hours at $(N,M)=(181,7)$~\cite{babe2026}. Garbling Groth16 with native
 elliptic-curve group operations reduced the garbled program to
 2.4\,MiB~\cite{kflt26native}. Glock~\cite{eag25glock} formalized garbled locks and
-garbled a designated-verifier variant of Pari; BABE reports its garbled circuit at
+garbled a designated-verifier variant of Pari; BABE reported its garbled circuit at
 about 12\,MB on a binary elliptic curve~\cite{babe2026}. GOAT's
 bitvm-gc~\cite{bitvmgc} garbles Groth16 and a designated-verifier form of
-Pari~\cite{garudapari} over BN254 and over the binary curve sect233k1. We garble a
-measured STARK-verifier path with the same garbling code, and we contribute our
-streaming garbler and Blake3 circuit back to it. BitVM3's comparison of garbling schemes already lists a
+Pari~\cite{garudapari} over BN254 and over the binary curve sect233k1.
+
+We garble a measured STARK-verifier path with the same garbling code, and we contribute our
+Blake3 circuit back to it. BitVM3's comparison of garbling schemes already listed a
 Yao-style garbled STARK verifier, at about 10\,GB of off-chain storage and as an
 estimate~\cite[Table~9]{bitvm3paper}; we build one and measure 1.5\,GB per
 instance. TRAPGC-DV~\cite{trapgcdv26} verified Groth16 by designated evaluation:
@@ -229,7 +252,7 @@ attack. Our hash-based garbling has no such label algebra. Mosaic~\cite{mosaic26
 made cut-and-choose maliciously secure with an on-chain footprint independent of
 the number of garbled copies, and Antichain Winternitz~\cite{antichain26} published
 input labels on-chain at a cost up to $52.9\%$ lower than Lamport signatures. Both
-are independent of the garbled circuit; \S\ref{sec:protocol} prices both for our
+are independent of the garbled circuit; \S\ref{sec:input} prices both for our
 million-bit input. Tiwari and Feickert~\cite{tf26pq} assessed the post-quantum
 cost of such bridges, estimated Boolean STARK verifier sizes, and found proof
 size the main obstacle to on-chain feasibility.
@@ -253,55 +276,42 @@ script, equivalent to 309 blocks; moreover, a standard transaction holds less
 than one Poseidon2 permutation, so it must be split into sub-query steps.
 Garbling moves that cost off-chain.
 
-\paragraph{Witness encryption on Bitcoin.} BABE~\cite{babe2026} replaced the
-garbled Groth16 verifier with witness encryption for linear pairing
-relations~\cite{gkpw24}. It made the one quadratic pairing $e(\pi_1,\pi_2)$ linear
-by computing $r\pi_1$ in a small garbled circuit, built from decomposable
-randomized encodings on top of Argo MAC~\cite{el26argo}. The per-instance artifact
-is 22\,MiB, the on-chain cost is comparable to BitVM3, and cut-and-choose setup
-takes seconds. Deferred binding~\cite{goatpbwe} extended BABE to public inputs
-known only at dispute time: a second garbled circuit computes a blinded point
-$Q=x_D L_D+B$ from the late input and a third computes $rQ$, relying on
-Groth16's linear public-input aggregation. Its implementation reported 0.92\,GiB
-per finalized instance, 768 input labels, and an Assert of 2{,}154 bytes with a
-14{,}312-byte ChallengeAssert witness; \S\ref{sec:eval} quotes these
-figures.
-
-\paragraph{Witness encryption for covenants.} Bitcoin PIPEs v2~\cite{pipesv2}
-witness-encrypted a Schnorr signing key under an NP statement to emulate
-covenants without a soft fork. They defined witness signatures and mapped
-BitVM's disprove condition to a relation $f(w)=0\wedge h=\mathrm{Hash}(w)$,
-which requires the witness at setup. Their witness encryption comes from arithmetic affine
-determinant programs~\cite{aadp2026}, an arithmetic variant of affine determinant
-programs~\cite{bij20adp}. The ciphertext grows as $v(2g+1)^2$ field elements,
-cubic in the constraint count, which is about 338\,TB for a purpose-built
-14{,}371-constraint pairing-SNARK verifier. Security is heuristic: an earlier
-version fell to a rank-drop attack, and the linearization analysis is described
-as inconclusive. All witness-encryption designs above are smaller off-chain than a
-garbled verifier, but all require the statement to be a pairing SNARK, so a STARK
-would first have to be wrapped in one, and none is post-quantum.
+\paragraph{Witness encryption.} BABE~\cite{babe2026} replaced the garbled
+Groth16 verifier with witness encryption for linear pairing
+relations~\cite{gkpw24}, making the one quadratic pairing linear with a small
+garbled circuit built from decomposable randomized encodings on Argo
+MAC~\cite{el26argo}: a 22\,MiB artifact per instance, on-chain cost
+comparable to BitVM3 and a cut-and-choose setup of seconds. Deferred
+binding~\cite{goatpbwe} extended it to public inputs known only at dispute
+time with two further garbled circuits, at 0.92\,GiB per finalized instance,
+768 input labels, an Assert of 2{,}154 bytes and a 14{,}312-byte
+ChallengeAssert witness, which \S\ref{sec:eval} quotes. Bitcoin PIPEs
+v2~\cite{pipesv2} witness-encrypted a Schnorr signing key under an NP
+statement to emulate covenants without a soft fork, with arithmetic affine
+determinant programs~\cite{aadp2026,bij20adp} whose ciphertexts are cubic in
+the constraint count, about 338\,TB for a 14{,}371-constraint pairing-SNARK
+verifier, under a heuristic security analysis. All witness-encryption designs
+are smaller off-chain than a garbled verifier, but all need a pairing SNARK,
+so a STARK would first be wrapped in one, and none is post-quantum.
 
 \paragraph{Small SNARK verifiers.} Pari~\cite{garudapari} gave the smallest
-known pairing-based proofs, two $\mathbb{G}_1$ and two field elements, with a
-three-pairing verifier; its equifficient polynomial commitments also gave
-Garuda, a prover with free linear gates. Pari underlies bitvm-gc's designated-verifier
-SNARK, Glock, and the SNARK of the AADP construction; Glock and bitvm-gc's
-\texttt{sect233k1} verifier use its designated-verifier form on a binary curve,
-which needs no pairing but still rests on discrete logarithms. Groth16~\cite{gro16} remains
-the deployed baseline.
+known pairing-based proofs, two $\mathbb{G}_1$ and two field elements, and
+underlies bitvm-gc's designated-verifier SNARK, Glock and the AADP
+construction; its designated-verifier form on a binary curve needs no pairing
+but still rests on discrete logarithms. Groth16~\cite{gro16} remains the
+deployed baseline.
 
-\paragraph{Binary-field proof systems.} Binius~\cite{dp25binius} built succinct
-arguments over towers of binary fields, and ring switching~\cite{dp24ringswitch}
-turned a claim about a polynomial's bits into one about its packed
-extension-field form; Plonky3's Boolean WHIR commitment, which we garble, uses both ideas with
-WHIR~\cite{whir25} as the proximity test. Its cheap additions are what make a
-garbled verifier small.
-
-\paragraph{Garbling.} We use privacy-free garbling~\cite{fno15privacyfree} with
-free-XOR~\cite{ks08}, one ciphertext per \AND{} gate~\cite{zre15}, and the syntax
-of Bellare, Hoang and Rogaway~\cite{bhr12foundations}; free-XOR's security rests on
-circular correlation robustness~\cite{ckkz12freexor}. Witness encryption in general
-goes back to Garg, Gentry, Sahai and Waters~\cite{ggsw13}.
+\paragraph{Binary-field proof systems and garbling.} Binius~\cite{dp25binius}
+built succinct arguments over binary towers, and ring
+switching~\cite{dp24ringswitch} turned a claim about a polynomial's bits into
+one about its packed form; Plonky3's Boolean WHIR commitment, which we garble,
+uses both with WHIR~\cite{whir25} as the proximity test, and its cheap
+additions are what make a garbled verifier small. We use privacy-free
+garbling~\cite{fno15privacyfree} with free-XOR~\cite{ks08}, one ciphertext per
+\AND{} gate~\cite{zre15} and the syntax of Bellare, Hoang and
+Rogaway~\cite{bhr12foundations}; free-XOR rests on circular correlation
+robustness~\cite{ckkz12freexor}. Witness encryption in general goes back to
+Garg, Gentry, Sahai and Waters~\cite{ggsw13}.
 
 % =====================================================================
 \section{Setting}\label{sec:setting}
@@ -322,8 +332,9 @@ who evaluates an invalid proof stop the operator's claim.
 The garbler may cheat, so the garbling is checked by cut-and-choose, as in
 BABE~\cite{babe2026}, Mosaic~\cite{mosaic26} and bitvm-gc~\cite{bitvmgc}; its cost
 is linear in the size of the garbled circuit, which this paper reduces.
-Section~\ref{sec:protocol} gives an integration sketch, accounted
-input-publication components and the unresolved deployment requirements.
+Section~\ref{sec:protocol} gives the integration sketch, the verifier
+circuit, the accounted input-publication components and the unresolved
+deployment requirements.
 
 \subsection{The garbling scheme}\label{sec:garbling}
 
@@ -355,8 +366,9 @@ attack~\cite{flb25}.
 
 \subsection{The proof system}
 
-We target Plonky3's STARK verification pipeline~\cite{plonky3} over the
-Boolean WHIR trace commitment. The evaluated implementation instantiates one
+We target a STARK verification pipeline over a Boolean WHIR trace
+commitment, as implemented in Plonky3~\cite{plonky3}. The evaluated
+implementation instantiates one
 AIR, with no public values, preprocessed columns or lookups, and requires
 current- and next-row openings for every column. The pipeline uses fields in the
 Wiedemann tower~\cite{wiedemann88}
@@ -404,218 +416,27 @@ All challenges come from a Blake3~\cite{blake3spec} sponge over bytes, and all
 Merkle trees use Blake3 compressions.
 
 % =====================================================================
-\section{The verifier as a circuit}\label{sec:construction}
+\section{A garbled STARK dispute and its on-chain data}\label{sec:protocol}
 
-This section turns the verifier of \S\ref{sec:setting} into a Boolean circuit
-with one output wire. Figure~\ref{fig:pipeline} shows its stages in transcript
-order, with each stage's share of the non-free gates of our running example: a
-$2^{18}$-row Keccak-$f$ trace with 1{,}625 columns, 1{,}650 AIR constraints and
-22 packed variables, whose proof is 140\,KiB and whose verifier has 94.1M
-non-free gates. We first state the approach and the two choices that fix its
-cost, then describe the gadgets, the transcript, the zerocheck, batching and
-ring switch, and WHIR.
+This section is the paper's construction. It places a garbled STARK verifier
+in a BitVM3-style dispute~\cite{bitvm3paper,mosaic26}, with a bridge as the
+motivating application, and follows the data of one dispute: the roles and
+the transaction graph (\S\ref{sec:dispute}), the verifier circuit whose
+input that graph must publish (\S\ref{sec:construction}), the publication
+of that input under one-time keys, which is the on-chain cost
+(\S\ref{sec:input}), and the levers that shrink the input
+(\S\ref{sec:reduce}). Appendix~\ref{app:protocol} holds the per-scheme
+fixtures and a post-quantum instantiation.
 
-\begin{figure}[t]\centering
-\begin{tikzpicture}[font=\footnotesize,
-  seg/.style={draw, minimum height=11mm, inner sep=1pt, align=center, anchor=west, outer sep=0pt},
-  sub/.style={font=\scriptsize, align=center, anchor=north, text width=#1, inner sep=1pt}]
-% segment widths are 12.5 cm times each stage's share of the 94.1M non-free gates
-\node[seg, fill=gray!6,  minimum width=1.6125cm] (t) at (0,0)   {Transcript\\12.9\%};
-\node[seg, fill=gray!6,  minimum width=1.6cm] (z) at (t.east) {Zerocheck\\12.8\%};
-\node[seg, fill=gray!6,  minimum width=1.5375cm] (c) at (z.east) {Batching\\12.3\%};
-\node[seg, fill=gray!28, minimum width=4.3125cm] (r) at (c.east) {Bit ring switch\\34.5\%};
-\node[seg, fill=gray!16, minimum width=3.4375cm] (w) at (r.east) {WHIR\\27.5\%};
-\node[sub=1.6cm] at (t.south) {STARK and WHIR\\Blake3 sponges};
-\node[sub=1.6cm] at (z.south) {sumcheck, AIR\\constraints, closing};
-\node[sub=1.5cm]  at (c.south) {opened columns\\combined};
-\node[sub=4.2cm]  at (r.south) {256 multiplications per packed variable, plus the column selector};
-\node[sub=3.4cm]  at (w.south) {Merkle paths, leaf hashes,\\folds, closing weights};
-\draw[-{Latex[length=2mm]}] (t.north west) ++(0,2.5mm) -- node[above=0pt] {transcript order} ++(12.5,0);
-\draw[-{Latex[length=2mm]}] (w.east) -- ++(5mm,0) node[right, align=left, inner sep=1pt] {one output wire:\\every check passes};
-\end{tikzpicture}
-\caption{The ring switch dominates the verifier circuit, followed by WHIR. The
-stages appear in transcript order, and each segment's width is its share of
-the 94.1M non-free gates of the $2^{18}$-row verifier: transcript is the STARK
-and WHIR sponges, zerocheck is its sumcheck, AIR constraints and closing, and
-WHIR is everything after the ring switch except its transcript.}
-\label{fig:pipeline}
-\end{figure}
+\subsection{Roles and dispute}\label{sec:dispute}
 
-\subsection{Approach}\label{sec:approach}
-
-The construction has three parts. First, a deterministic circuit builder emits
-the STARK verifier of one configuration, an AIR, a trace height and a set of
-WHIR parameters, as a Boolean circuit over the proof's bits with one output
-wire. Every data-dependent branch of the verifier is fixed and guarded by a
-check, and the transcript follows the byte schedule recovered from the
-prover's own challenger, so the same circuit serves every proof of the configuration
-and is built before any proof exists. Second, gadgets for the two operations
-on which the verifier spends its gates, tower-field multiplication and Blake3
-compression, under the free-XOR garbling of \S\ref{sec:garbling}. Third, a
-streaming garbler runs the builder twice, once to plan each wire's lifetime
-and once to garble each gate as it is emitted, so the circuit itself is never
-stored (\S\ref{sec:eval}). At setup the operator garbles with every input at
-0 and publishes the ciphertexts; at dispute the challenger obtains the input
-labels of the published proof and evaluates the same builder on them. Two
-choices fix the cost of the second part.
-
-\paragraph{Why a binary field.} The Keccak-$f$ AIR is Boolean and its trace is
-committed as bits, so a prime-field pipeline would spend its arithmetic
-emulating bits, whereas in $\F$ addition is \XOR{}, free under free-XOR, and
-the only \AND{} gates are base-field products: $2{,}187$ per multiplication by
-Karatsuba down the tower, with squaring and multiplication by the tower
-generator free. To price the prime-field alternative we also built KoalaBear
-($p=2^{31}-2^{24}+1$) and Poseidon2 on wires, to price the prime-field
-alternative. A KoalaBear multiplication is $3{,}451$ \AND{} gates, and a
-degree-4 extension multiplication $60{,}615$, against $2{,}187$ for all of
-$\F$. One Poseidon2 permutation of width 16 is $1{,}240{,}747$ \AND{} gates:
-$120$ Blake3 compressions. The WHIR opening of a $2^{20}$ KoalaBear
-configuration (2{,}157 permutations, about 7{,}500 extension multiplications)
-would be about $3.1\times10^9$ gates with Poseidon2, more than the whole
-Boolean-garbled Groth16 verifier, and still $0.3$--$0.5\times10^9$ with Blake3,
-against our $21$M for a $2^{18}$-variable opening. The four-fold difference in
-size does not account for a gap of $15$ to $150\times$: a garbled STARK verifier
-should use a binary field. The bit ring switch of Binius~\cite{dp24ringswitch},
-which turns the bit-level claims into claims on the packed $\F$ polynomial, is
-the price of the choice: a third of the circuit (Figure~\ref{fig:pipeline}).
-
-\paragraph{Why Blake3.} One hash serves three roles: the Merkle commitments
-and the Fiat--Shamir sponge of the proof system, and the garbling hash $H$ of
-\S\ref{sec:garbling}. Blake3 is an add-rotate-XOR design, so in Boolean gates
-its only non-free operations are the 32-bit additions, one \AND{} per bit with
-the carry gadget of \S\ref{sec:gadgets}, which is the 120-fold gap to
-Poseidon2 above. A prover that already commits and samples with Blake3 needs
-no change, and the circuit's transcript can be checked byte for byte against
-it. A single hash also keeps the
-verifier's assumptions to those of \S\ref{sec:security}, Blake3 as a random
-oracle with circular correlation robustness, with no elliptic-curve or lattice
-assumption, which is what makes the verifier's own security claim
-post-quantum (\S\ref{sec:pq}).
-
-\subsection{Gadgets}\label{sec:gadgets}
-
-\paragraph{Tower arithmetic.} A wire vector for an element of $\T_k$ is its
-bit pattern, so gadget outputs can be read back directly as field elements.
-Multiplication follows the tower recursively, Karatsuba at each level:
-\[
-  z_0=a_0b_0,\quad z_2=a_1b_1,\quad z_1=(a_0+a_1)(b_0+b_1)+z_0+z_2,\qquad
-  ab=(z_0+z_2)+(z_1+X_{k-1}z_2)\,X_k .
-\]
-Additions are free. Multiplication by the generator $X_{k-1}$ is a rewiring plus
-\XOR{}s, and squaring is linear over $\mathbb{F}_2$. The only \AND{} gates are
-the base-field products, three per level, so a $2^k$-bit multiplication costs
-$3^k$ \AND{} gates: $2{,}187$ in $\F$. A multiplication by a constant folds to
-\XOR{}s entirely.
-
-\paragraph{Blake3.} We start from bitvm-gc's Blake3 circuit and change two
-things. A 32-bit addition's carry is the majority
-\[
-  \mathrm{maj}(a,b,c)=c\oplus\big((a\oplus c)\wedge(b\oplus c)\big),
-\]
-one \AND{} per bit, and the carry out of the top bit is discarded, so it is not
-computed. This halves a compression from $20{,}657$ to $10{,}281$ \AND{} gates.
-We also add Blake3's tree mode (chunk chaining values on a stack, parent nodes,
-the root last). The verifier's transcript absorbs more than one 1{,}024-byte
-chunk between samples: the final polynomial is 64 coefficients, 1{,}024 bytes
-on its own. Table~\ref{tab:gadgets} gives the costs. Every gadget is checked
-against reference implementations of the field and the hash on random inputs.
-
-\begin{table}[t]\centering\small
-\begin{tabular}{lr}\toprule
-gadget & \AND{} gates\\\midrule
-$\F$ multiplication & 2{,}187\\
-$\F$ squaring, multiplication by $X_{k-1}$, addition & 0\\
-Blake3 of 64 bytes (a Merkle compression) & 10{,}281\\
-Blake3 of 256 bytes (a leaf row of 16 elements) & 41{,}511\\
-Blake3 of 1{,}072 bytes (two chunks: a transcript flush) & 186{,}125\\\bottomrule
-\end{tabular}
-\caption{Gadget costs, checked against reference implementations of the field
-and the hash.}
-\label{tab:gadgets}
-\end{table}
-
-\subsection{Transcript}
-
-The transcript is a Blake3 byte sponge that mirrors the prover's challenger. Observing
-appends to an input buffer; sampling, when the output buffer is empty, hashes
-the input buffer, replaces it with the digest, and pops bytes from the digest's
-end. A field element is 16 little-endian bytes. A query index is 8 bytes read
-as a little-endian integer and masked. A proof-of-work check absorbs the
-witness and requires a fixed number of sampled bits to be zero. We implement the
-same challenger on wires. Its schedule has no data-dependent branch: queries are
-a fixed number of masked draws, and a proof-of-work check a fixed number of
-bits. So the circuit's shape is a function of the configuration alone. The
-sub-transcripts' domain separators are constants, baked in as constant wires,
-and everything the prover sends is an input.
-
-The byte schedule, that is, the order in which roots, out-of-domain answers,
-sumcheck messages, proof-of-work witnesses, stratified query draws and the final
-polynomial are absorbed and sampled, is implicit in the prover's implementation
-and specified nowhere else. We recover it by running that implementation's own
-verifier through a challenger that logs every byte, and we test the circuit
-against the log op for op.
-
-\subsection{Zerocheck, batching and ring switch}
-
-The zerocheck, the column batching and the ring switch are implemented
-gate for gate from a reference implementation that is checked op for op against
-the prover's verifier. The AIR arrives as symbolic constraints and is evaluated
-on wires.
-
-Two data-dependent branches of the reference verifier cannot appear in a
-fixed circuit. We fix them and guard them with checks.
-\begin{itemize}
-  \item The verifier redraws a zerocheck challenge coordinate that happens to be zero.
-    The circuit takes a fixed number of draws and requires each to be nonzero.
-  \item The ring switch would fix a column-point coordinate that is
-    exactly $0$ or $1$. The circuit assumes there is no such coordinate and
-    checks it.
-\end{itemize}
-Each event has probability about $2^{-127}$ per coordinate. When it occurs the
-circuit rejects where the reference verifier would continue, never the reverse.
-
-\subsection{WHIR}
-
-The WHIR layer checks every proof-of-work witness. It hashes every opened row and
-walks it up its Merkle path to the root absorbed in the transcript. It then folds
-each queried row with the round's folding randomness, and checks the final
-queries against the final polynomial and the closing sumcheck identity. The
-prover sends Merkle openings pruned: siblings that another query can recompute are left out.
-Our implementation expands the proof outside the circuit into one full path per
-query. This is an engineering choice rather than an inherent limitation of a
-fixed circuit: a fixed upper-bound circuit could verify a padded frontier with
-data-dependent routing. A million-trial simulation of the actual stratified
-queries and cap forest, however, reduces the expected path from 1{,}354 to
-1{,}335.71 digests, only 4{,}683 input bits or $0.45\%$ of the total, before the
-routing and padding overhead. When the commitment uses a Merkle cap of $2^h$
-roots, the transcript
-absorbs all of them, and each query selects its root with a multiplexer on the
-top $h$ index bits: $256(2^h-1)$ \AND{} gates, against $h$ compressions saved.
-
-\paragraph{Implementation.} We instantiate the construction on
-Plonky3~\cite{plonky3}, whose Blake3 challenger, symbolic AIR constraints and
-Boolean WHIR commitment are the ones described in \S\ref{sec:setting}. The
-gadgets are checked against its binary-field crate and the \texttt{blake3}
-crate, the byte schedule is logged from its verifier, and the circuit is
-tested against that log; \S\ref{sec:eval} reports the measurements.
-
-% =====================================================================
-\section{Bitcoin integration}\label{sec:protocol}
-
-This section places the garbled verifier in a BitVM3-style
-dispute~\cite{bitvm3paper,mosaic26}, in which the operator garbles and
-challengers evaluate, with a bridge as the motivating application. The roles
-follow from the construction: evaluation is one Blake3 call per non-free gate
-and needs no secret, so any party holding the kept garblings can check a claim
-and stop a fraud, and the garbler's cost is paid once at setup. The reverse
-assignment would also make the operator's payment depend on a challenger
-handing over its input labels. It fixes
-the setup and the intended dispute, states the label-selection task that any
-way of publishing the proof must solve, compares the adaptor-signature and
-hash-based solutions on the same terms, and prices four one-time input schemes
-that we serialized as complete signed transactions and replayed through
-Bitcoin Core's strict standard policy. Appendix~\ref{app:protocol} holds the
-per-scheme fixtures and a post-quantum instantiation.
+The operator garbles and challengers evaluate. The roles follow from the
+construction: evaluation is one Blake3 call per non-free gate and needs no
+secret, so any party holding the kept garblings can check a claim and stop a
+fraud, and the garbler's cost is paid once at setup. The reverse assignment
+would also make the operator's payment depend on a challenger handing over its
+input labels. This subsection fixes the setup and the intended dispute;
+\S\ref{sec:security} accounts for what they guarantee.
 
 The accounting boundary is as follows. We use \emph{total on-chain footprint}
 to mean the sum of the serialized virtual sizes, in virtual bytes (vB), of
@@ -627,18 +448,18 @@ of that footprint: bounded funding--reveal publication slices for all four
 schemes, and a signed join for Lamport. The challenge, timeout, Disprove,
 anchor and fee-management branches, the hash-based soldering across the kept
 garblings and the binding of public values are not constructed, so the
-figures are measured components and conditional projections, not a total
-on-chain cost.
+figures are components of that footprint and conditional projections.
 
 \paragraph{Setup.} The operator garbles $N$ instances of $C$ from independent
 seeds and commits, for every instance $j$, the hash of its garbled tables,
 $h_j=\mathrm{SHA256}(\ell^j_0)$ for the label of output value 0 (reject), and
 the hashes of its one-time keys and label translations. A challenger chooses
-$N-M$ instances to open, re-garbles each from its seed in one pass of the plan
-that all instances share (\S\ref{sec:eval}) and checks every commitment;
+$N-M$ instances to open, re-garbles each from its seed and checks every
+commitment;
 only then is the transaction graph signed, by a committee as in
-BitVM2~\cite{laa25bitvm2}, whose enforcement needs one honest signer. At
-$(N,M)=(181,7)$ and $2^{18}$ rows the operator garbles 181 instances at about
+BitVM2~\cite{laa25bitvm2}, whose enforcement needs one honest signer.
+
+At $(N,M)=(181,7)$ and $2^{18}$ rows the operator garbles 181 instances at about
 57\,s each, 2.9 core-hours or about 11 minutes on 16 cores, and a challenger
 stores the 7 kept instances, 1.5\,GB each or 10.5\,GB; BitVM3 reports 3 hours
 24 minutes on 16 cores and 288.4\,GB for the Boolean-garbled Groth16 verifier
@@ -710,42 +531,207 @@ the input labels of every kept instance and evaluates each off-chain, one
 Blake3 call per non-free gate, 17\,s at $2^8$ rows (\S\ref{sec:eval}). An
 invalid proof yields $\ell^j_0$ from a correctly garbled instance, which opens
 Disprove$_j$. The circuit size affects off-chain evaluation, while the proof
-size controls the Assert payload. The four authenticated one-key-set rows of
-Table~\ref{tab:onchain} serialize complete signed reveal transactions under
-BIP341's nothing-up-my-sleeve (NUMS) internal key, execute their leaves with
-real sighash contexts and pass Bitcoin Core's strict standard-policy mempool
-after funding confirmation; only Lamport includes a signed join. The
-evaluated circuit has no public values, so binding the withdrawal and
+size controls the Assert payload. The evaluated circuit has no public values, so binding the withdrawal and
 rollup-state commitment into the AIR relation and transcript, which a bridge
-needs, is unimplemented and outside the reported figures.
+needs, is unimplemented and outside the reported figures. What Assert
+publishes is the verifier's input, so the quantities to reduce are its bit
+count, which the circuit fixes, and the script and signature bytes that each
+bit costs, which the publication scheme fixes. We take them in that order.
 
-\paragraph{Security.} Let $\varepsilon_{\mathrm{cc}}$ bound the probability
-that every kept instance is malformed while every opened one is correct; for
-choosing $N-M$ of $N$ uniformly this is $1/\binom{N}{M}$, which is $2^{-40}$ at
-$(N,M)=(181,7)$~\cite{babe2026}. Let $\varepsilon_{\mathrm{sol}}$ bound a
-failure of the soldering, and let $\varepsilon_{\mathrm{sig}}$ bound the
-aggregate probability of forging any one-time or transaction-authorization
-signature across the entire dispute, so a reduction from a per-target bound
-must include the number of targets. At these
-parameters, cut-and-choose alone limits the intended malicious-garbler security
-to about 40 bits, irrespective of the STARK verifier's 104-bit classical
-soundness. Subject to an enforced transaction graph, timely confirmation and an
-instantiated soldering bound, Theorem~\ref{thm:main} of \S\ref{sec:security}
-supports two intended properties. \emph{A false claim is disproved:} if the operator's statement is
-false, an honest challenger obtains some $\ell^j_0$ except with probability
-$\varepsilon_{\mathrm{STARK}}(t)+\varepsilon_{\mathrm{cc}}+\varepsilon_{\mathrm{sol}}$,
-since a correctly garbled kept instance exists, its labels are those of the
-published proof, and Theorem~\ref{thm:main}(i) applies; an operator that
-publishes no proof loses its stake to AssertTimeout. \emph{An honest operator
-keeps its stake:} if the proof is honest, no challenger obtains any $\ell^j_0$
-except with probability
-$M(\varepsilon_{\mathrm{guard}}+\varepsilon_{\mathrm{GC}})+\varepsilon_{\mathrm{sol}}+\varepsilon_{\mathrm{sig}}$,
-by Theorem~\ref{thm:main}(ii) and a union bound over the kept instances. This
-is conditional accounting, not a protocol theorem in a ledger model:
-$\varepsilon_{\mathrm{sol}}$ has no instantiated bound, and the transaction
-graph and ledger-timing assumptions have not been implemented or proved.
-BitVM3~\cite{bitvm3paper} and BABE~\cite{babe2026} analyze their own
-instantiations.
+\subsection{The verifier circuit}\label{sec:construction}
+
+The circuit sets the first quantity: it reads the proof's bits, so its input
+layout is the bit count that Assert publishes. Its size is also what
+cut-and-choose garbles and challengers store. This subsection turns the
+verifier of \S\ref{sec:setting} into a Boolean circuit with one output wire.
+Figure~\ref{fig:pipeline} shows its stages in transcript
+order, with each stage's share of the non-free gates of our running example: a
+$2^{18}$-row Keccak-$f$ trace with 1{,}625 columns, 1{,}650 AIR constraints and
+22 packed variables, whose proof is 140\,KiB and whose verifier has 94.1M
+non-free gates. We first state the approach and the two choices that fix its
+cost, then describe the gadgets, the transcript, the zerocheck, batching and
+ring switch, and WHIR.
+
+\begin{figure}[t]\centering
+\begin{tikzpicture}[font=\footnotesize,
+  seg/.style={draw, minimum height=11mm, inner sep=1pt, align=center, anchor=west, outer sep=0pt},
+  sub/.style={font=\scriptsize, align=center, anchor=north, text width=#1, inner sep=1pt}]
+% segment widths are 12.5 cm times each stage's share of the 94.1M non-free gates
+\node[seg, fill=gray!6,  minimum width=1.6125cm] (t) at (0,0)   {Transcript\\12.9\%};
+\node[seg, fill=gray!6,  minimum width=1.6cm] (z) at (t.east) {Zerocheck\\12.8\%};
+\node[seg, fill=gray!6,  minimum width=1.5375cm] (c) at (z.east) {Batching\\12.3\%};
+\node[seg, fill=gray!28, minimum width=4.3125cm] (r) at (c.east) {Bit ring switch\\34.5\%};
+\node[seg, fill=gray!16, minimum width=3.4375cm] (w) at (r.east) {WHIR\\27.5\%};
+\node[sub=1.6cm] at (t.south) {STARK and WHIR\\Blake3 sponges};
+\node[sub=1.6cm] at (z.south) {sumcheck, AIR\\constraints, closing};
+\node[sub=1.5cm]  at (c.south) {opened columns\\combined};
+\node[sub=4.2cm]  at (r.south) {256 multiplications per packed variable, plus the column selector};
+\node[sub=3.4cm]  at (w.south) {Merkle paths, leaf hashes,\\folds, closing weights};
+\draw[-{Latex[length=2mm]}] (t.north west) ++(0,2.5mm) -- node[above=0pt] {transcript order} ++(12.5,0);
+\draw[-{Latex[length=2mm]}] (w.east) -- ++(5mm,0) node[right, align=left, inner sep=1pt] {one output wire:\\every check passes};
+\end{tikzpicture}
+\caption{The ring switch dominates the verifier circuit, followed by WHIR. The
+stages appear in transcript order, and each segment's width is its share of
+the 94.1M non-free gates of the $2^{18}$-row verifier: transcript is the STARK
+and WHIR sponges, zerocheck is its sumcheck, AIR constraints and closing, and
+WHIR is everything after the ring switch except its transcript.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsubsection{Approach}
+
+The construction has two parts. First, a deterministic circuit builder emits
+the STARK verifier of one configuration, an AIR, a trace height and a set of
+WHIR parameters, as a Boolean circuit over the proof's bits with one output
+wire. Every data-dependent branch of the verifier is fixed and guarded by a
+check, and the transcript follows the byte schedule recovered from the
+prover's own challenger, so the same circuit serves every proof of the configuration
+and is built before any proof exists. Second, gadgets for the two operations
+on which the verifier spends its gates, tower-field multiplication and Blake3
+compression, under the free-XOR garbling of \S\ref{sec:garbling}. Garbling
+needs only each gate's input labels, so the builder is garbled as it emits
+gates and the circuit itself is never stored. At setup the operator garbles
+with every input at 0 and publishes the ciphertexts; at dispute the challenger obtains the input
+labels of the published proof and evaluates the same builder on them. Two
+choices fix the cost of the second part.
+
+\paragraph{Why a binary field.} The Keccak-$f$ AIR is Boolean and its trace is
+committed as bits, so a prime-field pipeline would spend its arithmetic
+emulating bits, whereas in $\F$ addition is \XOR{}, free under free-XOR, and
+the only \AND{} gates are base-field products: $2{,}187$ per multiplication by
+Karatsuba down the tower, with squaring and multiplication by the tower
+generator free. The bit ring switch of Binius~\cite{dp24ringswitch}, which
+turns the bit-level claims into claims on the packed $\F$ polynomial, is the
+price of the choice: a third of the circuit (Figure~\ref{fig:pipeline}).
+
+To price the prime-field alternative we also built KoalaBear
+($p=2^{31}-2^{24}+1$) and Poseidon2 on wires. A KoalaBear multiplication is
+$3{,}451$ \AND{} gates, and a
+degree-4 extension multiplication $60{,}615$, against $2{,}187$ for all of
+$\F$. One Poseidon2 permutation of width 16 is $1{,}240{,}747$ \AND{} gates:
+$120$ Blake3 compressions. The WHIR opening of a $2^{20}$ KoalaBear
+configuration (2{,}157 permutations, about 7{,}500 extension multiplications)
+would be about $3.1\times10^9$ gates with Poseidon2, more than the whole
+Boolean-garbled Groth16 verifier, and still $0.3$--$0.5\times10^9$ with Blake3,
+against our $21$M for a $2^{18}$-variable opening. The four-fold difference in
+size does not account for a gap of $15$ to $150\times$: a garbled STARK verifier
+should use a binary field.
+
+\paragraph{Why Blake3.} One hash serves three roles: the Merkle commitments
+and the Fiat--Shamir sponge of the proof system, and the garbling hash $H$ of
+\S\ref{sec:garbling}. Blake3 is an add-rotate-XOR design, so in Boolean gates
+its only non-free operations are the 32-bit additions, one \AND{} per bit with
+the carry gadget of \S\ref{sec:gadgets}, which is the 120-fold gap to
+Poseidon2 above. A prover that already commits and samples with Blake3 needs
+no change, and the circuit's transcript can be checked byte for byte against
+it. A single hash also keeps the
+verifier's assumptions to those of \S\ref{sec:security}, Blake3 as a random
+oracle with circular correlation robustness, with no elliptic-curve or lattice
+assumption, which is what makes the verifier's own security claim
+post-quantum (\S\ref{sec:pq}).
+
+\subsubsection{Gadgets}\label{sec:gadgets}
+
+\paragraph{Tower arithmetic.} A wire vector for an element of $\T_k$ is its
+bit pattern, so gadget outputs can be read back directly as field elements.
+Multiplication follows the tower recursively, Karatsuba at each level:
+\[
+  z_0=a_0b_0,\quad z_2=a_1b_1,\quad z_1=(a_0+a_1)(b_0+b_1)+z_0+z_2,\qquad
+  ab=(z_0+z_2)+(z_1+X_{k-1}z_2)\,X_k .
+\]
+Additions are free. Multiplication by the generator $X_{k-1}$ is a rewiring plus
+\XOR{}s, and squaring is linear over $\mathbb{F}_2$. The only \AND{} gates are
+the base-field products, three per level, so a $2^k$-bit multiplication costs
+$3^k$ \AND{} gates: $2{,}187$ in $\F$. A multiplication by a constant folds to
+\XOR{}s entirely.
+
+\paragraph{Blake3.} We start from bitvm-gc's Blake3 circuit and change two
+things. A 32-bit addition's carry is the majority
+\[
+  \mathrm{maj}(a,b,c)=c\oplus\big((a\oplus c)\wedge(b\oplus c)\big),
+\]
+one \AND{} per bit, and the carry out of the top bit is discarded, so it is not
+computed. This halves a compression from $20{,}657$ to $10{,}281$ \AND{} gates.
+We also add Blake3's tree mode (chunk chaining values on a stack, parent nodes,
+the root last). The verifier's transcript absorbs more than one 1{,}024-byte
+chunk between samples: the final polynomial is 64 coefficients, 1{,}024 bytes
+on its own. Table~\ref{tab:gadgets} gives the costs. Every gadget is checked
+against reference implementations of the field and the hash on random inputs.
+
+\begin{table}[t]\centering\small
+\begin{tabular}{lr}\toprule
+gadget & \AND{} gates\\\midrule
+$\F$ multiplication & 2{,}187\\
+$\F$ squaring, multiplication by $X_{k-1}$, addition & 0\\
+Blake3 of 64 bytes (a Merkle compression) & 10{,}281\\
+Blake3 of 256 bytes (a leaf row of 16 elements) & 41{,}511\\
+Blake3 of 1{,}072 bytes (two chunks: a transcript flush) & 186{,}125\\\bottomrule
+\end{tabular}
+\caption{Gadget costs, checked against reference implementations of the field
+and the hash.}
+\label{tab:gadgets}
+\end{table}
+
+\subsubsection{Transcript}
+
+The transcript is a Blake3 byte sponge that mirrors the prover's challenger. Observing
+appends to an input buffer; sampling, when the output buffer is empty, hashes
+the input buffer, replaces it with the digest, and pops bytes from the digest's
+end. A field element is 16 little-endian bytes. A query index is 8 bytes read
+as a little-endian integer and masked. A proof-of-work check absorbs the
+witness and requires a fixed number of sampled bits to be zero. We implement the
+same challenger on wires. Its schedule has no data-dependent branch: queries are
+a fixed number of masked draws, and a proof-of-work check a fixed number of
+bits. So the circuit's shape is a function of the configuration alone. The
+sub-transcripts' domain separators are constants, baked in as constant wires,
+and everything the prover sends is an input.
+
+The byte schedule, that is, the order in which roots, out-of-domain answers,
+sumcheck messages, proof-of-work witnesses, stratified query draws and the final
+polynomial are absorbed and sampled, is implicit in the prover's implementation
+and specified nowhere else. We recover it by running that implementation's own
+verifier through a challenger that logs every byte, and we test the circuit
+against the log op for op.
+
+\subsubsection{Zerocheck, batching and ring switch}
+
+The zerocheck, the column batching and the ring switch are implemented
+gate for gate from a reference implementation that is checked op for op against
+the prover's verifier. The AIR arrives as symbolic constraints and is evaluated
+on wires.
+
+Two data-dependent branches of the reference verifier cannot appear in a
+fixed circuit. We fix them and guard them with checks.
+\begin{itemize}
+  \item The verifier redraws a zerocheck challenge coordinate that happens to be zero.
+    The circuit takes a fixed number of draws and requires each to be nonzero.
+  \item The ring switch would fix a column-point coordinate that is
+    exactly $0$ or $1$. The circuit assumes there is no such coordinate and
+    checks it.
+\end{itemize}
+Each event has probability about $2^{-127}$ per coordinate. When it occurs the
+circuit rejects where the reference verifier would continue, never the reverse.
+
+\subsubsection{WHIR}
+
+The WHIR layer checks every proof-of-work witness. It hashes every opened row and
+walks it up its Merkle path to the root absorbed in the transcript. It then folds
+each queried row with the round's folding randomness, and checks the final
+queries against the final polynomial and the closing sumcheck identity.
+
+The prover sends Merkle openings pruned: siblings that another query can recompute are left out.
+Our implementation expands the proof outside the circuit into one full path per
+query. This is an engineering choice rather than an inherent limitation of a
+fixed circuit: a fixed upper-bound circuit could verify a padded frontier with
+data-dependent routing. A million-trial simulation of the actual stratified
+queries and cap forest, however, reduces the expected path from 1{,}354 to
+1{,}335.71 digests, only 4{,}683 input bits or $0.45\%$ of the total, before the
+routing and padding overhead. When the commitment uses a Merkle cap of $2^h$
+roots, the transcript
+absorbs all of them, and each query selects its root with a multiplexer on the
+top $h$ index bits: $256(2^h-1)$ \AND{} gates, against $h$ compressions saved.
+
+\subsection{Publishing the input}\label{sec:input}
 
 \paragraph{Label selection.} Every input mechanism we price is an instance of
 one two-party task. The \emph{garbler} $\mathsf{G}$ (the operator, who also
@@ -758,6 +744,7 @@ complementary label breaks authenticity (\S\ref{sec:security}), (iii)~be
 \emph{binding}: $\mathsf{G}$ publishes at most one value per wire, and the
 publication is also the authorization of the spending transaction, and (iv)~be
 \emph{public}: any observer can recover $\pi$ and check the published object.
+
 A malformed publication cannot be spent, a missing one forfeits the stake
 through AssertTimeout, and Disprove is reserved for the reject label. Lamport
 achieves (i)--(iv) with one preimage per bit, at the cost of a per-bit script.
@@ -768,7 +755,7 @@ $k$-bit digit and no per-bit script. The hash-based alternative
 by a pair of hash-chain openings and underlies the Antichain row and the
 hash-based projections of \S\ref{sec:pq}.
 
-\begin{figure}[t!]\centering\resizebox{0.92\textwidth}{!}{%
+\begin{figure}[t!]\centering
 \begin{tikzpicture}[font=\footnotesize, >={Stealth[length=2mm]},
   actor/.style={draw, rounded corners=2pt, fill=gray!8, inner sep=3pt, text width=3.3cm, align=center},
   note/.style={draw, fill=white, inner sep=2.5pt, align=left, font=\scriptsize},
@@ -793,7 +780,7 @@ hash-based projections of \S\ref{sec:pq}.
 \node[note, anchor=north east, text width=5.9cm] at (\xe+1.75,-10.1) {$t_{i,d}\gets s-s'_d$\\$\ell^{\,d_j}_{(i,j)}\gets c_{i,d,j}\oplus\mathrm{KDF}(t_{i,d},j)$\\evaluates the garbled verifier on all labels};
 \draw[msg] (\xe,-12.5) -- (\xc,-12.5) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell^j_0$,\\if the evaluation rejects};
 \node[note, anchor=north west, fill=gray!5, text width=14.6cm] at (-1.75,-12.9) {\emph{exclusive:} any other label needs $t_{i,v}=\log_G T_{i,v}$. \emph{binding:} $\mathsf{G}$ has no $x$, so the only signatures it can form on $m_i$ are the $2^k$ completions, and one \texttt{CHECKSIG} consumes one. \emph{authorization:} the same signature authorizes the spend.};
-\end{tikzpicture}}
+\end{tikzpicture}
 \caption{Schnorr adaptor label selection for one $k$-bit digit position $i$,
 as in BitVM3 and Mosaic~\cite{bitvm3paper,mosaic26}. $m_i$ is the BIP341 message
 seen by the $i$-th \texttt{CHECKSIG}; wire $(i,j)$ is bit $j$ of the digit.
@@ -815,14 +802,33 @@ hash-based selection has a two-node setup and hash-only exclusivity, but under
 current consensus every hash step of the verification is 2 bytes of script,
 plus a separate transaction signature; that script makes the Antichain row
 5.3 times the adaptor row in Table~\ref{tab:onchain}. The digit-to-label
-translation table is the same object in both and is not on-chain. With a
-native batch opcode, a hash-based transaction signature and full-width nodes,
+translation table is the same object in both and is not on-chain.
+
+Table~\ref{tab:bytes} sets the four schemes side by side by where their bytes
+go. With a native batch opcode, a hash-based transaction signature and full-width nodes,
 the hash-based selection would match the adaptor's 2.13\,MvB at about 117
 quantum bits; we serialized that construction exactly, but none of its three
 ingredients exists on Bitcoin today (Table~\ref{tab:pqsel},
 Appendix~\ref{app:pqsel}).
 
-\paragraph{Publishing the input.} We price four one-time schemes for carrying
+\begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{3.7cm}>{\raggedright\arraybackslash}p{2.9cm}>{\raggedright\arraybackslash}p{2.6cm}r>{\raggedright\arraybackslash}X}\toprule
+scheme & selection material & script & transaction binding & vB/bit & assumption\\\midrule
+Schnorr adaptor, $k=8$ & one 64-byte completion per 8-bit digit & one \texttt{CHECKSIG} per digit, 3 bytes & the same signature & 2.13 & discrete logarithm\\
+WOTS translation, $k=3$ & one 20-byte chain node per 3-bit digit, plus two checksum chains per chunk & hash ladder in Script, 2 bytes per step & separate 64-byte Schnorr signature per input & 7.55 & hash; 128-bit translation chain\\
+Antichain $(2,16)$, $k=4$ & two 16-byte chain nodes per 4-bit digit & hash ladder in Script, 2 bytes per step & separate 64-byte Schnorr signature per input & 11.38 & hash\\
+Lamport & one 16-byte preimage per bit & 49 bytes per bit & separate 64-byte Schnorr signature per input & 16.59 & hash\\\bottomrule
+\end{tabularx}
+\caption{Where the four input schemes spend their bytes. Selection material
+and script are per digit or per bit as stated; vB/bit is the measured
+one-key-set component of Table~\ref{tab:onchain}, including transaction
+shells. The adaptor's selection and binding are one object, which is why its
+script is three bytes per digit; the hash-based schemes pay for the ladder in
+Script and for a separate signature, and only their selection is hash-based.}
+\label{tab:bytes}
+\end{table}
+
+\paragraph{Four one-time schemes.} We price four one-time schemes for carrying
 the input bits; Appendix~\ref{app:schemes} gives their scripts and fixtures and
 Table~\ref{tab:onchain} their sizes. \emph{Lamport} reveals one of two hashed
 16-byte preimages per bit against a 49-byte leaf script, 998 bits per input,
@@ -834,7 +840,9 @@ and adds a 64-byte Schnorr authorization. \emph{Winternitz with a translation
 table}~\cite{wotstranslation26} closes the same gap by making each label a
 Shamir secret whose threshold a signed chunk's checksum sets; our fixture uses
 3-bit digits, eight per chunk, at the price of a 1.905\,GB off-chain table per
-instance. \emph{Schnorr adaptor signatures} over 8-bit digits, as in BitVM3
+instance.
+
+\emph{Schnorr adaptor signatures} over 8-bit digits, as in BitVM3
 and Mosaic, reproduce BitVM3's 9{,}323 weight units per 1{,}024-bit Assert
 shell and validate every completed signature under Core 31.1; the signatures
 rest on discrete logarithms, and this repository does not implement Mosaic's
@@ -859,31 +867,57 @@ multiplies the component by $M$: at $M=7$, 120.86\,MvB for Lamport,
 82.94\,MvB for Antichain and 55.03\,MvB for WOTS translation, before graph
 overhead and still without enforcing the same bit choice across the sets.
 
-We also ran the dispute components, with the on-chain steps executed as
-Bitcoin Script, on a one-compression Blake3 preimage statement and on the
-Keccak-$f$ verifier at $2^5$ rows. For one garbling, the Assert publication,
-label translation, evaluation and reject-label hashlock behaved as intended
-(Appendix~\ref{app:executed}); signatures, timelocks and cut-and-choose were
-not part of either run.
+\subsection{Reducing the input}\label{sec:reduce}
+
+The input is the proof, so it shrinks only where the proof does. We use three
+levers, and \S\ref{sec:eval} measures what each removes.
+
+\paragraph{WHIR parameters.} The input bit count is a function of the WHIR
+schedule alone: the rate, the folding factor and the grinding budget fix the
+number of rounds, queries and opened rows. We compute the count exactly from a
+configuration and check it against the measured input, then sweep the
+schedule at a fixed soundness target; a lower rate and more grinding trade
+queries for proof size. The opened trace values, two rows of the AIR's columns
+at 128 bits each, do not depend on WHIR and bound what this lever can reach.
+
+\paragraph{Statement width.} Those opened values scale with the number of
+columns, so a narrower AIR at a greater height reads fewer bits for the same
+committed cells; the same schedule model counts the input of hypothetical
+layouts. Batching more permutations into one trace does not shrink the input
+of one proof, but it amortizes that input over the work proved.
+
+\paragraph{Recursion into a narrow machine.} The floor of the first two
+levers belongs to the statement, so the third changes the statement: the
+verifier of a proof built to be verified cheaply. Ziren's binary stage records
+a verifier as a straight-line tape over $\F$, a five-table tape machine proves
+a run of the tape, and its own verifier is recorded and proved again, each
+round narrowing the statement. We translate the final tape gate by gate into
+the circuit of \S\ref{sec:construction} and garble it.
 
 % =====================================================================
 \section{Evaluation}\label{sec:eval}
 
 The experiments answer five questions: how the garbled verifier scales with the
 trace (Table~\ref{tab:main}, Figure~\ref{fig:scaling}), where its gates go and
-what each design choice contributes, how the circuit-input authentication
+what the adder saves, how the circuit-input authentication
 component projects (Table~\ref{tab:onchain}), how far the input shrinks, and
 how the result compares with estimated STARK verifiers and pairing-based
 designs (Table~\ref{tab:compare}). Appendix~\ref{app:eval} holds the gate
 profile, the ablation, the Core replay, the input sweep and the recursion
 details.
 
-\paragraph{Setup.} We proved Keccak-$f$ permutations with Plonky3's
-1{,}625-column characteristic-2 Keccak AIR, at rate $1/32$, folding factor 4
-and 110 bits per WHIR term; booleanity is not constrained, since the
+\paragraph{Setup.} We instantiate the construction of
+\S\ref{sec:construction} on Plonky3~\cite{plonky3}, whose Blake3 challenger,
+symbolic AIR constraints and Boolean WHIR commitment are the ones described in
+\S\ref{sec:setting}; the gadgets are checked against its binary-field crate
+and the \texttt{blake3} crate. We proved Keccak-$f$ permutations with
+Plonky3's 1{,}625-column characteristic-2 Keccak AIR, at rate $1/32$, folding
+factor 4 and 110 bits per WHIR term; booleanity is not constrained, since the
 commitment is to bits. A byte-logging challenger recorded each run, our
-reference replayed Plonky3's verifier byte for byte, and the verifier circuit
-was then streamed through the single-threaded garbler. Runs up to $2^{18}$
+reference replayed Plonky3's verifier byte for byte, the circuit was tested
+against the log, and the verifier circuit was then garbled on one core.
+
+Runs up to $2^{18}$
 rows had 32\,GB of RAM and eight cores of an Intel Xeon Platinum 8375C at
 2.9\,GHz; the $2^{20}$ run used an AMD EPYC 9355 limited to 128\,GB and 32
 cores. Appendix~\ref{app:artifact} lists the pinned revisions and commands.
@@ -900,22 +934,6 @@ accepted its proof, and at $2^5$ and $2^8$ we also checked that it rejected the
 proof with one opened value changed. Growing the trace $32{,}768$-fold grew the
 circuit $2.2$-fold, because the verifier depends on the trace length only
 through the logarithmic number of variables.
-
-\paragraph{Garbling efficiency.} To compare garbled verifiers across trace sizes
-and AIRs, we define the \emph{garbling efficiency} of a configuration as
-\[
-  \eta \;=\; \frac{|\mathsf{GC}|}{R\cdot W}\quad\text{bytes per committed cell},
-\]
-where $|\mathsf{GC}|$ is the garbled circuit's size in bytes, 16 per non-free
-gate, $R$ the number of trace rows and $W$ the number of committed columns. It
-is a cost per unit of verified computation, so smaller is better. For our
-Keccak-$f$ AIR, $W=1{,}625$ and each cell is one bit. Because $|\mathsf{GC}|$
-grows with $\log R$ while $R\cdot W$ grows with $R$, $\eta$ falls almost in
-inverse proportion to the trace: from $13{,}715$ bytes per cell at $2^5$ rows
-to $3.53$ at $2^{18}$ and $0.94$ at $2^{20}$ (Table~\ref{tab:main}). At
-$2^{20}$ rows this is less than one garbled byte per committed bit: 7.5 garbled
-bits per bit, or 38\,kB per Keccak-$f$ permutation. Comparing $\eta$ across
-proof systems needs the same computation and cells of the same kind.
 
 \begin{figure}[t!]\centering
 \begin{tikzpicture}
@@ -944,25 +962,21 @@ $32{,}768\times$ larger trace. The dashed line shows the approximately
 \end{figure}
 
 \begin{table}[t]\centering\footnotesize\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lrrrrrrr}\toprule
-trace & vars & non-free gates & garbled & $\eta$ (B/cell) & garbling & garbler memory & input bits\\\midrule
-$2^5$ rows (1 Keccak-$f$) & 9 & 44{,}573{,}121 & 713\,MB & 13{,}715 & 35\,s & 0.32\,GiB & 586{,}240\\
-$2^8$ rows (10) & 12 & 66{,}459{,}859 & 1{,}063\,MB & 2{,}556 & 53\,s & 0.46\,GiB & 743{,}808\\
-$2^{12}$ rows (163) & 16 & 77{,}736{,}394 & 1{,}243\,MB & 186.9 & 53\,s & 0.54\,GiB & 874{,}240\\
-$2^{16}$ rows (2{,}621) & 20 & 88{,}680{,}747 & 1{,}418\,MB & 13.32 & 66\,s & 0.61\,GiB & 997{,}760\\
-$2^{18}$ rows (10{,}485) & 22 & \textbf{94{,}069{,}548} & \textbf{1{,}505\,MB} & \textbf{3.53} & 57\,s & 0.65\,GiB & 1{,}041{,}024\\
-$2^{20}$ rows (41{,}943) & 24 & 99{,}613{,}898 & 1{,}593\,MB & 0.94 & 42\,s$^{\dagger}$ & 0.68\,GiB & 1{,}108{,}992\\\bottomrule
+\begin{tabular}{lrrrrr}\toprule
+trace & vars & non-free gates & garbled & garbling & input bits\\\midrule
+$2^5$ rows (1 Keccak-$f$) & 9 & 44{,}573{,}121 & 713\,MB & 35\,s & 586{,}240\\
+$2^8$ rows (10) & 12 & 66{,}459{,}859 & 1{,}063\,MB & 53\,s & 743{,}808\\
+$2^{12}$ rows (163) & 16 & 77{,}736{,}394 & 1{,}243\,MB & 53\,s & 874{,}240\\
+$2^{16}$ rows (2{,}621) & 20 & 88{,}680{,}747 & 1{,}418\,MB & 66\,s & 997{,}760\\
+$2^{18}$ rows (10{,}485) & 22 & \textbf{94{,}069{,}548} & \textbf{1{,}505\,MB} & 57\,s & 1{,}041{,}024\\
+$2^{20}$ rows (41{,}943) & 24 & 99{,}613{,}898 & 1{,}593\,MB & 42\,s$^{\dagger}$ & 1{,}108{,}992\\\bottomrule
 \end{tabular}
 \caption{The measured verifier configuration stays below 100M non-free gates
-and 1.6\,GB garbled up to $2^{20}$ rows, and the garbler needs less than
-0.7\,GiB. Measured on real
+and 1.6\,GB garbled up to $2^{20}$ rows. Measured on real
 Keccak-$f$ proofs; ``vars'' is the number of packed variables WHIR opens,
-garbled size is 16 bytes per non-free gate, and $\eta$ is the garbled size per
-committed trace cell, $1{,}625$ columns times the rows. Garbling is single-threaded, and its
+garbled size is 16 bytes per non-free gate. Garbling is single-threaded, and its
 time varied by up to 50\% with load on the shared machine (23--35\,s at $2^5$
-across runs). Garbler memory is the plan (one byte per wire) plus 18 bytes per
-live wire at the peak, computed from the measured counts; at $2^{18}$ rows the
-garbler holds at most 2{,}256{,}536 labels live. $^{\dagger}$The $2^{20}$ proof was
+across runs). $^{\dagger}$The $2^{20}$ proof was
 generated on a second, larger machine, where the circuit was also garbled, again
 on one core.}
 \label{tab:main}
@@ -971,7 +985,8 @@ on one core.}
 \paragraph{Where the gates go.} Table~\ref{tab:profile} in
 Appendix~\ref{app:profile} breaks the $2^{18}$ circuit down by the verifier
 phase that emits each gate. The stages before WHIR account for $70.8\%$ and
-WHIR for $29.2\%$. The largest single item is the ring switch closing,
+WHIR for $29.2\%$, including its share of the transcript, or $27.5\%$ without
+it (Figure~\ref{fig:pipeline}). The largest single item is the ring switch closing,
 $33.6\%$: 256 multiplications per packed variable, plus a fixed $11\times512$
 for the column selector. The STARK transcript, the column combination and the
 AIR constraints, $34.9\%$ together, grow with the number of columns, so a
@@ -981,32 +996,11 @@ of an 18-variable polynomial costs $21.2$M non-free gates with a Merkle cap of
 smallest configuration in our sweep (Appendix~\ref{app:profile}).
 
 
-\paragraph{Streaming garbler.} A builder that stores the gate list, as
-bitvm-gc's \texttt{CircuitAdapter} does, needs tens of gigabytes for these
-circuits before garbling starts, yet a gate's ciphertext depends only on its
-input labels. Our garbler is a builder backend that runs the deterministic
-builder twice: a plan pass counts each wire's reads, one byte per wire, and
-the garbling pass garbles each gate as it is emitted, giving wires slots that
-are released after their last read, with the constants and outputs pinned. At
-$2^{18}$ rows the plan is 0.61\,GiB for 659M wires and the live wires peak at
-2.26M, 41\,MB at 18 bytes each; the plan depends only on the circuit, so every
-garbled instance of a configuration shares it. When the garbler holds a
-witness it also evaluates each gate and checks the result; at setup it garbles
-with every input at 0, and a challenger later evaluates the stored ciphertexts
-with a backend that holds one label per wire. Tested this way at $2^5$ and
-$2^8$ rows, the stored garbling gave the accept label on a real proof and the
-reject label on the proof with one opened value changed; evaluation took
-11.5\,s and 17.0\,s against 20.6\,s and 34.0\,s for the garbling pass alone,
-since evaluation hashes once per non-free gate where garbling hashes twice.
-
 \paragraph{Ablation.} Replacing our Blake3 adder with the original two-\AND{}
 adder, with everything else unchanged, grew the circuit by $32\%$ at $2^5$ rows
 and $29\%$ at $2^8$: the adder saves a quarter of the whole verifier, because
-Blake3 is in the transcript, the leaf hashes and every Merkle path. Building
-the same $2^5$-row verifier as a stored circuit produced exactly the same gates
-and wires, but took 12.4\,GiB and 283\,s, against 0.69\,GiB and 33\,s for the
-plan and the streamed garbling together (Table~\ref{tab:ablation},
-Appendix~\ref{app:profile}).
+Blake3 is in the transcript, the leaf hashes and every Merkle path
+(Table~\ref{tab:ablation}, Appendix~\ref{app:profile}).
 
 \paragraph{Accounted input-publication components.} A Taproot output commits to
 its tree through a 32-byte output key at funding time; the large cost occurs
@@ -1038,7 +1032,9 @@ and 18 blocks, and accepted Lamport's 13{,}060-vB signed join only after its
 174 reveals confirmed (Appendix~\ref{app:replay}). This establishes staged
 standard-policy feasibility for bounded signed publication slices, not
 propagation, fee management, timeout trees or the missing challenge, Disprove,
-anchor and soldering graph. At BABE's historical 2.2\,sat/vB and \$95{,}500
+anchor and soldering graph.
+
+At BABE's historical 2.2\,sat/vB and \$95{,}500
 per bitcoin~\cite{babe2026}, the four components correspond to 0.049, 0.173,
 0.261 and 0.380\,BTC, neither current quotes nor fees for a complete dispute.
 The one-set hash rows require the unimplemented soldering of
@@ -1083,8 +1079,29 @@ composed soundness (Table~\ref{tab:inputs}, Appendix~\ref{app:inputs}). Its
 WHIR part shrinks by $35\%$, but $480{,}256$ bits do not depend on WHIR at all:
 the opened values are 416{,}000 bits, two rows of 1{,}625 columns at 128 bits
 each. The tuning also moves soundness from queries to grinding, which halves
-under quantum search (\S\ref{sec:pq}). Below this the input shrinks only with
-a narrower AIR or by recursion. Narrowing the AIR while keeping at least the
+under quantum search (\S\ref{sec:pq}).
+
+\begin{table}[t!]\centering\small
+\begin{tabular}{lrr}\toprule
+component & measured & tuned\\\midrule
+opened values (current and next row) & 416{,}000 & 416{,}000\\
+zerocheck and ring switch & 64{,}256 & 64{,}256\\
+WHIR Merkle paths & 346{,}624 & 239{,}616\\
+WHIR leaf rows & 163{,}840 & 92{,}160\\
+WHIR caps, OOD answers, sumchecks, final polynomial & 50{,}304 & 33{,}920\\\midrule
+total input bits & 1{,}041{,}024 & 845{,}952\\
+STIR queries per round & $33+20+15+12$ & $16+12+9+8$\\
+rate, folding, grinding budget & $1/32$, 4, 32 & $1/256$, 4, 48\\
+composed soundness (bits) & 104.3 & 103.9\\\bottomrule
+\end{tabular}
+\caption{Tuning WHIR removes a fifth of the input, and the AIR's opened values set
+the floor. Input bits at $2^{18}$ rows by proof component, for the measured
+configuration and the smallest configuration found in the sweep; 128 bits per field element and 256
+per digest, with full Merkle paths below each cap.}
+\label{tab:inputs}
+\end{table}
+
+Below this the input shrinks only with a narrower AIR or by recursion. Narrowing the AIR while keeping at least the
 measured $1{,}625\mathbin{\times}2^{18}$ committed cells, hypothetical widths
 128 and 32 at heights $2^{22}$ and $2^{24}$ need 659{,}840 and 636{,}288 input
 bits under the current WHIR profile, and 464{,}768 and 441{,}216 bits with the
@@ -1095,57 +1112,6 @@ traces hold 10{,}485 and 41{,}943 permutations for 1{,}041{,}024 and
 1{,}108{,}992 input bits, so four times the work adds $6.53\%$ to the input and
 amortizes it from 99.29 to 26.44 bits per permutation, $3.76\times$, without
 reducing the absolute unhappy-path payload of one proof.
-
-\paragraph{Recursion into a narrow machine.} The floor above belongs to the
-statement, so we also garbled the verifier of a statement built to be verified
-cheaply. The binary stage of the MIPS32 zkVM Ziren~\cite{duan26ziren,ziren}
-proves, over $\F$ with Boolean WHIR and Blake3, the program that verifies a
-shrunk zkVM proof, and records Plonky3's verifier of a binary-stage proof as a
-straight-line tape over $\F$; a five-table tape machine proves a run of the
-tape, and its own verifier is recorded and proved again. We translate a tape
-gate by gate, trusting Ziren's recorder. For a Fibonacci program the binary
-stage's verifier has 3.37G non-free gates and 18{,}050{,}304 input bits; after
-three rounds of narrow recursion, with the recording choices and five
-unreviewed proof-system changes of Appendix~\ref{app:recursion}, the verifier
-of the last proof has 564{,}552 input bits, made of 9{,}513 bytes and 3{,}816
-field elements, $0.54\times$ the Keccak verifier's, in 218.0M non-free gates
-and 3.49\,GB (Table~\ref{tab:recursion}). Every row of that table is the
-verifier of a real proof, garbled by the streaming garbler; each accepts its
-proof and rejects three single-input changes. The runs bind no public values,
-so the circuit attests that some zkVM proof verifies, not which program ran;
-binding the public-value digest would add at most 1{,}024 input bits. Each
-proof meets 100 bits of composed soundness by Plonky3's assessment, with up to
-46 bits of grinding per term, which halves under quantum search. At 564{,}552
-bits, the fixtures of Table~\ref{tab:onchain} serialize to 1.21\,MvB for the
-adaptor baseline, 4.26\,MvB for WOTS translation, 6.43\,MvB for Antichain and
-9.36\,MvB for Lamport, not replayed in Core. Tiwari and Feickert~\cite{tf26pq}
-estimated the Boolean verifiers of three zkVMs' recursion proofs from their
-operation counts (Table~\ref{tab:starkgc}); the smallest, RISC~Zero's with
-Blake3 in place of its internal hash, has 1.56G non-free gates, $7.2\times$
-our measured recursion verifier, whose input is $3.2\times$ smaller than that
-proof.
-
-\paragraph{Comparison.} Table~\ref{tab:compare} places the result among
-approaches to verifying proofs on Bitcoin (\S\ref{sec:related}). For the
-designated-verifier pairing SNARK we garbled bitvm-gc's circuit with our
-streaming garbler: $481.6$M non-free gates and $1.92\times10^9$ wires, at
-most $15.6$M live, 2.2\,GB peak memory in under six minutes where a stored
-build needed more than 64\,GB; it accepted the valid proof and rejected it
-with one witness bit flipped. The Keccak verifier has $5.1\times$ fewer
-non-free gates, and $30\times$ fewer than the Boolean-garbled Groth16 verifier;
-the recursion verifier has $2.2\times$ and about $14\times$ fewer.
-Native-group garbling of Groth16~\cite{kflt26native} and witness
-encryption~\cite{babe2026} produce artifacts of megabytes and need far fewer
-input bits, on pairings and a trusted setup. On-chain, the comparison inverts:
-the Groth16 designs publish 508 to 1{,}019 input bits and report dispute paths
-of a few to a few tens of kilobytes, under \$60, whereas our Keccak dispute
-publishes 1{,}041{,}024 bits at a Core-tested input component of 2.22\,MvB with
-adaptors or 7.86\,MvB hash-based, and the recursion verifier's 564{,}552 bits
-serialize to 1.21 and 4.26\,MvB. That is one to three orders of magnitude
-more, about $38\times$ deferred binding's 32\,kvB even for the recursion
-verifier with adaptors, before the unconstructed remainder of the graph: the
-price of verifying the STARK directly rather than wrapping it, which
-\S\ref{sec:protocol} and \S\ref{sec:discussion} are about reducing.
 
 \begin{table}[t!]\centering\scriptsize\setlength{\tabcolsep}{3pt}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{1.7cm}rr>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.7cm}}\toprule
@@ -1159,10 +1125,11 @@ PIPE with AADP WE~\cite{pipesv2,aadp2026} & pairing SNARK & $\approx338$\,TB (es
 \textbf{this work} & \textbf{Keccak-$f$ STARK over $\F$, $2^{18}$ rows} & \textbf{1.5\,GB} & \textbf{1{,}041{,}024} & \textbf{input publication 2.22\,MvB (adaptor, DLog) or 7.86\,MvB (hash-based), about \$4{,}700 or \$16{,}500 at 2.2\,sat/vB, Core-replayed; Disprove 97\,vB; graph incomplete}$^{\S}$ & \textbf{Blake3 as a random oracle; assumed circular correlation robustness and adaptive authenticity}$^{\ddagger}$\\\addlinespace[2pt]
 this work, narrow recursion & STARK recursion proof over $\F$ & 3.49\,GB & 564{,}552 & input publication 1.21\,MvB (adaptor, DLog) or 4.26\,MvB (hash-based), about \$2{,}500 or \$9{,}000 at 2.2\,sat/vB; Disprove 97\,vB; graph incomplete$^{\S}$ & as above, plus unreviewed proof-system changes$^{\ddagger}$\\\bottomrule
 \end{tabularx}
-\caption{Approaches to verifying proofs on Bitcoin: off-chain artifact per
-instance (garbled circuits at 16 bytes per non-free gate), input bits published
-at dispute time, and on-chain dispute path, each as its source reports it; n/r:
-not reported. $^{\dagger}$One instance: 59.3M non-free gates in three garbled
+\caption{This work is the only entry that verifies a STARK directly, and it
+publishes a thousand times more input bits and a far larger dispute path than
+the pairing-based designs. Columns: off-chain artifact per instance (garbled
+circuits at 16 bytes per non-free gate), input bits published at dispute time,
+and on-chain dispute path, each as its source reports it; n/r: not reported. $^{\dagger}$One instance: 59.3M non-free gates in three garbled
 circuits plus adaptor tables, sharing a 3.83\,GiB circuit artifact; the kvB
 total is our arithmetic. $^{\S}$One key set; the hash-based figure is WOTS
 translation, whose table adds 1.9\,GB (Keccak) or 1.0\,GB (recursion) per
@@ -1178,44 +1145,105 @@ digest~\cite{duan26ziren}.}
 \label{tab:compare}
 \end{table}
 
+\paragraph{Recursion into a narrow machine.} The floor above belongs to the
+statement, so we also garbled the verifier of a statement built to be verified
+cheaply. The binary stage of the MIPS32 zkVM Ziren~\cite{duan26ziren,ziren}
+proves, over $\F$ with Boolean WHIR and Blake3, the program that verifies a
+shrunk zkVM proof, and records Plonky3's verifier of a binary-stage proof as a
+straight-line tape over $\F$; a five-table tape machine proves a run of the
+tape, and its own verifier is recorded and proved again. We translate a tape
+gate by gate, trusting Ziren's recorder. For a Fibonacci program the binary
+stage's verifier has 3.37G non-free gates and 18{,}050{,}304 input bits; after
+three rounds of narrow recursion, with the recording choices and five
+unreviewed proof-system changes of Appendix~\ref{app:recursion}, the verifier
+of the last proof has 564{,}552 input bits, made of 9{,}513 bytes and 3{,}816
+field elements, $0.54\times$ the Keccak verifier's, in 218.0M non-free gates
+and 3.49\,GB (Table~\ref{tab:recursion}). Every row of that table is the
+garbled verifier of a real proof; each accepts its proof and rejects three
+single-input changes.
+
+\begin{table}[t!]\centering\small
+\begin{tabular}{lrrr}\toprule
+verifier & input bits & non-free gates & garbled\\\midrule
+binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
+narrow recursion, level 2, Ziren \texttt{9398469a} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
+level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
+\quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
+\quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
+\quad + 200-bit Merkle digests & 895{,}504 & 220.2M & 3.52\,GB\\
+\quad + packed operand columns & 834{,}832 & 219.2M & 3.51\,GB\\
+\quad + linear forms, per-round folds, deep preprocessed cap & 643{,}688 & 215.8M & 3.45\,GB\\
+\quad + one ring switch per pair, eq-factored bus rounds & 603{,}112 & 216.5M & 3.46\,GB\\
+\quad + affine preprocessed forms, one shared forms sumcheck & 574{,}952 & 217.8M & 3.48\,GB\\
+\quad + preprocessed cap 18 layers deep & \textbf{564{,}552} & 218.0M & 3.49\,GB\\\bottomrule
+\end{tabular}
+\caption{Narrow recursion removes the statement's width from the garbled
+verifier's input. Exact counts for Ziren's binary stage and for the verifier of its narrow-recursion proofs (level 2 with 26-bit addresses, the
+smallest that fit the real tape); the rows below the third use the experimental
+changes listed in Appendix~\ref{app:recursion}.}
+\label{tab:recursion}
+\end{table}
+
+The runs bind no public values, so the circuit attests that some zkVM proof verifies, not which program ran;
+binding the public-value digest would add at most 1{,}024 input bits. Each
+proof meets 100 bits of composed soundness by Plonky3's assessment, with up to
+46 bits of grinding per term, which halves under quantum search. At 564{,}552
+bits, the fixtures of Table~\ref{tab:onchain} serialize to 1.21\,MvB for the
+adaptor baseline, 4.26\,MvB for WOTS translation, 6.43\,MvB for Antichain and
+9.36\,MvB for Lamport, not replayed in Core. Tiwari and Feickert~\cite{tf26pq}
+estimated the Boolean verifiers of three zkVMs' recursion proofs from their
+operation counts (Table~\ref{tab:starkgc}); the smallest, RISC~Zero's with
+Blake3 in place of its internal hash, has 1.56G non-free gates, $7.2\times$
+our measured recursion verifier, whose input is $3.2\times$ smaller than that
+proof.
+
+\paragraph{Comparison.} Table~\ref{tab:compare} places the result among
+approaches to verifying proofs on Bitcoin (\S\ref{sec:related}). For the
+designated-verifier pairing SNARK we garbled bitvm-gc's circuit: $481.6$M
+non-free gates; it accepted the valid proof and rejected it with one witness
+bit flipped. The Keccak verifier has $5.1\times$ fewer
+non-free gates, and $30\times$ fewer than the Boolean-garbled Groth16 verifier;
+the recursion verifier has $2.2\times$ and about $14\times$ fewer.
+Native-group garbling of Groth16~\cite{kflt26native} and witness
+encryption~\cite{babe2026} produce artifacts of megabytes and need far fewer
+input bits, on pairings and a trusted setup.
+
+On-chain, the comparison inverts:
+the Groth16 designs publish 508 to 1{,}019 input bits and report dispute paths
+of a few to a few tens of kilobytes, under \$60, whereas our Keccak dispute
+publishes 1{,}041{,}024 bits at a Core-tested input component of 2.22\,MvB with
+adaptors or 7.86\,MvB hash-based, and the recursion verifier's 564{,}552 bits
+serialize to 1.21 and 4.26\,MvB. That is one to three orders of magnitude
+more, about $38\times$ deferred binding's 32\,kvB even for the recursion
+verifier with adaptors, before the unconstructed remainder of the graph: the
+price of verifying the STARK directly rather than wrapping it, which
+\S\ref{sec:reduce} and \S\ref{sec:discussion} are about reducing.
+
 % =====================================================================
 \section{Security}\label{sec:security}
 
 This section states what the garbled verifier guarantees and on which
 assumptions. It combines the soundness of the proof system, the effect of the two
-guarded branches, and the authenticity of the garbling.
+guarded branches, and the authenticity of the garbling, and then accounts for
+the dispute of \S\ref{sec:dispute}.
 
 \paragraph{The circuit and the verifier.} When neither guarded event of
-\S\ref{sec:construction} occurs, the circuit computes exactly Plonky3's verifier;
-we test this op for op against Plonky3's logged transcript and on real proofs.
-When a guarded event occurs, the circuit outputs 0. Hence an output of 1 implies
-that Plonky3's verifier accepts, and an honest proof is rejected only if a guarded
+\S\ref{sec:construction} occurs, the circuit computes exactly the reference
+verifier; we test this op for op against its logged transcript and on real
+proofs. When a guarded event occurs, the circuit outputs 0. Hence an output of
+1 implies that the reference verifier accepts, and an honest proof is rejected only if a guarded
 event occurs, with probability at most $\varepsilon_{\mathrm{guard}}\approx
 n\cdot2^{-127}$ for $n$ guarded coordinates.
 
-\paragraph{Soundness of the proof system.} We use Plonky3's own security
-assessment of each configuration as the input to our classical accounting. The
-proximity terms are in the Johnson list-decoding regime
-(Table~\ref{tab:security}). The quantum conversion in \S\ref{sec:pq}
-additionally assumes round-by-round soundness for the sumcheck-based layers.
-At $2^{18}$ rows the binding term is the WHIR opening at $104.3$ bits (110 bits per
-term, rate $1/32$, folding factor 4, proof of work up to 32 bits). The other terms
-are constraint batching $109.0$, zerocheck $114.5$ and its sumcheck $113.5$, bit
-ring switch $114.0$, column batching $115.2$, and commitment and transcript
-collisions $128$ (Blake3). We write $\varepsilon_{\mathrm{STARK}}(t)$ for the
-composed error against an adversary making $t$ hash queries. Plonky3's report
-states it as bits of security, $104.3$ at $2^{18}$ rows, meaning that
-$\varepsilon_{\mathrm{STARK}}(t)\le t\cdot2^{-104.3}$ for a classical adversary; \S\ref{sec:pq} gives the quantum bound.
-
-\begin{table}[t]\centering\small
-\begin{tabular}{lrrrrrr}\toprule
-trace rows & $2^5$ & $2^8$ & $2^{12}$ & $2^{16}$ & $2^{18}$ & $2^{20}$\\\midrule
-composed soundness (bits) & 106.1 & 105.2 & 104.7 & 104.3 & 104.3 & 104.0\\\bottomrule
-\end{tabular}
-\caption{Soundness stays at about 104 bits at every measured size, 103.95 at $2^{20}$ rows. The values are
-Plonky3's composed soundness for each configuration.}
-\label{tab:security}
-\end{table}
+\paragraph{Soundness of the proof system.} We take the reference
+implementation's own security assessment of each configuration as the
+classical bound, with every proximity term in the Johnson list-decoding
+regime. At $2^{18}$ rows the binding term is the WHIR opening at $104.3$ bits,
+and the composed soundness stays at about 104 bits at every measured size
+(Appendix~\ref{app:security}). We write $\varepsilon_{\mathrm{STARK}}(t)$ for
+the composed error against an adversary making $t$ hash queries,
+$\varepsilon_{\mathrm{STARK}}(t)\le t\cdot2^{-104.3}$ classically at $2^{18}$
+rows; \S\ref{sec:pq} gives the quantum bound.
 
 \paragraph{Authenticity of the garbling.} Our scheme is privacy-free
 garbling~\cite{fno15privacyfree} with free-XOR~\cite{ks08} and one ciphertext per
@@ -1228,7 +1256,7 @@ chosen adaptively, after the garbled circuit is seen~\cite{bhr12adaptive}. Let
 $\varepsilon_{\mathrm{GC}}$ be the advantage of an evaluator that sees the garbled
 circuit, then chooses an input $x$, receives its labels, and outputs the label of
 the value $\neg C(x)$ on the output wire. We assume that our Blake3-based
-free-XOR garbling has adaptive authenticity in this sense, with Blake3 modelled as
+free-XOR garbling has adaptive authenticity in this sense, with Blake3 modeled as
 a random oracle; Bellare, Hoang and Rogaway give constructions proven adaptively
 secure~\cite{bhr12adaptive}.
 
@@ -1251,7 +1279,7 @@ encoding of a proof $\pi$ for a statement.
 \end{enumerate}
 \end{theorem}
 
-\noindent\emph{Proof sketch.} (i) If $C(x)=1$, Plonky3's verifier accepts $\pi$ by
+\noindent\emph{Proof sketch.} (i) If $C(x)=1$, the reference verifier accepts $\pi$ by
 the previous paragraphs, which for a false statement happens with probability at
 most $\varepsilon_{\mathrm{STARK}}(t)$. Otherwise $C(x)=0$, and correctness of the
 garbling yields the label of value 0. (ii) For an honest proof $C(x)=1$ unless a
@@ -1263,8 +1291,35 @@ $\varepsilon_{\mathrm{GC}}$. \hfill$\square$
 $C$. In our experiments that relation is Keccak-$f$ trace validity without
 external public values; it does not prove authorization of a bridge withdrawal.
 
-\smallskip\noindent Section~\ref{sec:protocol} uses (i) to protect challengers
-against a false claim and (ii) to protect an honest operator.
+\paragraph{The dispute.} Let $\varepsilon_{\mathrm{cc}}$ bound the probability
+that every kept instance is malformed while every opened one is correct; for
+choosing $N-M$ of $N$ uniformly this is $1/\binom{N}{M}$, which is $2^{-40}$ at
+$(N,M)=(181,7)$~\cite{babe2026}. Let $\varepsilon_{\mathrm{sol}}$ bound a
+failure of the soldering, and let $\varepsilon_{\mathrm{sig}}$ bound the
+aggregate probability of forging any one-time or transaction-authorization
+signature across the entire dispute, so a reduction from a per-target bound
+must include the number of targets. At these
+parameters, cut-and-choose alone limits the intended malicious-garbler security
+to about 40 bits, irrespective of the STARK verifier's 104-bit classical
+soundness.
+
+Subject to an enforced transaction graph, timely confirmation and an
+instantiated soldering bound, Theorem~\ref{thm:main} supports two intended
+properties of the dispute of \S\ref{sec:dispute}. \emph{A false claim is
+disproved:} if the operator's statement is false, an honest challenger obtains some $\ell^j_0$ except with probability
+$\varepsilon_{\mathrm{STARK}}(t)+\varepsilon_{\mathrm{cc}}+\varepsilon_{\mathrm{sol}}$,
+since a correctly garbled kept instance exists, its labels are those of the
+published proof, and Theorem~\ref{thm:main}(i) applies; an operator that
+publishes no proof loses its stake to AssertTimeout. \emph{An honest operator
+keeps its stake:} if the proof is honest, no challenger obtains any $\ell^j_0$
+except with probability
+$M(\varepsilon_{\mathrm{guard}}+\varepsilon_{\mathrm{GC}})+\varepsilon_{\mathrm{sol}}+\varepsilon_{\mathrm{sig}}$,
+by Theorem~\ref{thm:main}(ii) and a union bound over the kept instances. This
+is conditional accounting, not a protocol theorem in a ledger model:
+$\varepsilon_{\mathrm{sol}}$ has no instantiated bound, and the transaction
+graph and ledger-timing assumptions have not been implemented or proved.
+BitVM3~\cite{bitvm3paper} and BABE~\cite{babe2026} analyze their own
+instantiations.
 
 \subsection{Post-quantum analysis}\label{sec:pq}
 
@@ -1280,63 +1335,26 @@ own Schnorr signatures fall to Shor's algorithm~\cite{shor94}. Our verifier does
 not. Avoiding discrete-logarithm and pairing assumptions is necessary for
 quantum resistance here, but a hash-based verifier is not sufficient by
 itself: a quantum adversary still speeds up generic preimage and collision
-search~\cite{grover96,bht98}. Table~\ref{tab:pq} gives component-level estimates.
+search~\cite{grover96,bht98}. Table~\ref{tab:pq} gives component-level
+estimates; Appendix~\ref{app:security} derives them.
 
-\paragraph{Fiat--Shamir against quantum adversaries.} In the quantum random-oracle
-model, Chiesa, Manohar and Spooner~\cite{cms19qrom} show that applying
-Fiat--Shamir with a hash to a public-coin interactive oracle proof with
-round-by-round soundness error $\varepsilon_{\mathrm{rbr}}$ bounds the success
-of a quantum adversary that makes $t$ hash queries by
-$O(t^2\varepsilon_{\mathrm{rbr}}+t^3/2^{\lambda})$, where $\lambda=256$ is the
-digest length. A classical adversary is bounded by
-$O(t\,\varepsilon_{\mathrm{rbr}})$.
+\paragraph{The proof system and the garbling.} In the quantum random-oracle
+model, Fiat--Shamir applied to a round-by-round-sound protocol gives a
+quantum adversary with $t$ hash queries advantage
+$O(t^2\varepsilon_{\mathrm{rbr}}+t^3/2^{\lambda})$~\cite{cms19qrom}, so a
+round with error $2^{-a}$ offers about $a/2$ quantum bits, and $b$ bits of
+grinding cost about $2^{b/2}$ quantum hashes. At $2^{18}$ rows each WHIR term
+targets 110 bits, of which grinding supplies 26 to 32, so the composed $104.3$
+bits become about 52; the algebraic terms, Schwartz--Zippel errors over the
+$2^{128}$-element field, offer 54 to 58 bits and no number of queries raises
+them. Raising the per-term target does not help either: the proven profile
+raises grinding, not queries, and no configuration of the current proof
+system exceeds about 54 quantum bits, so a quantum target is a change to the
+proof system, not to its parameters. The garbling offset $\Delta$ can be
+tested against a single gate, so Grover search recovers it in about $2^{64}$
+Blake3 evaluations; with 128-bit labels the garbling, and a hashlock on a
+128-bit output label, offer about 64 quantum bits.
 
-WHIR has round-by-round soundness~\cite[\S5]{whir25}. For the
-sumcheck-based layers (zerocheck, column batching, ring switch) we assume it, as
-is standard for sumcheck, with each of Plonky3's terms as the round error. A
-round with error $2^{-a}$ therefore offers about $a/2$ bits
-against a quantum adversary, and Grover search~\cite{grover96} attains this
-generically when the bad challenges form an unstructured set. Proof-of-work
-grinding is generic search too: $b$ bits of grinding cost $2^{b}$ hashes
-classically and about $2^{b/2}$ quantumly.
-
-\paragraph{The proof system at our parameters.} At $2^{18}$ rows each WHIR term
-targets 110 bits, of which grinding supplies 26 to 32 bits (per round: 33
-queries with 30 and 28 bits of grinding, 20 with 32 and 30, 15 with 29 and 32, and
-12 terminal queries with 27). Both parts halve under quantum search, so each WHIR
-term offers about 55 bits, and the composed $104.3$ bits become about 52. The
-algebraic terms (zerocheck $114.5$, its sumcheck $113.5$, ring switch $114.0$,
-column batching $115.2$, constraint batching $109.0$) are Schwartz--Zippel errors
-over the $2^{128}$-element field and offer 54 to 58 bits. They are capped by the
-field: no number of queries raises them. Collisions in the 256-bit Blake3
-digests cost about $2^{85}$ quantum queries~\cite{bht98}, and preimages
-$2^{128}$.
-
-\paragraph{The ceiling of the current configuration space.} Raising Plonky3's
-per-term target does not raise the quantum level. We searched the target that
-the proven-list-decoding profile accepts at $2^{18}$ rows. Up to 134 bits per term
-it keeps the queries at $33+20+15+12$ and raises the grinding to 51--56 bits,
-its ceiling; at 200 bits it refuses, needing 103 bits of grinding. Plonky3's
-security report fully assesses targets up to 117 bits per term, where the
-composed soundness is $108.6$ bits, bound by constraint batching at $109.0$, a
-field-size term no WHIR parameter moves. Grinding and the field-bound terms both
-halve under quantum search, so no configuration of the current proof system
-exceeds about 54 quantum bits. Reaching a quantum target is a change to the
-proof system, not to its parameters.
-
-\paragraph{The garbling.} Authenticity rests on the secrecy of $\Delta$, and
-$\Delta$ can be tested against a single gate. An evaluator holding the labels
-$a,b$ of an \AND{} gate with known values $x,y$ and its ciphertext $\mathit{ct}$
-checks a candidate $\Delta'$ by recomputing $\mathit{ct}$ from
-$a,a\oplus\Delta',b$ and $\Delta'$. A wrong candidate passes with probability
-$2^{-128}$. Grover search therefore recovers $\Delta$ with about $2^{64}$
-quantum evaluations of Blake3, after which every label's complement is known
-and the output label of the other value is free. With 128-bit labels the
-garbling offers about 64 bits against a quantum adversary. The same holds for a
-hashlock on a 128-bit output label: a preimage search over $2^{128}$ labels costs
-about $2^{64}$. Grover search is highly sequential, and the adversary has only the
-time between setup and the end of the dispute window, but we do not rely on
-this.
 
 \paragraph{The surrounding protocol.} The protocol of \S\ref{sec:protocol}
 publishes input bits under one-time keys. Lamport, Antichain Winternitz and
@@ -1353,6 +1371,7 @@ is included. Translated Winternitz keys are further bounded by the 128-bit key
 chain of the translation table. Because each step of that chain is salted with
 the instance, the chunk and the step index, an inversion targets a single step,
 and its cost is $2^{128}$ classically and $2^{64}$ quantumly.
+
 The surrounding protocol is not post-quantum as instantiated. Schnorr adaptor
 signatures, the committee's pre-signed transactions and Taproot key-path spends
 fall to Shor's algorithm. Hash-based input keys avoid the adaptor-signature
@@ -1387,73 +1406,31 @@ post-quantum transaction authorization.}
 \label{tab:pq}
 \end{table}
 
-\paragraph{Parameters for a quantum target.} There is no single rule that
-doubles every classical parameter. Fiat--Shamir and preimage-search terms need
-about $2\lambda_Q$ classical bits, generic collision search on an $n$-bit digest
-costs about $2^{n/3}$ quantum queries, and an information-theoretic
-cut-and-choose error must itself be at most $2^{-\lambda_Q}$. Seven changes
-follow.
-\begin{itemize}
-  \item The WHIR terms need about $2\lambda_Q$ bits each. Since grinding also
-    halves, the query count must carry most of it: from about 80
-    information-theoretic bits per term today to about 168 at $\lambda_Q=100$,
-    about $2.1\times$ the queries. Plonky3's profile raises grinding instead,
-    so this needs a query-heavy profile.
-  \item The algebraic terms need challenges from a field of about
-    $2^{2\lambda_Q+14}$ elements, which means one more tower level,
-    $\mathbb{F}_{2^{256}}$, at $3^8=6{,}561$ \AND{} gates per multiplication, three
-    times today's. Repeating each algebraic check with independent challenges is
-    an alternative at a similar cost.
-  \item Labels of $2\lambda_Q$ bits: 256-bit labels double the ciphertext size to
-    32 bytes per non-free gate. The gate count is unchanged, because labels feed
-    the garbling hash, not the circuit.
-  \item Merkle commitments and the transcript need a hash that withstands
-    $2^{\lambda_Q}$ quantum collision search. Generic collision search therefore
-    calls for at least a $3\lambda_Q$-bit digest and a sufficiently wide internal
-    state. Blake3-256 caps this component near 85 quantum bits; requesting a
-    longer XOF output does not widen its 256-bit chaining value. A replacement
-    hash circuit and its cost remain to be designed and measured.
-  \item For $T$ possible input-authentication targets, 100 quantum bits require
-    at least $200+\lceil\log_2 T\rceil$ bits of preimage entropy under a hash
-    wider than 160 bits: about 220 bits for one key set and 223 for seven.
-    Byte-aligned 28-byte preimages under \texttt{SHA256} meet this generic
-    target, but that construction and its larger witness cost remain to be
-    designed and measured.
-  \item Cut-and-choose needs parameters satisfying
-    $1/\binom{N}{M}\le2^{-\lambda_Q}$, together with an ungrindable uniform
-    selection of the opened instances. The setup time and kept-instance storage
-    must be recomputed for those parameters.
-  \item The pre-signed graph needs post-quantum transaction authorization.
-    Bitcoin currently has no general post-quantum signature opcode. QSB gives a
-    non-standard hash-based spend under existing consensus rules, but adapting
-    it to the committee-authorized, timelocked graph is unstudied here.
-\end{itemize}
-Applying only the first three factors to the measured $2^{18}$ verifier profile
-gives a partial lower-bound estimate, not a 100-bit configuration measurement.
-Merkle paths and leaf hashes scale with the query count ($2.1\times$), and leaves
-also with the element size ($2\times$), to about 45M gates. The transcripts
-absorb twice the bytes, about 24M. Multiplications triple, and those that depend
-on the queries also scale with them, to about 213M. The result is about 280M
-non-free gates, $3\times$ today's, and about 9\,GB garbled at 32 bytes per gate.
-It leaves Blake3-256 and its 85-bit quantum collision ceiling unchanged and
-excludes the replacement hash circuit, stronger cut-and-choose, input
-authentication and graph authorization. It is therefore not an estimate of a
-100-bit end-to-end protocol.
+\paragraph{Parameters for a quantum target.} No single rule doubles every
+classical parameter. Appendix~\ref{app:pqparams} lists the seven changes a
+100-quantum-bit target requires, about $2.1\times$ the WHIR queries, one more
+tower level, 256-bit labels, a hash with a wider digest and state, longer
+input preimages, stronger cut-and-choose and post-quantum transaction
+authorization, and estimates the first three at about 280M non-free gates and
+9\,GB garbled, $3\times$ today's, without the replacement hash or the
+protocol layers.
+
 
 % =====================================================================
 \section{Discussion and conclusion}\label{sec:discussion}
 
-We have shown that the verification path exercised by one no-public-input
-Keccak-$f$ configuration of Plonky3's Boolean-WHIR pipeline fits garbling well.
-At $2^{18}$ rows it has 94.1M non-free gates and a 1.5\,GB garbled artifact,
-about $30\times$ fewer non-free gates than the reported Boolean-garbled Groth16
-verifier, and the input shrinks further when the statement is itself a
-recursion proof: the verifier of the last of three narrow-recursion proofs of
-Ziren's binary stage takes 564{,}552 input bits and 218.0M non-free gates,
-measured on real proofs but resting on unreviewed changes to Plonky3 and Ziren,
-with a run that binds neither the zkVM program nor its outputs. This is a
-verifier-engineering result, not an end-to-end Bitcoin protocol, and the rest
-of this section says what stands between the two.
+We have measured what a garbled STARK dispute would publish on Bitcoin and
+reduced it. The $2^{18}$-row Keccak-$f$ verifier reads 1{,}041{,}024 input
+bits, whose Core-tested publication costs 2.22\,MvB with adaptor signatures
+and 7.86--17.27\,MvB with hash-based keys for one key set; WHIR tuning removes
+a fifth of the input, and the verifier of the last of three narrow-recursion
+proofs of Ziren's binary stage reads 564{,}552 bits in 218.0M non-free gates,
+measured on real proofs but resting on unreviewed changes to Plonky3 and Ziren
+and binding neither the zkVM program nor its outputs. The verifier that makes
+this possible has 94.1M non-free gates and a 1.5\,GB garbled artifact, about
+$30\times$ fewer non-free gates than the reported Boolean-garbled Groth16
+verifier. The rest of this section says what stands between these components
+and an end-to-end Bitcoin protocol.
 
 \paragraph{Input authentication dominates the measured components.} The
 largest measured on-chain component is revealing and authenticating the
@@ -1464,13 +1441,16 @@ for one key set costs 2.22--17.27\,MvB (Table~\ref{tab:onchain}); strict Core
 stages, none is an atomic unconfirmed graph, and only the Lamport fixture also
 tests a join. The hash-based rows assume the unimplemented soldering or
 multiply by $M$, and the independent seven-set projection is 55--121\,MvB
-before the transaction graph. WHIR tuning removes only a fifth of the input
+before the transaction graph.
+
+WHIR tuning removes only a fifth of the input
 (Table~\ref{tab:inputs}); equal-area narrow-statement models remove
 $37$--$58\%$ but need a new AIR; batching amortizes the input per permutation
 by $3.76\times$ without reducing the absolute input; and narrow recursion
 reaches $0.54\times$ (Table~\ref{tab:recursion}) at the price of a recursion
-prover and of proof-system changes still to be reviewed. The approximately
-52-bit quantum figure applies to the measured proof-system parameters under
+prover and of proof-system changes still to be reviewed.
+
+The approximately 52-bit quantum figure applies to the measured proof-system parameters under
 the stated assumptions, cut-and-choose is configured at 40 statistical bits,
 and the current transaction authorization is not post-quantum. Before
 deployment, the construction needs public-input support, an implemented and
@@ -1488,7 +1468,9 @@ malicious-2PC wrapper turns malformed delivery into an abort rather than
 public evidence, so a withheld or malicious key leaves the evaluator with
 garbage labels and no reject label that opens \textsf{Disprove}; a publicly
 verifiable or penalizable Batch-Select, consistent across the $M$ kept
-garblings, is open. Segmented verification would instead commit once to a
+garblings, is open.
+
+Segmented verification would instead commit once to a
 fixed serialization of the proof, locate a faulty verifier segment by
 bisection and authenticate only the challenged chunk: for $N=1{,}041{,}024$
 bits in chunks of at most $B$ bits under a 256-bit Merkle tree, the data-only
@@ -1514,7 +1496,9 @@ as wide, at the price of $1.5$M \XOR{}s per product. Per-tree Merkle cap
 heights and a narrower AIR reduce the hashing and column terms; the recursion
 of Table~\ref{tab:recursion} does both, with a preprocessed tree read deep
 below its root and tables whose opened values are linear forms of their
-columns. At the other end of the graph, a Core-tested false-label-derived
+columns.
+
+At the other end of the graph, a Core-tested false-label-derived
 Taproot pointlock reduces the 16-byte-label Disprove spend from 97 to
 83\,vB when both outputs retain the same timeout sibling, a 14-vB
 micro-optimization that adds the discrete-logarithm assumption, does not
@@ -1528,8 +1512,8 @@ reveal the false label and cannot by itself constrain the payout outputs.
 \section{Bitcoin integration details}\label{app:protocol}
 
 This appendix holds the material that \S\ref{sec:protocol} summarizes: the
-hash-based label selection, its post-quantum instantiation, the four
-input-publication schemes as fixtures, and the executed dispute components.
+hash-based label selection, its post-quantum instantiation and the four
+input-publication schemes as fixtures.
 
 \subsection{Hash-based label selection}\label{app:hashsel}
 
@@ -1706,32 +1690,6 @@ binary-label authentication mechanism: the complete $2^{16}$ choice table and
 exclusive digit-to-binary-label delivery remain unimplemented. We therefore retain the
 8-bit construction as the authenticated baseline in Table~\ref{tab:onchain}.
 
-\subsection{Executed components}\label{app:executed}
-
-\paragraph{Executed components.} We ran the dispute components on a small circuit, with its
-on-chain steps executed as Bitcoin Script by \texttt{bitcoin-scriptexec}. The
-statement is knowledge of a 64-byte $x$ with $\blake(x)=h$: one Blake3
-compression, 512 input bits and 10{,}536 non-free gates. The operator garbles it
-at setup, before choosing $x$, and publishes Lamport hashes, translation
-ciphertexts, the labels of the two constant wires and $\mathrm{SHA256}$ of the
-reject label. Its Assert publication runs through a 25\,KB Lamport script under the
-1{,}000-item stack limit. The challenger derives the input labels from the
-published preimages and evaluates the stored garbling without $\Delta$ or any
-label it was not handed. For a true $x$ it obtains the accept label, which the
-Disprove hashlock script rejects; for $x$ with one bit changed it obtains the
-reject label, which opens it. Assert rejects a preimage outside the committed
-keys. We then ran the same dispute on the Keccak-$f$ STARK verifier at $2^5$
-rows. Garbled with every input at 0, it reads 586{,}240 input bits, which the
-operator publishes through 588 Assert scripts of at most 998 bits each,
-28.7\,MB of script in all, each executed under the stack limit. The challenger's
-evaluation of the stored garbling from the published labels gives the accept label
-on the real proof and the reject label, which opens Disprove, on the proof with
-one opened value changed. Signatures, timelocks and cut-and-choose are not part
-of either run. These runs validate individual input-publication,
-label-translation, evaluation and hashlock components for one garbling. They do
-not validate Figure~\ref{fig:graph}, multi-instance soldering, transaction
-policy or ledger-level security.
-
 % =====================================================================
 \section{Additional measurements}\label{app:eval}
 
@@ -1751,10 +1709,27 @@ the commands that rebuild the tapes. \texttt{Cargo.lock} pins Plonky3 at revisio
 are deterministic; wall-clock times are single-run engineering measurements
 on the machines above unless a range is stated.
 
-\subsection{Gate profile, WHIR parameters and ablation}\label{app:profile}
+\subsection{Gate profile, garbling efficiency, WHIR parameters and ablation}\label{app:profile}
+
+\paragraph{Garbling efficiency.} To compare garbled verifiers across trace sizes
+and AIRs, we define the \emph{garbling efficiency} of a configuration as
+\[
+  \eta \;=\; \frac{|\mathsf{GC}|}{R\cdot W}\quad\text{bytes per committed cell},
+\]
+where $|\mathsf{GC}|$ is the garbled circuit's size in bytes, 16 per non-free
+gate, $R$ the number of trace rows and $W$ the number of committed columns. It
+is a cost per unit of verified computation, so smaller is better. For our
+Keccak-$f$ AIR, $W=1{,}625$ and each cell is one bit. Because $|\mathsf{GC}|$
+grows with $\log R$ while $R\cdot W$ grows with $R$, $\eta$ falls almost in
+inverse proportion to the trace: from $13{,}715$ bytes per cell at $2^5$ rows
+through $2{,}556$, $186.9$ and $13.32$ at $2^8$, $2^{12}$ and $2^{16}$ to $3.53$ at
+$2^{18}$ and $0.94$ at $2^{20}$ (Table~\ref{tab:main}). At
+$2^{20}$ rows this is less than one garbled byte per committed bit: 7.5 garbled
+bits per bit, or 38\,kB per Keccak-$f$ permutation. Comparing $\eta$ across
+proof systems needs the same computation and cells of the same kind.
 
 Table~\ref{tab:profile} breaks the $2^{18}$-row verifier down by the phase that
-emits each gate, and Table~\ref{tab:ablation} isolates two of our choices on the
+emits each gate, and Table~\ref{tab:ablation} isolates the adder on the
 measured verifier.
 
 \begin{table}[t]\centering\small
@@ -1791,18 +1766,14 @@ gave the smallest circuit among the configurations we kept; rate $1/64$ saved a
 further $10\%$ of gates at the price of a prover domain twice as large.
 
 \begin{table}[t]\centering\small
-\begin{tabular}{lrrr}\toprule
-configuration & non-free gates & peak memory & time\\\midrule
-$2^5$ rows, this work (streamed) & 44{,}573{,}121 & 0.69\,GiB & 33\,s (plan + garble)\\
-$2^5$ rows, stored build & 44{,}573{,}121 & 12.4\,GiB & 283\,s (build only)\\
-$2^5$ rows, original Blake3 adder & 58{,}997{,}590 ($+32\%$) & -- & --\\\midrule
-$2^8$ rows, this work & 66{,}459{,}859 & -- & --\\
-$2^8$ rows, original Blake3 adder & 85{,}768{,}603 ($+29\%$) & -- & --\\\bottomrule
+\begin{tabular}{lr}\toprule
+configuration & non-free gates\\\midrule
+$2^5$ rows, this work & 44{,}573{,}121\\
+$2^5$ rows, original Blake3 adder & 58{,}997{,}590 ($+32\%$)\\\midrule
+$2^8$ rows, this work & 66{,}459{,}859\\
+$2^8$ rows, original Blake3 adder & 85{,}768{,}603 ($+29\%$)\\\bottomrule
 \end{tabular}
-\caption{The one-\AND{} adder removes about a quarter of the verifier's gates, and
-streaming cuts memory $18\times$. Peak memory is the whole process's, including
-proof generation, which is negligible at $2^5$ rows; the stored build's time
-excludes garbling.}
+\caption{The one-\AND{} adder removes about a quarter of the verifier's gates.}
 \label{tab:ablation}
 \end{table}
 
@@ -1869,9 +1840,9 @@ size its challenge bond to the resulting complete graph.
 
 \subsection{Input sweep}\label{app:inputs}
 
-Table~\ref{tab:inputs} gives the input bits of the $2^{18}$-row verifier by
-proof component for the measured configuration and for the smallest
-configuration in the sweep of \S\ref{sec:eval}. The equal-area
+Table~\ref{tab:inputs} in \S\ref{sec:eval} gives the input bits of the
+$2^{18}$-row verifier by proof component for the measured configuration and
+for the smallest configuration in the sweep. The equal-area
 narrow-statement models of \S\ref{sec:eval}, widths 128 and 32 at heights
 $2^{22}$ and $2^{24}$, reduce the input by $36.6\%$ and $38.9\%$ under the
 current WHIR profile and by $55.4\%$ and $57.6\%$ with the best swept
@@ -1881,30 +1852,10 @@ and prover-cost caveats of grinding. Recursion into a proof whose own WHIR
 opening is still some $0.37$M bits at these parameters is the other route
 below the floor.
 
-\begin{table}[t]\centering\small
-\begin{tabular}{lrr}\toprule
-component & measured & tuned\\\midrule
-opened values (current and next row) & 416{,}000 & 416{,}000\\
-zerocheck and ring switch & 64{,}256 & 64{,}256\\
-WHIR Merkle paths & 346{,}624 & 239{,}616\\
-WHIR leaf rows & 163{,}840 & 92{,}160\\
-WHIR caps, OOD answers, sumchecks, final polynomial & 50{,}304 & 33{,}920\\\midrule
-total input bits & 1{,}041{,}024 & 845{,}952\\
-STIR queries per round & $33+20+15+12$ & $16+12+9+8$\\
-rate, folding, grinding budget & $1/32$, 4, 32 & $1/256$, 4, 48\\
-composed soundness (bits) & 104.3 & 103.9\\\bottomrule
-\end{tabular}
-\caption{Tuning WHIR removes a fifth of the input, and the AIR's opened values set
-the floor. Input bits at $2^{18}$ rows by proof component, for the measured
-configuration and the smallest configuration found in the sweep; 128 bits per field element and 256
-per digest, with full Merkle paths below each cap.}
-\label{tab:inputs}
-\end{table}
-
 \subsection{Narrow recursion}\label{app:recursion}
 
-Table~\ref{tab:recursion} lists every verifier of the narrow-recursion
-experiment of \S\ref{sec:eval}; from the third row on, each is a level-4 proof
+Table~\ref{tab:recursion} in \S\ref{sec:eval} lists every verifier of the
+narrow-recursion experiment; from the third row on, each is a level-4 proof
 re-proved from the same level-3 tape at the Johnson rate $1/1024$ and
 re-recorded. The tape machine can bind up to eight of a tape's first inputs as
 public values, enough for the binary stage's public-value digest, which commits
@@ -1913,27 +1864,6 @@ translate a tape gate by gate in the \texttt{binary\_tape} module of
 \texttt{whir-gc}, and Ziren's \texttt{binary-recursion} crate records the
 tapes.
 
-\begin{table}[t]\centering\small
-\begin{tabular}{lrrr}\toprule
-verifier & input bits & non-free gates & garbled\\\midrule
-binary stage (level 1) & 18{,}050{,}304 & 3{,}371.4M & 53.94\,GB\\
-narrow recursion, level 2, Ziren \texttt{9398469a} & 2{,}356{,}864 & 473.9M & 7.58\,GB\\
-level 4, rate $1/1024$, 64-byte rewiring rows & 1{,}248{,}384 & 231.2M & 3.70\,GB\\
-\quad + known opened values as constants & 1{,}137{,}536 & 226.8M & 3.63\,GB\\
-\quad + one tensor for claims sharing a point & 1{,}006{,}464 & 221.7M & 3.55\,GB\\
-\quad + 200-bit Merkle digests & 895{,}504 & 220.2M & 3.52\,GB\\
-\quad + packed operand columns & 834{,}832 & 219.2M & 3.51\,GB\\
-\quad + linear forms, per-round folds, deep preprocessed cap & 643{,}688 & 215.8M & 3.45\,GB\\
-\quad + one ring switch per pair, eq-factored bus rounds & 603{,}112 & 216.5M & 3.46\,GB\\
-\quad + affine preprocessed forms, one shared forms sumcheck & 574{,}952 & 217.8M & 3.48\,GB\\
-\quad + preprocessed cap 18 layers deep & \textbf{564{,}552} & 218.0M & 3.49\,GB\\\bottomrule
-\end{tabular}
-\caption{Narrow recursion removes the statement's width from the garbled
-verifier's input. Exact counts for Ziren's binary stage and for the verifier of its narrow-recursion proofs (level 2 with 26-bit addresses, the
-smallest that fit the real tape); the rows below the third use the experimental
-changes listed below.}
-\label{tab:recursion}
-\end{table}
 
 The steps combine recording choices with changes to the proof system. The
 recorder reads opened values the verifier already knows (padding and constant
@@ -2006,4 +1936,148 @@ row is measured: the verifier of the last narrow-recursion proof
 whose proof system carries the unreviewed changes of Appendix~\ref{app:recursion}.}
 \label{tab:starkgc}
 \end{table}
+% =====================================================================
+\section{Security details}\label{app:security}
+
+This appendix holds the proof-system soundness figures behind
+\S\ref{sec:security} and the derivation of the quantum estimates of
+Table~\ref{tab:pq}.
+
+\paragraph{Soundness of the proof system.} We use Plonky3's own security
+assessment of each configuration as the input to the classical accounting of
+\S\ref{sec:security}. The
+proximity terms are in the Johnson list-decoding regime
+(Table~\ref{tab:security}). The quantum conversion in \S\ref{sec:pq}
+additionally assumes round-by-round soundness for the sumcheck-based layers.
+At $2^{18}$ rows the binding term is the WHIR opening at $104.3$ bits (110 bits per
+term, rate $1/32$, folding factor 4, proof of work up to 32 bits). The other terms
+are constraint batching $109.0$, zerocheck $114.5$ and its sumcheck $113.5$, bit
+ring switch $114.0$, column batching $115.2$, and commitment and transcript
+collisions $128$ (Blake3). We write $\varepsilon_{\mathrm{STARK}}(t)$ for the
+composed error against an adversary making $t$ hash queries; Plonky3's report
+states it as bits of security, $104.3$ at $2^{18}$ rows, meaning that
+$\varepsilon_{\mathrm{STARK}}(t)\le t\cdot2^{-104.3}$ for a classical adversary; \S\ref{sec:pq} gives the quantum bound.
+
+\begin{table}[t]\centering\small
+\begin{tabular}{lrrrrrr}\toprule
+trace rows & $2^5$ & $2^8$ & $2^{12}$ & $2^{16}$ & $2^{18}$ & $2^{20}$\\\midrule
+composed soundness (bits) & 106.1 & 105.2 & 104.7 & 104.3 & 104.3 & 104.0\\\bottomrule
+\end{tabular}
+\caption{Soundness stays at about 104 bits at every measured size, 103.95 at $2^{20}$ rows. The values are
+Plonky3's composed soundness for each configuration.}
+\label{tab:security}
+\end{table}
+
+\paragraph{Fiat--Shamir against quantum adversaries.} In the quantum random-oracle
+model, Chiesa, Manohar and Spooner~\cite{cms19qrom} show that applying
+Fiat--Shamir with a hash to a public-coin interactive oracle proof with
+round-by-round soundness error $\varepsilon_{\mathrm{rbr}}$ bounds the success
+of a quantum adversary that makes $t$ hash queries by
+$O(t^2\varepsilon_{\mathrm{rbr}}+t^3/2^{\lambda})$, where $\lambda=256$ is the
+digest length. A classical adversary is bounded by
+$O(t\,\varepsilon_{\mathrm{rbr}})$.
+
+WHIR has round-by-round soundness~\cite[\S5]{whir25}. For the
+sumcheck-based layers (zerocheck, column batching, ring switch) we assume it, as
+is standard for sumcheck, with each of Plonky3's terms as the round error. A
+round with error $2^{-a}$ therefore offers about $a/2$ bits
+against a quantum adversary, and Grover search~\cite{grover96} attains this
+generically when the bad challenges form an unstructured set. Proof-of-work
+grinding is generic search too: $b$ bits of grinding cost $2^{b}$ hashes
+classically and about $2^{b/2}$ quantumly.
+
+\paragraph{The proof system at our parameters.} At $2^{18}$ rows each WHIR term
+targets 110 bits, of which grinding supplies 26 to 32 bits (per round: 33
+queries with 30 and 28 bits of grinding, 20 with 32 and 30, 15 with 29 and 32, and
+12 terminal queries with 27). Both parts halve under quantum search, so each WHIR
+term offers about 55 bits, and the composed $104.3$ bits become about 52. The
+algebraic terms (zerocheck $114.5$, its sumcheck $113.5$, ring switch $114.0$,
+column batching $115.2$, constraint batching $109.0$) are Schwartz--Zippel errors
+over the $2^{128}$-element field and offer 54 to 58 bits. They are capped by the
+field: no number of queries raises them. Collisions in the 256-bit Blake3
+digests cost about $2^{85}$ quantum queries~\cite{bht98}, and preimages
+$2^{128}$.
+
+\paragraph{The ceiling of the current configuration space.} Raising Plonky3's
+per-term target does not raise the quantum level. We searched the target that
+the proven-list-decoding profile accepts at $2^{18}$ rows. Up to 134 bits per term
+it keeps the queries at $33+20+15+12$ and raises the grinding to 51--56 bits,
+its ceiling; at 200 bits it refuses, needing 103 bits of grinding. Plonky3's
+security report fully assesses targets up to 117 bits per term, where the
+composed soundness is $108.6$ bits, bound by constraint batching at $109.0$, a
+field-size term no WHIR parameter moves. Grinding and the field-bound terms both
+halve under quantum search, so no configuration of the current proof system
+exceeds about 54 quantum bits. Reaching a quantum target is a change to the
+proof system, not to its parameters.
+
+\paragraph{The garbling.} Authenticity rests on the secrecy of $\Delta$, and
+$\Delta$ can be tested against a single gate. An evaluator holding the labels
+$a,b$ of an \AND{} gate with known values $x,y$ and its ciphertext $\mathit{ct}$
+checks a candidate $\Delta'$ by recomputing $\mathit{ct}$ from
+$a,a\oplus\Delta',b$ and $\Delta'$. A wrong candidate passes with probability
+$2^{-128}$. Grover search therefore recovers $\Delta$ with about $2^{64}$
+quantum evaluations of Blake3, after which every label's complement is known
+and the output label of the other value is free. With 128-bit labels the
+garbling offers about 64 bits against a quantum adversary. The same holds for a
+hashlock on a 128-bit output label: a preimage search over $2^{128}$ labels costs
+about $2^{64}$. Grover search is highly sequential, and the adversary has only the
+time between setup and the end of the dispute window, but we do not rely on
+this.
+
+% =====================================================================
+\section{Parameters for a quantum target}\label{app:pqparams}
+
+There is no single rule that
+doubles every classical parameter. Fiat--Shamir and preimage-search terms need
+about $2\lambda_Q$ classical bits, generic collision search on an $n$-bit digest
+costs about $2^{n/3}$ quantum queries, and an information-theoretic
+cut-and-choose error must itself be at most $2^{-\lambda_Q}$. Seven changes
+follow.
+\begin{itemize}
+  \item The WHIR terms need about $2\lambda_Q$ bits each. Since grinding also
+    halves, the query count must carry most of it: from about 80
+    information-theoretic bits per term today to about 168 at $\lambda_Q=100$,
+    about $2.1\times$ the queries. Plonky3's profile raises grinding instead,
+    so this needs a query-heavy profile.
+  \item The algebraic terms need challenges from a field of about
+    $2^{2\lambda_Q+14}$ elements, which means one more tower level,
+    $\mathbb{F}_{2^{256}}$, at $3^8=6{,}561$ \AND{} gates per multiplication, three
+    times today's. Repeating each algebraic check with independent challenges is
+    an alternative at a similar cost.
+  \item Labels of $2\lambda_Q$ bits: 256-bit labels double the ciphertext size to
+    32 bytes per non-free gate. The gate count is unchanged, because labels feed
+    the garbling hash, not the circuit.
+  \item Merkle commitments and the transcript need a hash that withstands
+    $2^{\lambda_Q}$ quantum collision search. Generic collision search therefore
+    calls for at least a $3\lambda_Q$-bit digest and a sufficiently wide internal
+    state. Blake3-256 caps this component near 85 quantum bits; requesting a
+    longer XOF output does not widen its 256-bit chaining value. A replacement
+    hash circuit and its cost remain to be designed and measured.
+  \item For $T$ possible input-authentication targets, 100 quantum bits require
+    at least $200+\lceil\log_2 T\rceil$ bits of preimage entropy under a hash
+    wider than 160 bits: about 220 bits for one key set and 223 for seven.
+    Byte-aligned 28-byte preimages under \texttt{SHA256} meet this generic
+    target, but that construction and its larger witness cost remain to be
+    designed and measured.
+  \item Cut-and-choose needs parameters satisfying
+    $1/\binom{N}{M}\le2^{-\lambda_Q}$, together with an ungrindable uniform
+    selection of the opened instances. The setup time and kept-instance storage
+    must be recomputed for those parameters.
+  \item The pre-signed graph needs post-quantum transaction authorization.
+    Bitcoin currently has no general post-quantum signature opcode. QSB gives a
+    non-standard hash-based spend under existing consensus rules, but adapting
+    it to the committee-authorized, timelocked graph is unstudied here.
+\end{itemize}
+Applying only the first three factors to the measured $2^{18}$ verifier profile
+gives a partial lower-bound estimate, not a 100-bit configuration measurement.
+Merkle paths and leaf hashes scale with the query count ($2.1\times$), and leaves
+also with the element size ($2\times$), to about 45M gates. The transcripts
+absorb twice the bytes, about 24M. Multiplications triple, and those that depend
+on the queries also scale with them, to about 213M. The result is about 280M
+non-free gates, $3\times$ today's, and about 9\,GB garbled at 32 bytes per gate.
+It leaves Blake3-256 and its 85-bit quantum collision ceiling unchanged and
+excludes the replacement hash circuit, stronger cut-and-choose, input
+authentication and graph authorization. It is therefore not an estimate of a
+100-bit end-to-end protocol.
+
 \end{document}
