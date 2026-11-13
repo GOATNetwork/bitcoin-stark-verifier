@@ -22,5 +22,5 @@ to the test that regenerates it, and `make verify-data` checks the checksums.
 The Plonky3 and Ziren commits behind the narrow-recursion figures, and the
 commands that rebuild their tapes, are in [`../patches/`](../patches/README.md).
 
-Still to do before release: the author list, and the open points in
+Still to do before release: the open points in
 `notes.md` §8.
