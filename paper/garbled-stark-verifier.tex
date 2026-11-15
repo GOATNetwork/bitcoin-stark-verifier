@@ -67,11 +67,10 @@ and Blake3. Our
 implementation uses Ziren's binary-field proof stage and narrow recursion.
 For an Ethereum block proved through four recursion levels, the final
 recursive WHIR-proof verifier has
-175.4M non-free gates and $520{,}832$ input bits, corresponding to
-2.81\,GB of garbled tables, and the block reaches its final proof in about
-20 minutes on at most four GPUs. The transactions publishing that input with translated
-Winternitz keys have a total virtual size of 3.93 million virtual bytes (MvB)
-for one key set, in 41 transactions within Bitcoin's standard size limit.
+174.5M non-free gates and $504{,}240$ input bits, corresponding to
+2.79\,GB of garbled tables. The transactions publishing that input with translated
+Winternitz keys have a total virtual size of 3.81 million virtual bytes (MvB)
+for one key set, in 39 transactions within Bitcoin's standard size limit.
 \end{abstract}
 
 \noindent\textbf{Keywords:} Bitcoin bridges; post-quantum security;
@@ -185,19 +184,18 @@ and the transaction layer have the separate assumptions stated in
     publishing its input must solve, and price four one-time input schemes
     using signed transaction serializations for the final verifier input.
     We separate the measured component for one input-key set from two unimplemented parts: the transaction graph, and the soldering that lets one key set select the same labels in every kept garbling (\S~\ref{sec:dispute}, \S~\ref{sec:input}). The component
-    measures 1.11\,MvB with the 8-bit adaptor baseline and 3.93--8.64\,MvB
-    per hash-based key set for the final Ziren verifier's 520{,}832-bit input,
+    measures 1.08\,MvB with the 8-bit adaptor baseline and 3.81--8.36\,MvB
+    per hash-based key set for the final Ziren verifier's 504{,}240-bit input,
     against a few thousand virtual bytes for Groth16. We also
     serialize a hash-based construction that would match the adaptor cost under a proposed batch hash-verification opcode.
   \item \textbf{Circuit-input reduction (C2).} Narrow recursion over Ziren's binary
-    stage yields a final verifier input of $520{,}832$ bits for a real
+    stage yields a final verifier input of $504{,}240$ bits for a real
     Ethereum block. The construction combines
     aligned narrow layouts, fixed-data specialization, compressed linear-form
     openings, a closing column sumcheck that sends no opened value, shared
     reductions and commitment-parameter tuning
     (\S~\ref{sec:reduce}, Appendix~\ref{app:recursion}).
-    The block reaches its final proof in about 20 minutes on at most four
-    GPUs. A model derives proof size and the distribution of proving time
+    A model derives proof size and the distribution of proving time
     from the WHIR schedule (\S~\ref{sec:cost_model}).
   \item \textbf{Circuit compilation of the recursive verifier (C1).}
     We compile the verifier produced by Ziren's binary stage and narrow
@@ -1293,25 +1291,30 @@ compiled verifier's non-free gate count at 16 bytes per gate, and derive
 input-publication costs from its input encoding. Following the
 recording and compilation procedure of \S~\ref{sec:tape}, after four recursion
 levels and the optimizations of \S~\ref{sec:reduce}, the verifier
-of the last proof has 520{,}832 input bits, comprising 79{,}360 bits from
-byte-valued inputs and 441{,}472 bits from field-valued inputs, in 175.4M non-free gates
-and an estimated 2.81\,GB of garbled tables. The public-value digest adds at most 1{,}024 bits (0.20\%) to this input. This verifier is compiled from a
+of the last proof has 504{,}240 input bits, comprising 76{,}336 bits from
+byte-valued inputs and 427{,}904 bits from field-valued inputs, in 174.5M non-free gates
+and an estimated 2.79\,GB of garbled tables. The public-value digest adds at most 1{,}024 bits (0.20\%) to this input. This verifier is compiled from a
 recorded execution on the block's real final proof. The archived run accepts that proof,
-rejects three single-input changes, records agreement on all 10{,}121{,}640
+rejects three single-input changes, records agreement on all 10{,}119{,}458
 intermediate values and performs a full streaming garbling of the
-175{,}411{,}008 non-free gates, in 121\,s on one core, with acceptance output 1.
+174{,}494{,}057 non-free gates, in 122\,s on one core, with acceptance output 1.
 These checks exercise the
 recorded execution and selected mutations. Small synthetic-tape regressions
 separately check zero inversion, selector and byte ranges, and Blake3 slot
 padding.
 
 \paragraph{Effect of the final reductions.} The dead-operation pass omits
-300{,}771 operations of the final tape, and the deep cap at depth $\kappa=18$
-removes 40{,}656 input bits from the uncapped final verifier. The closing
-column sumcheck sends 126 column folds and the round values in place of 1{,}744
-opened values and shrinks the final proof from 102{,}766 to 79{,}219 bytes.
-Without the deep cap, it lowers the final verifier's input from 768{,}592 to
-561{,}488 bits and raises its size from 125.4M to 176.7M non-free gates.
+300{,}771 operations of the final tape. We measured the other reductions on
+the final level without the kept domain, proved from the same level-3 proof.
+There the deep cap at depth $\kappa=18$ removes 40{,}656 input bits from the
+uncapped final verifier. The closing column sumcheck sends 126 column folds
+and the round values in place of 1{,}744 opened values and shrinks the final
+proof from 102{,}766 to 79{,}219 bytes. Without the deep cap, it lowers the
+final verifier's input from 768{,}592 to 561{,}488 bits and raises its size
+from 125.4M to 176.7M non-free gates. With the deep cap, the input is
+520{,}832 bits in 175.4M non-free gates; keeping the first round's domain
+then removes 16{,}592 bits (3.2\%) and 0.9M non-free gates and shrinks the
+proof to 76{,}103 bytes.
 
 \begin{table}[t]\centering\small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{llrrr}\toprule
@@ -1320,26 +1323,31 @@ shards and compression & Ziren GPU prover, 2 cards & 511{,}766\,B & -- & 177.7\,
 level 1 & rate $1/32$, fold 3, $\le33$-bit grinding & 329{,}412\,B & 3.9\,s & 2.3\,s\\
 level 2 & rate $1/32$, fold 4, $\le36$-bit grinding & 321{,}492\,B & 2.0\,s & 2.2\,s\\
 level 3 (narrow) & rate $1/256$, fold 4, $\le41$-bit grinding & 191{,}241\,B & 37.5\,s & 120.4\,s\\
-level 4 (narrow, final) & rate $1/1024$, folds 4-5-4-4, $\le44$-bit grinding & 79{,}219\,B & 70.9\,s & 752.4\,s\\\bottomrule
+level 4 (narrow, final) & rate $1/1024$, folds 4-5-4-4, $\le46$-bit grinding & 76{,}103\,B & 68.6\,s & 2{,}224.3\,s\\
+\quad without kept domain & rate $1/1024$, folds 4-5-4-4, $\le44$-bit grinding & 79{,}219\,B & 70.9\,s & 752.4\,s\\\bottomrule
 \end{tabular}
 \caption{Proving Ethereum block 26{,}206{,}588 to the final proof on RTX~5090 cards and 64 host cores. Setup is the time to build a level's proving keys. The shards-and-compression row is one run on two cards
-with proving keys built cold (162.4\,s with keys reused). The four recursion levels are one job on four cards,
-996\,s of wall time including recording and checking each level. Levels 1
+with proving keys built cold (162.4\,s with keys reused). Levels 1 to 3 and
+level 4 without the kept domain are one job on four cards, 996\,s of wall
+time including recording and checking each level. The final level 4, whose
+first round keeps its domain, was proved from the same level-3 proof. Levels 1
 and 2 prove on the cards. Levels 3 and 4 prove on the host, since at rate
 $1/1024$ the final codeword has about $2^{33}$ field elements, beyond a card's
 32\,GB, and grind on all four cards. Proof sizes are those of each level's output.}
 \label{tab:proving}
 \end{table}
 
-\paragraph{Proving cost.} From the block to the final proof the prover takes
-1{,}174\,s of wall time on at most four cards (Table~\ref{tab:proving}), or
-1.21 card-hours: 0.10 for the shards and compression and 1.11 for the
-recursion job. Most of the final level's time is proof-of-work grinding, whose
-length depends on where each search's smallest passing nonce falls. The
-transcript fixes those nonces, so a rerun of the same proof repeats the same
-searches: an earlier run of the level took 738.2\,s. The rerun reproduced
-every level's earlier proof byte for byte, since the prover, including its
-multi-card grinding, is deterministic. Another statement draws new nonces;
+\paragraph{Proving cost.} From the block to the final proof the stages of
+Table~\ref{tab:proving} take 2{,}643\,s on at most four cards: the shards and
+compression, then the job's 996\,s with the final level's setup and proving in
+place of those without the kept domain. That is 2.84 card-hours: 0.10 for the
+shards and compression and 2.74 for the recursion levels. Most of the final
+level's time is proof-of-work grinding, whose length depends on where each
+search's smallest passing nonce falls. The transcript fixes those nonces, so a
+rerun of the same proof repeats the same searches: an earlier run of the level
+without the kept domain took 738.2\,s, and the job reproduced every level's
+earlier proof byte for byte, since the prover, including its multi-card
+grinding, is deterministic. Another statement draws new nonces;
 \S~\ref{sec:cost_eval} gives the resulting distribution.
 
 \paragraph{Independent-proof recorder regression.} On the public reconstruction of an earlier configuration (Appendix~\ref{app:artifact}), with its digests' collision bound corrected, we generated two
@@ -1357,84 +1365,88 @@ reconstruction and test commands.
 
 \subsection{Proof size and proving cost}\label{sec:cost_eval}
 
-The measurements above are one run of a randomized prover under one schedule.
+The measurements above are single runs of a randomized prover.
 This subsection instantiates the model of \S~\ref{sec:cost_model}, whose
 rules reproduce every query count and grinding difficulty the configuration
 selects.
 
 \paragraph{Schedule and size.} The final commitment packs $v=23$ variables.
-The final level, at $\rho_0=10$ with folds 4-5-4-4, has $b=37,39,42,44$, so
-$g=44$, $t=13,10,8,7$ and $p=44,44,41,39$. Level 3, at $\rho_0=8$ with five
-folds of four, has $b=33,\dots,41$ and $t=18,13,10,8,7$. For the final
-schedule, $E_W=1{,}116$, $D_W=1{,}264$ and $D_\kappa=190$ at $\kappa=18$, so
-the WHIR opening accounts for 357{,}648 of the 520{,}832 input bits, with
-$I_A=163{,}184$ bits and $B_A=20{,}915$\,B, of which the bus product reduction
-is 11{,}706\,B. The size formula gives 58{,}304\,B for the final WHIR opening
-and 73{,}248\,B for level~3's, against 59{,}873\,B and 75{,}583\,B
-serialized. The 2.6\% and 3.1\% differences are serialization framing.
+The final level, at $\rho_0=10$ with folds 4-5-4-4 and a first round that
+keeps its domain, has $\rho_i=10,14,18,21$ and $b=37,41,44,46$, so $g=46$,
+$t=13,9,7,6$ and $p=44,46,46,46$. Without the kept domain, $\rho_i=10,13,17,20$
+and $b=37,39,42,44$, so $g=44$, $t=13,10,8,7$ and $p=44,44,41,39$. Level 3, at
+$\rho_0=8$ with five folds of four, has $b=33,\dots,41$ and
+$t=18,13,10,8,7$. Without the kept domain, $E_W=1{,}116$, $D_W=1{,}264$ and
+$D_\kappa=190$ at $\kappa=18$, so the WHIR opening accounts for 357{,}648 of
+that verifier's 520{,}832 input bits; this calibrates $I_A=163{,}184$ bits and
+$B_A=20{,}915$\,B, of which the bus product reduction is 11{,}706\,B. The final
+schedule has $E_W=1{,}052$, $D_W=1{,}220$ and the same $D_\kappa$, for which
+the model predicts 503{,}840 input bits, 0.08\% below the measured 504{,}240.
+The size formula gives 55{,}872\,B for the final WHIR opening, 58{,}304\,B
+without the kept domain and 73{,}248\,B for level~3's, against 56{,}753,
+59{,}873 and 75{,}583\,B serialized. The 1.6--3.1\% differences are
+serialization framing.
 
 \paragraph{Grinding.} The final level grinds 22 times. Five 37-bit grinds
 cover the paired opening and the first stage. Each round then has a query
-grind and one grind per folded variable: 44 bits and five of 39, 44 and four
-of 42, then 41 and four of 44. A 39-bit terminal grind ends the run. Hence
-$\mathbb{E}[W]=2^{44}(6+4\cdot2^{-2}+2^{-3}+6\cdot2^{-5}+5\cdot2^{-7})
-=7.35\cdot2^{44}\approx1.29\cdot10^{14}$, with standard deviation
-$2.50\cdot2^{44}$. The four 44-bit folding grinds are 54\% of the expected
-work. The final proof's 22 nonces sum to $1.011\cdot10^{14}$, tested in
-610.0\,s of logged search time. This gives $4\nu=1.66\cdot10^{11}$, or
-$\nu=4.14\cdot10^{10}$ per card, at one Blake3 compression per candidate.
-Every search longer than five seconds ran within 0.5\% of this rate. The
-realized work is $0.78\,\mathbb{E}[W]$, at the 28th percentile of its
-distribution; level~3's 26 nonces give $0.73\,\mathbb{E}[W]$. The remaining
-host work is 128\,s at the final level and 51\,s at level~3.
+grind and one grind per folded variable: 44 bits and five of 41, 46 and four
+of 44, then 46 and four of 46. A 46-bit terminal grind ends the run. Hence
+$\mathbb{E}[W]=2^{46}(7+5\cdot2^{-2}+5\cdot2^{-5}+5\cdot2^{-9})
+=33.7\cdot2^{44}\approx5.92\cdot10^{14}$, with standard deviation
+$10.8\cdot2^{44}$; the seven 46-bit grinds are 83\% of it. The level without
+the kept domain logged its 22 searches: their nonces sum to
+$1.011\cdot10^{14}$, tested in 610.0\,s. This gives
+$4\nu=1.66\cdot10^{11}$, or $\nu=4.14\cdot10^{10}$ per card, at one Blake3
+compression per candidate. Every search longer than five seconds ran within
+0.5\% of this rate. The final proof's nonces sum to $0.55\,\mathbb{E}[W]$, at
+the 5th percentile of its distribution, which is 1{,}965\,s of grinding at
+this rate. The remaining host work is 259\,s at the final level, twice the
+128\,s without the kept domain because the kept round commits a codeword
+twice as large, and 51\,s at level~3, whose 26 nonces give
+$0.73\,\mathbb{E}[W]$.
 
-Replace the two narrow levels' realized grinding, 679\,s on four cards, by
-its distribution. From block to final proof, the expectation is 1{,}369\,s (22.8\,min) and 1.42 card-hours. The 90th and 99th percentiles are 1{,}724\,s and 2{,}136\,s (35.6\,min). The measured 1{,}174\,s run falls below
-the median. One card grinds four times longer: the final level alone expects
-3{,}121\,s.
+Replace the two narrow levels' realized grinding, 2{,}034\,s on four cards, by
+its distribution. From block to final proof, the expectation is 4{,}276\,s
+(71.3\,min) and 4.65 card-hours. The 90th and 99th percentiles are 5{,}801\,s
+and 7{,}537\,s (125.6\,min); the measured run falls at the 5th
+percentile. One card grinds four times longer: the final level alone expects
+14{,}294\,s.
 
 \begin{table}[t]\centering\small\setlength{\tabcolsep}{3.5pt}
 \begin{tabular}{lcccrrrr}\toprule
 final-level schedule & $t_i$ & $g$ & $\mathbb{E}[W]$ & input bits & proof & $\mathbb{E}$ grind & 99\%\\\midrule
-rate $1/1024$, 4-5-4-4 (used) & 13,10,8,7 & 44 & $7.35\cdot2^{44}$ & 520{,}832 & 79{,}219\,B & 780\,s & 1{,}540\,s\\
-\quad first round keeps its domain & 13,9,7,6 & 46 & $33.7\cdot2^{44}$ & 504{,}240 & 76{,}103\,B & 3{,}573\,s & 6{,}800\,s\\
+rate $1/1024$, 4-5-4-4, kept domain & 13,9,7,6 & 46 & $33.7\cdot2^{44}$ & 504{,}240 & 76{,}103\,B & 3{,}573\,s & 6{,}800\,s\\
+\quad without kept domain & 13,10,8,7 & 44 & $7.35\cdot2^{44}$ & 520{,}832 & 79{,}219\,B & 780\,s & 1{,}540\,s\\
 rate $1/2048$, 4-4-5-4 & 12,9,8,6 & 46 & $27.8\cdot2^{44}$ & 501{,}744 & 76{,}147\,B & 2{,}949\,s & 5{,}970\,s\\
 rate $1/2048$, 4-5-4-4 & 12,9,7,6 & 46 & $33.3\cdot2^{44}$ & 497{,}344 & 75{,}443\,B & 3{,}533\,s & 6{,}760\,s\\
 rate $1/4096$, 4-4-5-4 & 11,9,7,6 & 48 & $81.9\cdot2^{44}$ & 490{,}752 & 74{,}227\,B & 8{,}691\,s & 19{,}000\,s\\\bottomrule
 \end{tabular}
 \caption{Final-level WHIR schedules under the model of
-\S~\ref{sec:cost_model}. Input bits and proof sizes follow
-\eqref{eq:inputbits}, with the algebraic part calibrated on the used
-schedule. The first two rows are measured; the model predicts 503{,}840 bits
-and 76{,}787\,B for the second. Grinding times are expectations on four cards
-at the measured rate; the last column is the 99th percentile of the grinding
-time.}
+\S~\ref{sec:cost_model}. The first row is the used schedule, whose first
+round keeps its domain. The first two rows are measured; the others follow
+\eqref{eq:inputbits}, with the algebraic part calibrated on the second.
+Grinding times are expectations on four cards at the measured rate; the last
+column is the 99th percentile of the grinding time.}
 \label{tab:schedules}
 \end{table}
 
 \paragraph{Alternative schedules.} Table~\ref{tab:schedules} applies the model
-to schedules that read fewer input bits, each at the price of higher late
-folding grinds. Reading 19{,}088 fewer bits (3.7\%) at rate $1/2048$ costs 3.8
-times the expected grinding. The kept-domain schedule costs 4.6 times the
-grinding without enlarging the first codeword. We proved it on the same
-block from the same level-3 proof. Its verifier reads 16{,}592 (3.2\%) fewer
-bits than the used schedule's, has 174.5M non-free
-gates and 2.79\,GB of garbled tables; it accepts the proof, rejects tampered
-inputs and garbles by streaming with output 1. Its level 4 took 2{,}224\,s on
-four cards, of which 259\,s is host work, twice the used schedule's because the
-kept round commits a codeword twice as large. The grinding drew
-$0.55\,\mathbb{E}[W]$, so its expected proving time is about 3{,}830\,s. Rate
-$1/2048$ doubles that codeword to $2^{34}$ field elements, and the narrow
-prover's host memory grows with it. We swept rates $1/512$ to $1/4096$,
-eighteen per-round fold sequences and the constant one, every kept-domain
-mask of the first three rounds, and query-grinding allowances up to 48 bits.
-No schedule in that sweep reads fewer input bits than the used one at the
+to other final-level schedules. Without the kept domain, the final level expects 0.22 times
+the grinding, and block to final proof expects 1{,}369\,s (22.8\,min) and
+1.42 card-hours; its measured stages took 1{,}174\,s. At rate $1/2048$,
+schedules read fewer bits than the used one with less grinding, but they
+double the first codeword to $2^{34}$ field elements, and the narrow prover's
+host memory grows with it. Under the model we swept rates $1/512$ to
+$1/4096$, every sequence of three to six stages folding two to seven variables
+each and leaving two to nine to the final polynomial, every kept-domain mask
+of the first three rounds, and query-grinding allowances up to 48 bits. At
+rate $1/1024$, no schedule reads fewer input bits than the used one at the
 same expected grinding or less.
 
 \subsection{Publishing the final verifier input}\label{sec:publication_eval}
 
 We serialize the four input-authentication schemes for the final Ziren
-verifier's 520{,}832 input bits. Table~\ref{tab:ziren_publication} includes
+verifier's 504{,}240 input bits. Table~\ref{tab:ziren_publication} includes
 selection witnesses, transaction-binding signatures, authentication scripts,
 control blocks and the reveal transactions' fixed fields. Every selected leaf is
 executed under the stack limit. These serializations have not been replayed
@@ -1443,29 +1455,29 @@ in Bitcoin Core.
 \begin{table}[t]\centering\small
 \begin{tabular}{lrrr}\toprule
 input mechanism & inputs & reveal transactions & component (kvB)\\\midrule
-Schnorr adaptor, 8-bit baseline & 67 & 12 & 1{,}111.863\\
-WOTS translation & 443 & 41 & 3{,}933.134\\
-Antichain $(2,16)$ & 393 & 66 & 5{,}928.181\\
-Lamport & 522 & 87 & 8{,}638.098\\\bottomrule
+Schnorr adaptor, 8-bit baseline & 65 & 11 & 1{,}076.391\\
+WOTS translation & 429 & 39 & 3{,}807.663\\
+Antichain $(2,16)$ & 380 & 64 & 5{,}739.303\\
+Lamport & 506 & 85 & 8{,}363.006\\\bottomrule
 \end{tabular}
 \caption{Input-publication costs for the complete Ziren narrow-recursion
-verifier, with 520{,}832 input bits and one input-key set. WOTS translation
+verifier, with 504{,}240 input bits and one input-key set. WOTS translation
 and Antichain use all-nonzero worst-case encodings. Adaptor, WOTS translation
 and Antichain have two outputs per reveal transaction; Lamport has one.
 Funding, completion, Disprove and the remaining dispute graph are excluded.
-Lamport's separately serialized join adds 6.557\,kvB.}
+Lamport's separately serialized join adds 6.408\,kvB.}
 \label{tab:ziren_publication}
 \end{table}
 
 \paragraph{Transactions, relay and confirmation.} Each reveal transaction
 stays below the 400{,}000 weight-unit limit of Bitcoin Core's standard relay
 policy, every witness item is at most 80 bytes, and every leaf runs under the
-1{,}000-item stack limit. The WOTS-translation input therefore needs 41
-standard transactions, one more than its size alone requires. One funding
-transaction creates the 443 publication outputs. The funding transactions
+1{,}000-item stack limit. The WOTS-translation input therefore needs 39
+standard transactions, the fewest its size allows. One funding
+transaction creates the 429 publication outputs. The funding transactions
 measured in Bitcoin Core have one wallet input and one P2TR output per publication
 input plus change; that shape reproduces their sizes exactly and gives about
-19.2\,kvB for 443 outputs. In strict Bitcoin Core~31.1 replays of the adaptor, Antichain and Lamport publication slices at the 1{,}041{,}024-bit input of an earlier verifier for a Keccak-f permutation trace, Bitcoin Core rejected a full reveal transaction while its funding parent was unconfirmed,
+18.6\,kvB for 429 outputs. In strict Bitcoin Core~31.1 replays of the adaptor, Antichain and Lamport publication slices at the 1{,}041{,}024-bit input of an earlier verifier for a Keccak-f permutation trace, Bitcoin Core rejected a full reveal transaction while its funding parent was unconfirmed,
 because the pair exceeded the mempool's cluster size limit, and accepted every
 reveal once the funding had confirmed. It likewise accepted Lamport's join only
 after the join's reveal parents had confirmed. Reveal transactions near the
@@ -1473,22 +1485,22 @@ size limit therefore cannot be relayed as a package with their parents, and
 they exceed the 10{,}000\,vB limit of version-3 relay~\cite{bip431}. The
 operator signs each reveal at dispute time and sets its fee then.
 Publication takes one block for funding and at least four full blocks of
-reveals, 15.73M weight units in all, since a block holds at most $4\times10^6$ weight units, and the
+reveals, 15.23M weight units in all, since a block holds at most $4\times10^6$ weight units, and the
 completion join follows in a later block; $\Delta_A$ must cover these blocks
 and the competition for block space. The 97\,vB Disprove transaction, a SHA256
 hashlock on the 16-byte reject label next to its timeout branch, was accepted
 and mined under strict Bitcoin Core~31.1 policy; the challenger builds it and pays its
-fee. A challenged dispute thus needs about 46 transactions: Kickoff, Challenge,
-funding, 41 reveals, the completion join, and Disprove or Take2. Of these, the
-41 reveals and Disprove are serialized, and the funding size is derived. An
+fee. A challenged dispute thus needs about 44 transactions: Kickoff, Challenge,
+funding, 39 reveals, the completion join, and Disprove or Take2. Of these, the
+39 reveals and Disprove are serialized, and the funding size is derived. An
 unchallenged claim needs only Kickoff and Take1.
 
-WOTS translation requires a 953{,}151{,}840-byte off-chain table per
+WOTS translation requires a 922{,}759{,}200-byte off-chain table per
 instance, and the label ciphertexts of \S~\ref{sec:input}, two per
-input bit and instance, occupy 16.67\,MB. A single on-chain key set across all kept instances requires the
+input bit and instance, occupy 16.14\,MB. A single on-chain key set across all kept instances requires the
 soldering discussed in \S~\ref{sec:input}. Independent publication for seven
-sets multiplies the WOTS, Antichain and Lamport components to 27.53, 41.50
-and 60.47\,MvB, respectively; these arithmetic projections exclude the
+sets multiplies the WOTS, Antichain and Lamport components to 26.65, 40.18
+and 58.54\,MvB, respectively; these arithmetic projections exclude the
 transaction graph and do not enforce cross-instance input consistency.
 
 \subsection{On-chain and off-chain cost comparison}\label{sec:cost_comparison}
@@ -1505,18 +1517,18 @@ Antichain Winternitz (ACW) for input-label revelation.
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.6cm}*{3}{>{\raggedright\arraybackslash}X}}\toprule
 Cost component & Boolean Groth16\newline (BitVM3)~\cite{bitvm3paper,babe2026} & PQ bridge analysis~\cite{tf26pq} & \textbf{This work}\\\midrule
 PQ-safe verifier assumptions & No (pairings) & Yes (hash-based) & Yes (hash-based)\\
-Verifier input bits & 1{,}019 & $\approx1.78\times10^6$ & 520{,}832\\
+Verifier input bits & 1{,}019 & $\approx1.78\times10^6$ & 504{,}240\\
 \addlinespace[2pt]
 \multicolumn{4}{l}{\textit{On-chain data: one input-key set}}\\\midrule
-Input publication (kvB) & $\approx2.4$ (Assert; adaptor) & $\approx14{,}900$ (ACW) & 3{,}933.13 (WOTS translation)\\
+Input publication (kvB) & $\approx2.4$ (Assert; adaptor) & $\approx14{,}900$ (ACW) & 3{,}807.66 (WOTS translation)\\
 Additional verification transactions (kvB) & 0.093 (Disprove) & --- & 0.097 (Disprove)\\
-Accounted transaction subtotal (kvB) & $\approx2.5$ & --- & 3{,}933.231\\
+Accounted transaction subtotal (kvB) & $\approx2.5$ & --- & 3{,}807.760\\
 \addlinespace[2pt]
 \multicolumn{4}{l}{\textit{Off-chain storage}}\\\midrule
-Garbled tables per instance (GiB) & 40.5 & 23.3 (estimate) & 2.61\\
-Input-label translation tables (GiB) & --- & 72.7 (ACW) & 0.89 (WOTS)\\
-Total tables per instance (GiB) & --- & $\approx96.0$ & 3.50\\
-Garbled tables, seven instances (GiB; derived) & 283.5 & 163.1 (derived) & 18.30\\\bottomrule
+Garbled tables per instance (GiB) & 40.5 & 23.3 (estimate) & 2.60\\
+Input-label translation tables (GiB) & --- & 72.7 (ACW) & 0.86 (WOTS)\\
+Total tables per instance (GiB) & --- & $\approx96.0$ & 3.46\\
+Garbled tables, seven instances (GiB; derived) & 283.5 & 163.1 (derived) & 18.20\\\bottomrule
 \end{tabularx}
 \caption{On-chain data and off-chain storage for Bitcoin proof verification.
 A dash marks an unreported or inapplicable entry. PQ-safe concerns the proof
@@ -1529,17 +1541,17 @@ $(N,M)=(181,7)$.}
 \end{table}
 
 \paragraph{Off-chain storage.} The Ziren verifier's garbled tables are about
-$15.5\times$ smaller than the Boolean Groth16 baseline's. The Tiwari--Feickert
+$15.6\times$ smaller than the Boolean Groth16 baseline's. The Tiwari--Feickert
 ACW integration also requires a post-quantum proof binding the
 translation table to the intended labels. Its cost is outside these table
 sizes. The proof systems and input-label mechanisms differ; the table compares
 their complete reported storage costs rather than matching individual components.
 
-\paragraph{On-chain data.} Even the 1.11\,MvB adaptor baseline for the Ziren
+\paragraph{On-chain data.} Even the 1.08\,MvB adaptor baseline for the Ziren
 input remains far larger than BitVM3's accounted subtotal. Tiwari and
 Feickert's ACW estimate, like their 31.7\,MvB for Lamport, excludes fixed
 transaction overheads; our serialized Antichain and Lamport publications,
-overheads included, take 5.93 and 8.64\,MvB. Their 0.043\,kvB witness
+overheads included, take 5.74 and 8.36\,MvB. Their 0.043\,kvB witness
 contribution for a hashlock fault signal is not a complete Disprove
 transaction, so it is not entered in that row of Table~\ref{tab:compare}.
 The comparison therefore identifies two distinct costs: Boolean compilation
@@ -1709,7 +1721,7 @@ WHIR and algebraic reductions & composed soundness & -- & -- & instantiate the f
 Merkle hash (200-bit digest) & generic collision search & 100 & $\approx66.7$ & $\gtrsim3\lambda_Q$-bit digest and sufficiently wide internal state\\
 Blake3 transcript (256-bit digest) & generic collision search & 128 & $\approx85.3$ & wider digest and internal state for higher targets\\
 garbling ($\Delta$, output hashlock) & Grover on 128-bit labels & 128 & $\approx64$ & $2\lambda_Q$-bit labels: 256 bits\\
-Lamport input keys & multi-target preimage, $T=520{,}832$ ($7T$ for seven sets) & $\approx109.0$ ($106.2$) & $\approx54.5$ ($53.1$) & at least 219 (222) bits of preimage entropy for 100 quantum bits under a 256-bit hash\\
+Lamport input keys & multi-target preimage, $T=504{,}240$ ($7T$ for seven sets) & $\approx109.0$ ($106.2$) & $\approx54.5$ ($53.1$) & at least 219 (222) bits of preimage entropy for 100 quantum bits under a 256-bit hash\\
 cut-and-choose $(181,7)$ & bad kept set & 40 & 40 & increase $(N,M)$ for the target error\\
 Bitcoin graph authorization (MuSig2/Schnorr) & Shor & -- & broken & post-quantum replacement for MuSig2\\\bottomrule
 \end{tabularx}
@@ -1728,12 +1740,11 @@ authorization rows identify future work outside the measured verifier.}
 We have presented a Boolean compilation and cost analysis for Ziren's
 complete recursive WHIR-proof verifier. With narrow recursion and the combined
 proof-layout and opening reductions and a closing column sumcheck, the final
-verifier for an Ethereum block consumes 520{,}832
-input bits and contains 175.4M non-free gates and
-2.81\,GB of garbled tables. The block reaches that final proof in 1{,}174\,s on
-at most four GPUs.
+verifier for an Ethereum block consumes 504{,}240
+input bits and contains 174.5M non-free gates and
+2.79\,GB of garbled tables.
 For one authenticated input-key set, the measured
-publication cost is 3.93\,MvB in 41 standard-size transactions with
+publication cost is 3.81\,MvB in 39 standard-size transactions with
 translated Winternitz keys. These results
 show that binary-field verification can reduce the retained garbled verifier,
 while authenticated proof input remains the dominant accounted on-chain cost.
@@ -1906,7 +1917,7 @@ batched selector, projected & same & 32 & 8 & $\approx2.05$ & $\approx2.13$\,MvB
 \end{tabularx}
 \caption{Hash-based label selection against the adaptor baseline for a
 separate 1{,}041{,}024-bit publication fixture, funding plus reveals. This
-fixture evaluates the selector design and is not the final 520{,}832-bit
+fixture evaluates the selector design and is not the final 504{,}240-bit
 verifier input reported in Table~\ref{tab:ziren_publication}. The first three rows are the
 independent publication fixtures tested in Bitcoin Core at this payload size. The batched-selector rows are
 exact rust-bitcoin serializations of a construction that requires the draft
@@ -1923,7 +1934,7 @@ composed protocol remains bound by the proof system (\S~\ref{sec:pq}).}
 
 The four one-time schemes of Table~\ref{tab:ziren_publication} trade
 on-chain size against assumptions. The totals in this subsection use the
-final WHIR verifier's 520{,}832-bit input.
+final WHIR verifier's 504{,}240-bit input.
 \begin{itemize}
   \item \emph{Lamport.} Each bit has two hashed 16-byte preimages, and the
     revealed preimage is the one-time-signature witness. The leaf script
@@ -1964,9 +1975,9 @@ final WHIR verifier's 520{,}832-bit input.
     chains, and the authorization, outputs and controls of the Antichain
     fixture. With at most 49 chunks per input, its size is the WOTS row of
     Table~\ref{tab:ziren_publication}, again an all-nonzero worst case. The price is the
-    off-chain table, 953{,}151{,}840 bytes per instance at this input size.
+    off-chain table, 922{,}759{,}200 bytes per instance at this input size.
     Plain 4-bit Winternitz, modeled from one executed input at 23.06 weight
-    units per bit, would be about 3.00\,MvB, but it cannot deliver garbled
+    units per bit, would be about 2.91\,MvB, but it cannot deliver garbled
     labels without such a table. The challenger must decode digits as consensus
     does and, at setup, reject keys in which one chain end lies within seven
     hashes of another; neither check costs on-chain space.
@@ -1979,7 +1990,7 @@ final WHIR verifier's 520{,}832-bit input.
     that shell. Our executable fixture reproduces 9{,}323 WU, uses the BIP342
     opcode index rather than a byte offset for every code separator, and reaches
     the exact 998-signature stack capacity. Bitcoin Core 31.1 validates all completed
-    signatures. The final-input serialization uses 65{,}104 eight-bit digits;
+    signatures. The final-input serialization uses 63{,}030 eight-bit digits;
     its size is the adaptor row
     of Table~\ref{tab:ziren_publication}. Mosaic's source construction solders all
     kept instances to one set of signatures by polynomial label correlation,
@@ -2150,7 +2161,7 @@ proof's algebraic and composition obligations appear in Appendix~\ref{app:recurs
 of \S~\ref{sec:dispute} publishes input bits under one-time keys. Lamport, Antichain Winternitz and
 translated Winternitz keys rest on \texttt{HASH160} preimages. The familiar $2^{64}$ quantum cost for our
 16-byte preimages is a single-target estimate. One Lamport key set exposes
-$T=520{,}832$ alternative preimages for the final verifier input, so generic
+$T=504{,}240$ alternative preimages for the final verifier input, so generic
 multi-target search costs about $2^{128}/T\approx2^{109.0}$ classically and
 $\sqrt{2^{128}/T}\approx2^{54.5}$ quantumly. Seven independent sets lower
 these figures to about $2^{106.2}$ and $2^{53.1}$. Hash-chain alternatives have the

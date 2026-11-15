@@ -36,12 +36,12 @@ As published in ePrint 2026/2877:
   is a 97-vB hashlock spend.
 
 The working draft goes further than the ePrint version. A closing column
-sumcheck replaces the final proof's opened values, and the statement is a real
-Ethereum block. The final verifier is then 175.4M non-free gates and 2.81 GB
-garbled, and reads 520,832 input bits. Publishing them takes 3.93 MvB with
-translated Winternitz keys. Proving the block to the final proof takes about
-20 minutes on at most four RTX 5090 cards. These numbers rest on Plonky3, Ziren
-and `whir-gc` revisions that are not public yet.
+sumcheck replaces the final proof's opened values, the final level's first
+WHIR round keeps its domain, and the statement is a real Ethereum block. The
+final verifier is then 174.5M non-free gates and 2.79 GB garbled, and reads
+504,240 input bits. Publishing them takes 3.81 MvB with translated Winternitz
+keys. These numbers rest on Plonky3, Ziren and `whir-gc` revisions that are
+not public yet.
 
 ## Scope
 
