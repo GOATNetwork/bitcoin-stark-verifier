@@ -32,13 +32,14 @@ fn tape() -> Option<BTape> {
 fn print(name: &str, r: &Report, and: usize, or: usize, xor: usize, wires: usize, secs: f64) {
     let nf = and + or;
     eprintln!(
-        "{name}: {nf} non-free gates ({and} AND, {or} OR), {xor} XOR, {wires} wires; garbled {:.2} GB at 16 B per non-free gate; inputs {} bits ({} byte, {} bit, {} full-width inputs; {} unread); built in {secs:.0} s",
+        "{name}: {nf} non-free gates ({and} AND, {or} OR), {xor} XOR, {wires} wires; garbled {:.2} GB at 16 B per non-free gate; inputs {} bits ({} byte, {} bit, {} full-width inputs; {} unread); {} dead operations; built in {secs:.0} s",
         nf as f64 * 16.0 / 1e9,
         r.input_bits,
         r.inputs_by_width[0],
         r.inputs_by_width[1],
         r.inputs_by_width[2],
         r.unread_inputs,
+        r.dead_ops,
     );
     let mut parts = r.profile.parts.clone();
     parts.sort_by_key(|p| std::cmp::Reverse(p.1));
@@ -67,11 +68,12 @@ fn accepts_the_real_proof_and_rejects_a_tampered_one() {
     let r = binary_tape::translate(&mut b, &t, &t.inputs, Options { check_values: true, limit: None });
     let accepted = b.get(r.output);
     eprintln!(
-        "honest proof: output {accepted}; {} wires evaluated in {:.0} s; {} of {} values differ from the tape",
+        "honest proof: output {accepted}; {} wires evaluated in {:.0} s; {} of {} values differ from the tape ({} dead operations not evaluated)",
         b.wires(),
         start.elapsed().as_secs_f64(),
         r.mismatches.len(),
-        t.values.len()
+        t.values.len(),
+        r.dead_ops
     );
     assert!(r.mismatches.is_empty(), "first mismatches {:?}", &r.mismatches[..r.mismatches.len().min(5)]);
     assert!(accepted, "the circuit accepts the real binary-stage proof");

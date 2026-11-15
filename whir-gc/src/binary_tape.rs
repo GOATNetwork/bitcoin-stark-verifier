@@ -256,11 +256,43 @@ pub fn parse(bytes: &[u8]) -> BTape {
     BTape { ops, inputs, values }
 }
 
-/// Whether each proof input is read by any operation.
+/// Which operations the verdict depends on.
+///
+/// The output is the AND of every check, so an operation matters when it checks something
+/// (an assertion, an inverse, a byte, bit or KoalaBear operand, a hash), or when a live
+/// operation reads what it defines.  The rest is pure arithmetic or wiring whose result no
+/// live operation reads: an addition, product or square, a byte split or a transpose.  The
+/// translation builds no gates for it, and an input only it reads is not a circuit input.
+pub fn live_ops(t: &BTape) -> Vec<bool> {
+    let total: usize = t.ops.iter().map(TOp::defines).sum();
+    let mut needed = vec![false; total];
+    let mut live = vec![false; t.ops.len()];
+    let mut var = total;
+    for (k, op) in t.ops.iter().enumerate().rev() {
+        let defined = op.defines();
+        var -= defined;
+        let pure = matches!(
+            op,
+            TOp::Input(_) | TOp::Add(..) | TOp::Mul(..) | TOp::Square(_) | TOp::ToBytes(_) | TOp::Transpose(_)
+        );
+        if !pure || needed[var..var + defined].iter().any(|&x| x) {
+            live[k] = true;
+            for o in op.operands() {
+                if let Opd::Var(v) = o {
+                    needed[v as usize] = true;
+                }
+            }
+        }
+    }
+    live
+}
+
+/// Whether each proof input is read by any live operation.
 pub fn input_reads(t: &BTape) -> Vec<bool> {
     let total: usize = t.ops.iter().map(TOp::defines).sum();
+    let live = live_ops(t);
     let mut read = vec![false; total];
-    for op in &t.ops {
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         for o in op.operands() {
             if let Opd::Var(v) = o {
                 read[v as usize] = true;
@@ -366,10 +398,11 @@ pub fn input_widths(t: &BTape) -> Vec<InputWidth> {
             }
         }
     }
-    // Selector-only inputs: every use is as a select's selector.
+    // Selector-only inputs: every live use is as a select's selector.
     let mut selector_only = vec![true; t.inputs.len()];
     let mut used = vec![false; t.inputs.len()];
-    for op in &t.ops {
+    let live = live_ops(t);
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         let (sel, rest) = match op {
             TOp::Select(s, x, y) => (Some(*s), vec![*x, *y]),
             TOp::MerkleNode { bit, cur, sib } => (Some(*bit), vec![cur[0], cur[1], sib[0], sib[1]]),
@@ -512,6 +545,8 @@ pub struct Report {
     pub inputs_by_width: [usize; 4],
     /// Inputs the circuit never reads: no wires, no labels, nothing to publish.
     pub unread_inputs: usize,
+    /// Operations the verdict does not depend on, which build no gates (see [`live_ops`]).
+    pub dead_ops: usize,
     pub profile: Profile,
     pub mismatches: Vec<u32>,
 }
@@ -523,10 +558,11 @@ fn non_free<T: CircuitTrait>(b: &T) -> usize {
 
 pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128], opts: Options) -> Report {
     let widths = input_widths(t);
-    // Remaining reads per variable, to free wires after their last use.
+    let live = live_ops(t);
+    // Remaining live reads per variable, to free wires after their last use.
     let total_vars: usize = t.ops.iter().map(TOp::defines).sum();
     let mut reads = vec![0u32; total_vars];
-    for op in &t.ops {
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         for o in op.operands() {
             if let Opd::Var(v) = o {
                 reads[v as usize] += 1;
@@ -543,6 +579,7 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
     // Variables whose wires are a canonical KoalaBear element by construction.
     let mut canonical = vec![false; total_vars];
     let mut unread_inputs = 0usize;
+    let mut dead_ops = 0usize;
     let zero = b.zero();
 
     // Read an operand's wires, releasing a variable after its last read.
@@ -565,6 +602,13 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
     for (k, op) in t.ops.iter().enumerate() {
         if opts.limit.is_some_and(|l| k >= l) {
             break;
+        }
+        // A dead operation defines variables no live one reads; an unread input is
+        // counted below.
+        if !live[k] && !matches!(op, TOp::Input(_)) {
+            dead_ops += 1;
+            next += op.defines() as u32;
+            continue;
         }
         let before = non_free(b);
         let mut checks: Vec<usize> = Vec::new();
@@ -798,5 +842,5 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
         let after = non_free(b);
         profile.add(op.kind(), after - before);
     }
-    Report { output: ok, input_bits, inputs_by_width: by_width, unread_inputs, profile, mismatches }
+    Report { output: ok, input_bits, inputs_by_width: by_width, unread_inputs, dead_ops, profile, mismatches }
 }
