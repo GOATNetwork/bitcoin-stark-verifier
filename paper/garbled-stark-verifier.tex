@@ -1350,9 +1350,9 @@ with proving keys built cold (162.4\,s with keys reused). Levels 1 to 3 and
 level 4 without the kept domain are one job on four cards, 996\,s of wall
 time including recording and checking each level. The final level 4, whose
 first round keeps its domain, was proved from the same level-3 proof. Levels 1
-and 2 prove on the cards. Levels 3 and 4 prove on the host, since at rate
-$1/1024$ the final codeword has about $2^{33}$ field elements, beyond a card's
-32\,GB, and grind on all four cards. Proof sizes are those of each level's output.}
+and 2 prove on the cards. Levels 3 and 4 commit on the host: their first
+codewords, $2^{31}$ and $2^{33}$ field elements, take 32 and 128\,GiB, and
+level 4's alone would fill all four 32\,GB cards. Both grind on all four cards. Proof sizes are those of each level's output.}
 \label{tab:proving}
 \end{table}
 
