@@ -254,8 +254,8 @@ garbled the verifier~\cite{bitvm3paper,che25sok}, defining BitVM3-CORE as a
 sound and complete on-chain proof system with on-chain costs of about \$9.
 
 \paragraph{Garbled verifiers.} The Boolean-garbled Groth16 verifier~\cite{bit25b}
-has about $3\times10^9$ non-free gates and a 42\,GiB
-garbled artifact~\cite{babe2026}. Garbling Groth16 with native
+has about $3\times10^9$ non-free gates and 42\,GiB of
+garbled tables~\cite{babe2026}. Garbling Groth16 with native
 elliptic-curve group operations reduced the garbled program to
 2.4\,MiB~\cite{kflt26native}. Glock~\cite{eag25glock} formalized garbled locks and
 garbled a designated-verifier variant of Pari; BABE reported its garbled circuit at
@@ -287,7 +287,7 @@ final verifier input.
 analyze the post-quantum cost of garbled-circuit Bitcoin bridges, including
 the proof verifier and the on-chain encoding of its input labels. Their
 estimates identify a tradeoff: hash-based STARK verification can reduce the
-garbled artifact relative to a pairing-based verifier, while the larger
+garbled tables relative to a pairing-based verifier, while the larger
 proof increases on-chain publication costs. We compare against a
 representative STARK configuration from their analysis in
 Table~\ref{tab:compare}. Our implementation addresses both costs by
@@ -1536,49 +1536,37 @@ Winternitz (ACW) for input-label revelation.
 
 \begin{table}[t!]\centering\small\setlength{\tabcolsep}{4pt}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.6cm}*{3}{>{\raggedright\arraybackslash}X}}\toprule
-Cost component & Boolean Groth16\newline (BitVM3)~\cite{bitvm3paper,babe2026} & PQ bridge analysis~\cite{tf26pq}$^{d}$ & \textbf{This work}\\\midrule
-PQ-safe verifier assumptions$^{c}$ & No (pairings) & Yes (hash-based) & Yes (hash-based)\\
+Cost component & Boolean Groth16\newline (BitVM3)~\cite{bitvm3paper,babe2026} & PQ bridge analysis~\cite{tf26pq} & \textbf{This work}\\\midrule
+PQ-safe verifier assumptions & No (pairings) & Yes (hash-based) & Yes (hash-based)\\
 Verifier input bits & 1{,}019 & $\approx1.78\times10^6$ & 520{,}832\\
 \addlinespace[2pt]
 \multicolumn{4}{l}{\textit{On-chain data: one input-key set}}\\\midrule
-Input publication (kvB) & $\approx2.4$ (Assert; adaptor) & $\approx14{,}900$ (ACW)$^{d}$ & 3{,}933.13 (WOTS translation)\\
+Input publication (kvB) & $\approx2.4$ (Assert; adaptor) & $\approx14{,}900$ (ACW) & 3{,}933.13 (WOTS translation)\\
 Additional verification transactions (kvB) & 0.093 (Disprove) & --- & 0.097 (Disprove)\\
-Accounted transaction subtotal (kvB)$^{a}$ & $\approx2.5$ & --- & 3{,}933.231\\
+Accounted transaction subtotal (kvB) & $\approx2.5$ & --- & 3{,}933.231\\
 \addlinespace[2pt]
 \multicolumn{4}{l}{\textit{Off-chain storage}}\\\midrule
-Core artifact per instance (GiB)$^{b}$ & 40.5 & 23.3 (estimate) & 2.61\\
+Garbled tables per instance (GiB) & 40.5 & 23.3 (estimate) & 2.61\\
 Input-label translation tables (GiB) & --- & 72.7 (ACW) & 0.89 (WOTS)\\
 Total tables per instance (GiB) & --- & $\approx96.0$ & 3.50\\
-Seven core artifacts (GiB; derived) & 283.5 & 163.1 (derived) & 18.30\\\bottomrule
+Garbled tables, seven instances (GiB; derived) & 283.5 & 163.1 (derived) & 18.30\\\bottomrule
 \end{tabularx}
 \caption{On-chain data and off-chain storage for Bitcoin proof verification.
-Units are fixed per row; kvB is decimal and GiB is binary.}
+kvB is decimal and GiB binary; a dash marks an unreported or inapplicable
+entry. PQ-safe refers to the proof verifier and its garbling only
+(\S~\ref{sec:pq}). The subtotal counts input publication and Disprove:
+BitVM3's Assert pads the proof to 1{,}024 bits, and ours excludes funding, the
+rest of the dispute graph and cross-instance input consistency
+(\S~\ref{sec:publication_eval}). Garbled tables hold one 16-byte ciphertext
+per non-free gate: 175{,}411{,}008 gates for ours, 2.7 billion for the BitVM3
+Groth16 circuit~\cite{babe2026} and an estimated 1.56 billion for the
+Tiwari--Feickert verifier, whose input bits are its proof's length. Seven
+instances are the garblings kept by cut-and-choose at $(N,M)=(181,7)$.}
 \label{tab:compare}
-\begin{minipage}{\textwidth}\footnotesize
-\emph{Notes.} A dash denotes an unreported or inapplicable component.
-$^{a}$These are the named verification transactions, not complete bridge
-lifecycles. BitVM3 pads the proof input to 1{,}024 bits for its reported
-Assert size. Our subtotal is the worst-case input publication of
-Table~\ref{tab:ziren_publication} plus Disprove; funding, the remaining dispute graph and cross-instance input
-consistency are excluded (\S~\ref{sec:publication_eval}).
-$^{b}$Our core artifact is $175{,}411{,}008\times16$ bytes; adding the
-953{,}151{,}840-byte WOTS translation table~\cite{wotstranslation26} gives
-3.50\,GiB per instance, or 24.51\,GiB for seven instances. The BitVM3 column uses the artifact definition reported by its sources;
-the compared designs use different input-key mechanisms. Storage excludes proving memory.
-$^{c}$PQ-safe refers to the assumptions used by the compared proof verifier
-and its garbling. Bitcoin transaction authorization, concrete parameters and
-recursive composition are treated separately in \S~\ref{sec:pq}.
-$^{d}$Tiwari--Feickert's Table~2 and Sections~3.3--3.5 give the modeled
-RISC Zero/Blake3 circuit and ACW publication costs. The latter include
-revelation scripts and witnesses but exclude fixed transaction overheads;
-no complete transaction subtotal is reported. Their input is the proof
-length; ours is the consumed proof-input bits. Seven copies are an arithmetic
-projection for all columns.
-\end{minipage}
 \end{table}
 
-\paragraph{Off-chain storage.} The Ziren circuit's garbled artifact is about
-$15.5\times$ smaller than the Boolean Groth16 baseline. The Tiwari--Feickert
+\paragraph{Off-chain storage.} The Ziren verifier's garbled tables are about
+$15.5\times$ smaller than the Boolean Groth16 baseline's. The Tiwari--Feickert
 ACW integration also requires a post-quantum proof binding the
 translation table to the intended labels. Its cost is outside these table
 sizes. The proof systems and input-label mechanisms differ; the table compares
@@ -1592,7 +1580,7 @@ Lamport, excluding fixed transaction overheads, against our serialized
 contribution for a hashlock fault signal is not a complete Disprove
 transaction, so it is not entered in that row of Table~\ref{tab:compare}.
 The comparison therefore identifies two distinct costs: Boolean compilation
-reduces the off-chain verifier artifact, while the authenticated proof input
+reduces the verifier's garbled tables, while the authenticated proof input
 remains the dominant measured on-chain component. Section~\ref{sec:reduce}
 reduces both through narrower recursion, proof-layout changes and WHIR
 parameter selection.
