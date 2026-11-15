@@ -1764,6 +1764,61 @@ with 46-bit grinding: −17.0k bits for about 4.6× grinding; rate 1/2048 does
 not fit beside the box's other work. Serializing digests at 25 bytes would cut
 the proof file by about 9 KB without changing input bits.
 
+## 7q. Cost model for proof size and proving time (2026-11-15)
+
+Paper section "Estimating proof size and proving cost". Schedules are the WHIR
+configuration's own derivation (printed by a throwaway Plonky3 test, since
+deleted), with the model's closed forms checked against every printed value:
+
+- folding grind of stage i: ceil(v_i + 2 rho_i - 6.41), one per folded
+  variable, plus one at stage 0 for the paired opening (lambda 108, field priced
+  at 126 bits, line bound 2^(v + 2 rho + 11.59), m = 10);
+- allowance g = max folding grind; queries t_i = ceil((108 - g) / a), with
+  a = rho/2 - log2(21/20); query grind ceil(108 - t_i a).
+
+| level | rates | folds | t | grinds (bits) | max |
+|---|---|---|---|---|---|
+| 3 | 8, 11, 14, 17, 20 | 4×5, fin 3 | 18, 13, 10, 8, 7 | 26 | 41 (not 42: 42 is the budget) |
+| 4 | 10, 13, 17, 20 | 4-5-4-4, fin 6 | 13, 10, 8, 7 | 22 | 44 |
+
+Size: E_W = sum(c_i t_i 2^k_i + 2) + 2v + n_grinds + 2^fin, D_W = sum c_i
+S(h_i, t_i) + r with c_0 = 2, S the pruned stratified multiproof sibling count.
+Final level E_W 1,116, D_W 1,264, capped 190: WHIR 357,648 bits, algebraic part
+163,184 bits and 20,915 B. Size formula vs serialized WHIR: 58,304 vs 59,873 B
+(level 4), 73,248 vs 75,583 B (level 3).
+
+Grinding calibration: the nonces are the tape inputs of the next level's
+verifier (level5.ztap inputs 1265 to 2286 for level 4, level4.ztap 6416 to 7579
+for level 3; the inputs below 240 are public values). The level-4 run
+narrow-jgc logged every grind span (SHRINK_LOG with the challenger at info):
+22 nonces sum to 1.0109e14 in 610.0 s, so 1.657e11/s on 4 cards, 4.14e10 a
+card; every search over 5 s within 0.5%. Realized work 0.78 x expected (28th
+percentile), level 3 0.73 x. Host work 128.2 s (level 4), 51.4 s (level 3).
+
+Expected work level 4: 7.352 x 2^44 = 1.293e14, sd 2.50 x 2^44; grinding 780 s
+mean, 1,540 s at the 99th percentile on 4 cards. End to end (two narrow levels'
+grinding replaced by its distribution, 317 s of the recursion job fixed): mean
+1,369 s / 1.42 card-h / 0.78 USD; q90 1,724 s / 1.00 USD; q99 2,136 s / 1.25
+USD. Model script, schedules and output: `data/cost-model.py`,
+`data/cost-model-schedules.jsonl`, `data/cost-model-output.txt` (run
+`python3 -I cost-model.py .` in `data/`).
+
+Kept round 1, proved (fleet job kept1-final-97595116, levels 1-3 reused, cards
+2, 3, 6, 5, job 18:22-19:01 UTC): proof 76,103 B (model 76,787), level 4
+proved in 2,224.3 s after 68.6 s setup; nonces sum 3.257e14 = 0.55 x expected
+(-1.40 sd), so 1,965 s grinding and 259 s host (twice the used schedule's:
+the kept round commits a 2^33-position codeword); expected level-4 proving
+about 3,830 s. Final verifier k18: 504,240 bits (model 503,840; 9,542 bytes,
+3,343 field elements), 174,494,057 non-free gates (174,381,809 AND, 112,248
+OR), 2.79 GB, accepts the real proof, rejects tampering, streaming garbling
+122 s, output 1. Logs: data/run-kept1-final-level4.txt,
+data/run-kept1-final-verifier.txt. Not yet the paper's headline: publication
+fixtures not rerun at 504,240 bits.
+
+Alternatives (model): kept round 1 503,840 bits / 76,787 B / x4.58 work;
+rate 1/2048 4-4-5-4 501,744 / 76,147 / x3.78; rate 1/2048 4-5-4-4 497,344 /
+75,443 / x4.53; rate 1/4096 490,752 / 74,227 / x11.1.
+
 ## 8. To fix or check before release
 
 0. Before release, publish the revisions the paper cites for the final

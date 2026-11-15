@@ -214,7 +214,9 @@ and the transaction layer have the separate assumptions stated in
     reductions and commitment-parameter tuning
     (\S~\ref{sec:reduce}, \S~\ref{sec:eval}, Appendix~\ref{app:recursion}).
     The block's core proof, compression and four recursion levels take
-    1{,}174\,s on at most four GPUs.
+    1{,}174\,s on at most four GPUs. A model of proof size and proving time,
+    calibrated on the proof's own grinding nonces, puts the expected cost at
+    1{,}369\,s and 0.78\,USD of card time (\S~\ref{sec:cost_model}).
   \item \textbf{Circuit compilation of the recursive verifier (C1).}
     We translate the verifier produced by Ziren's binary stage and narrow
     recursion from a recorded program over $\F$ into a Boolean circuit with
@@ -1278,7 +1280,8 @@ protocol, different folding factors can be preferable in different rounds.
 
 The final configuration uses rate $1/1024$ and folds 4, 5, 4 and 4
 variables with up to 44 bits of grinding; the level before it uses rate
-$1/256$, folds of four and up to 42 bits. A schedule must fit the actual
+$1/256$, folds of four and up to 41 bits. \S~\ref{sec:cost_model} gives the
+rules that derive each round's queries and grinding. A schedule must fit the actual
 polynomial arity; these parameters are not a universal setting for other
 recursion traces.
 
@@ -1356,7 +1359,7 @@ stage & schedule & proof & setup & proving\\\midrule
 core and compress & Ziren GPU prover, 2 cards & 511{,}766\,B & -- & 177.7\,s\\
 level 1 & rate $1/32$, fold 3, $\le33$-bit grinding & 329{,}412\,B & 3.9\,s & 2.3\,s\\
 level 2 & rate $1/32$, fold 4, $\le36$-bit grinding & 321{,}492\,B & 2.0\,s & 2.2\,s\\
-level 3 (narrow) & rate $1/256$, fold 4, $\le42$-bit grinding & 191{,}241\,B & 37.5\,s & 120.4\,s\\
+level 3 (narrow) & rate $1/256$, fold 4, $\le41$-bit grinding & 191{,}241\,B & 37.5\,s & 120.4\,s\\
 level 4 (narrow, final) & rate $1/1024$, folds 4-5-4-4, $\le44$-bit grinding & 79{,}219\,B & 70.9\,s & 752.4\,s\\\bottomrule
 \end{tabular}
 \caption{Proving Ethereum block 26{,}206{,}588 to the final proof on RTX~5090
@@ -1373,11 +1376,14 @@ four cards. Proof sizes are those of each level's output.}
 1.21 card-hours: 0.10 for the core and compression and 1.11 for the
 recursion job. At a rental price of 400\,USD per card per month of 730 hours,
 the cards cost about 0.66\,USD per proof; host processors and memory are not
-included. Almost all of the final level's time is proof-of-work grinding,
-whose duration is random: an earlier run of the same level took 738.2\,s.
-The rerun reproduced every level's earlier proof byte for byte, since the
-prover is deterministic and a grind keeps the smallest passing nonce whatever
-the number of cards.
+included. Most of the final level's time is proof-of-work grinding, whose
+length depends on where each search's smallest passing nonce falls. The
+transcript fixes those nonces, so a rerun of the same proof repeats the same
+searches: an earlier run of the level took 738.2\,s. The rerun reproduced
+every level's earlier proof byte for byte, since the prover is deterministic
+and a grind keeps the smallest passing nonce whatever the number of cards.
+Another statement draws new nonces; \S~\ref{sec:cost_model} gives the
+distribution, with an expectation of 1{,}369\,s and 0.78\,USD.
 
 \paragraph{Independent-proof recorder regression.} On the public
 reconstruction, with the collision metadata corrected, we generated two
@@ -1403,6 +1409,154 @@ bits, the serializations in Table~\ref{tab:ziren_publication} have total virtual
 1.11\,MvB for the
 adaptor baseline, 3.93\,MvB for WOTS translation, 5.93\,MvB for Antichain and
 8.64\,MvB for Lamport, not replayed in Core.
+
+\subsection{Estimating proof size and proving cost}\label{sec:cost_model}
+
+The measurements above are one run of a randomized prover under one schedule.
+This section states the model behind them. It gives the final proof's input
+and size as functions of the WHIR schedule, and the proving time as a function
+of the grinding that schedule demands. The rules restate the configuration's
+own derivation and reproduce every query count and grinding difficulty it
+selects.
+
+\paragraph{Schedule.} The final commitment packs $v=23$ variables. Its
+stages $i=0,\dots,r$, $r$ intermediate and one terminal, fold $k_i$ variables
+each, leaving $f=v-\sum_ik_i$ for the final polynomial. Write
+$v_i=v-\sum_{j<i}k_j$. Stage $i$ reads a codeword of $2^{v_i+\rho_i}$
+positions at log inverse rate $\rho_i$, with $\rho_{i+1}=\rho_i+k_i-1$, or
+$\rho_i+k_i$ when the round keeps its domain. A query opens a coset of
+$2^{k_i}$ positions, which is a leaf of a Merkle tree of height
+$h_i=v_i+\rho_i-k_i$. The schedule prices every WHIR error term at
+$\lambda=108$ bits under the Johnson bound, against a composed target of
+100 bits. The proximity parameter is $1-\delta=\tfrac{21}{20}2^{-\rho/2}$, so
+a query at rate $\rho$ buys $a_\rho=\rho/2-\log_2(21/20)$ bits. Each folded
+variable is ground against the proximity-gap error of the codeword it folds.
+That error is a line bound of $2^{v_i+2\rho_i+11.59-126}$, where
+$11.59=\log_2(8\cdot10.5^3/3)$ for list parameter $m=10$ and the analysis
+prices $\F$ at 126 bits, two below its size. Each of stage $i$'s $k_i$
+folding grinds therefore takes
+\begin{equation}\label{eq:foldgrind}
+b_i=\lceil v_i+2\rho_i+11.59-(126-\lambda)\rceil=\lceil v_i+2\rho_i-6.41\rceil
+\end{equation}
+bits, and the paired opening adds one more grind at $b_0$. The allowance
+$g=\max_ib_i$ leaves $\lambda-g$ bits to the queries:
+\begin{equation}\label{eq:queries}
+t_i=\Big\lceil\frac{\lambda-g}{a_{\rho_i}}\Big\rceil,\qquad
+p_i=\lceil\lambda-t_ia_{\rho_i}\rceil,
+\end{equation}
+where $p_i$ is stage $i$'s query grind. The final level, at $\rho_0=10$ with
+folds 4-5-4-4, has $b=37,39,42,44$, so $g=44$, $t=13,10,8,7$ and
+$p=44,44,41,39$. Level 3, at $\rho_0=8$ with five folds of four, has
+$b=33,\dots,41$ and $t=18,13,10,8,7$.
+
+\paragraph{Proof input and size.} At the first stage the paired opening reads
+both the main and the preprocessed tree, so $c_0=2$, and $c_i=1$ afterwards.
+The WHIR opening carries $E_W$ field elements and $D_W$ digests:
+\begin{equation}\label{eq:whirsize}
+E_W=\sum_{i=0}^{r}\big(c_it_i2^{k_i}+s_i\big)+2v+n_g+2^f,\qquad
+D_W=\sum_{i=0}^{r}c_iS(h_i,t_i)+r,
+\end{equation}
+\begin{equation}
+S(h,t)=\sum_{d=\lfloor\log_2t\rfloor+1}^{h}\min\!\big(t,2^{d-1}\big).
+\end{equation}
+The elements are the opened cosets, the $s_i=2$ OOD answers of each
+commitment, two coefficients per folded variable, one nonce for each of the
+$n_g$ grinds, and the final polynomial. $S$ counts the siblings that $t$
+stratified openings send in a pruned multiproof; the top $\lfloor\log_2t\rfloor$
+levels are computed from the openings themselves. The final verifier reads
+\begin{equation}\label{eq:inputbits}
+I=I_A+128\,E_W+200\,(D_W-D_\kappa)\ \text{bits},\qquad
+|\pi|=B_A+16\,E_W+32\,D_W\ \text{bytes}.
+\end{equation}
+Here $D_\kappa$ counts the first-stage siblings in the top $\kappa=18$ levels
+of the preprocessed tree, which are constants (\S~\ref{sec:reduce}). The proof
+file stores whole 32-byte digests, while the circuit reads 200 bits of each.
+$I_A$ and $B_A$ are the algebraic part: the bus product reduction
+(11{,}706\,B), the shared and closing sumchecks, the 126 folds and the
+ring-switch claim. None of these depends on the WHIR schedule. For the final
+schedule, $E_W=1{,}116$, $D_W=1{,}264$ and $D_\kappa=190$, so the WHIR opening
+accounts for 357{,}648 of the 520{,}832 input bits, with $I_A=163{,}184$ bits
+and $B_A=20{,}915$\,B. The
+size formula gives 58{,}304\,B for the final WHIR opening and 73{,}248\,B for
+level~3's, against 59{,}873\,B and 75{,}583\,B serialized. The 2.6\% and 3.1\%
+differences are serialization framing.
+
+\paragraph{Proving time.} A $b$-bit grind tests candidates in order until one
+passes. The witness it returns, the smallest passing index $N$, is geometric
+with mean and standard deviation about $2^b$. On $c$ cards that each test
+$\varrho$ candidates per second, a level takes
+\begin{equation}\label{eq:provetime}
+T=T_{\mathrm{set}}+T_{\mathrm{host}}+\frac{W}{c\varrho},\qquad
+W=\sum_jN_j,\quad \mathbb{E}[W]=\sum_j2^{b_j},\quad
+\mathrm{Var}[W]\approx\sum_j4^{b_j}.
+\end{equation}
+The final level grinds 22 times. Five 37-bit grinds cover the paired opening
+and the first stage. Each round then has a query grind and one grind per
+folded variable: 44 bits and five of 39, 44 and four of 42, then 41 and four
+of 44. A 39-bit terminal grind ends the run. Hence
+$\mathbb{E}[W]=2^{44}(6+4\cdot2^{-2}+2^{-3}+6\cdot2^{-5}+5\cdot2^{-7})
+=7.35\cdot2^{44}\approx1.29\cdot10^{14}$, with standard deviation
+$2.50\cdot2^{44}$. The four 44-bit folding grinds are 54\% of the expected
+work. By \eqref{eq:foldgrind}, a folding grind rises by two bits per unit of
+log inverse rate, so the late low-rate stages dominate.
+
+The nonces calibrate the rate, since each nonce is the number of candidates
+its search tested. The final proof's 22 nonces sum to $1.011\cdot10^{14}$,
+tested in 610.0\,s of logged search time. This gives $4\varrho=1.66\cdot10^{11}$,
+or $\varrho=4.14\cdot10^{10}$ per card, at one Blake3 compression per
+candidate. Every search longer than five seconds ran within 0.5\% of this
+rate. The realized work is $0.78\,\mathbb{E}[W]$, at the 28th percentile of
+its distribution; level~3's 26 nonces give $0.73\,\mathbb{E}[W]$. The
+remaining host work is 128\,s at the final level and 51\,s at level~3.
+
+Replace the two narrow levels' realized grinding, 679\,s on four cards, by
+its distribution, and price card time at $C=p\sum_jc_jT_j$ with
+$p=400/730$\,USD per card-hour. From block to final proof, the expectation is
+1{,}369\,s (22.8\,min), 1.42 card-hours and 0.78\,USD. The 90th and 99th
+percentiles are 1{,}724\,s (1.00\,USD) and 2{,}136\,s (35.6\,min,
+1.25\,USD). The measured 1{,}174\,s run falls below the median. One card
+grinds four times longer: the final level alone expects 3{,}121\,s.
+
+\begin{table}[t]\centering\small\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lcccrrrr}\toprule
+final-level schedule & $t_i$ & $g$ & $\mathbb{E}[W]$ & input bits & proof & $\mathbb{E}$ grind & 99\%\\\midrule
+rate $1/1024$, 4-5-4-4 (used) & 13,10,8,7 & 44 & $7.35\cdot2^{44}$ & 520{,}832 & 79{,}219\,B & 780\,s & 1{,}540\,s\\
+\quad first round keeps its domain & 13,9,7,6 & 46 & $33.7\cdot2^{44}$ & 504{,}240 & 76{,}103\,B & 3{,}573\,s & 6{,}800\,s\\
+rate $1/2048$, 4-4-5-4 & 12,9,8,6 & 46 & $27.8\cdot2^{44}$ & 501{,}744 & 76{,}147\,B & 2{,}949\,s & 5{,}970\,s\\
+rate $1/2048$, 4-5-4-4 & 12,9,7,6 & 46 & $33.3\cdot2^{44}$ & 497{,}344 & 75{,}443\,B & 3{,}533\,s & 6{,}760\,s\\
+rate $1/4096$, 4-4-5-4 & 11,9,7,6 & 48 & $81.9\cdot2^{44}$ & 490{,}752 & 74{,}227\,B & 8{,}691\,s & 19{,}000\,s\\\bottomrule
+\end{tabular}
+\caption{Final-level WHIR schedules under the model of
+\S~\ref{sec:cost_model}. Input bits and proof sizes follow
+\eqref{eq:inputbits}, with the algebraic part calibrated on the used
+schedule. The first two rows are measured; the model predicts 503{,}840 bits
+and 76{,}787\,B for the second. Grinding times are expectations on four cards
+at the measured rate; the last column is the 99th percentile of the grinding
+time.}
+\label{tab:schedules}
+\end{table}
+
+\paragraph{Alternative schedules.} Table~\ref{tab:schedules} applies the model
+to schedules that read fewer input bits. A lower rate or a kept domain shrinks
+every later query count. By \eqref{eq:foldgrind}, though, it also raises the
+last folding grinds by two bits per rate step, and four of those grinds
+dominate $W$. Reading 19{,}088 fewer bits (3.7\%) at rate $1/2048$ costs 3.8
+times the expected grinding. The kept-domain schedule costs 4.6 times the
+grinding without enlarging the first codeword. We proved it on the same
+block from the same level-3 proof. Its final proof is 76{,}103\,B, and its
+verifier reads 504{,}240 bits, 400 more than the model predicts and 16{,}592
+(3.2\%) fewer than the used schedule's. The verifier has 174.5M non-free
+gates and 2.79\,GB of garbled tables; it accepts the proof, rejects tampered
+inputs and garbles by streaming with output 1. Its level 4 took 2{,}224\,s on
+four cards, of which 259\,s is host work, twice the used schedule's because the
+kept round commits a codeword twice as large. The grinding drew
+$0.55\,\mathbb{E}[W]$, so its expected proving time is about 3{,}830\,s. Rate
+$1/2048$ doubles that codeword to $2^{34}$ field elements, and the narrow
+prover's host memory grows with it. We swept rates $1/512$ to $1/4096$,
+eighteen per-round fold sequences and the constant one, every kept-domain
+mask of the first three rounds, and query-grinding allowances up to 48 bits.
+No schedule in that sweep reads fewer input bits than the used one at the
+same expected grinding or less.
 
 \subsection{Publishing the final verifier input}\label{sec:publication_eval}
 
