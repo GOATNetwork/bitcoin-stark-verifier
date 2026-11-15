@@ -91,8 +91,7 @@ which we call \emph{WHIR proofs}. These binary-field proofs are generated
 by Ziren's binary stage and narrow recursion. Ziren first compresses a zkVM
 execution proof into a \emph{WHIR proof}. The binary stage proves the
 execution of that WHIR-proof verifier using a binary-field proof system;
-each subsequent \emph{narrow-recursion} proof proves the execution of the
-preceding proof's verifier, thereby reducing the verifier input consumed by
+each subsequent \emph{narrow-recursion} proof proves the execution of the preceding proof's verifier in a machine with fewer trace columns, thereby reducing the verifier input consumed by
 the garbled circuit.
 
 A SNARK verifier written in Script takes hundreds of megabytes~\cite{babe2026}. The BitVM line of work therefore verifies \emph{optimistically}: a prover claims
@@ -185,13 +184,11 @@ and the transaction layer have the separate assumptions stated in
     verifier in a BitVM3-style dispute, state the label-selection task that
     publishing its input must solve, and price four one-time input schemes
     using signed transaction serializations for the final verifier input.
-    We separate the measured one-key-set component from the unimplemented multi-copy soldering and
-    transaction graph (\S~\ref{sec:dispute}, \S~\ref{sec:input}). The component
+    We separate the measured component for one input-key set from two unimplemented parts: the transaction graph, and the soldering that lets one key set select the same labels in every kept garbling (\S~\ref{sec:dispute}, \S~\ref{sec:input}). The component
     measures 1.11\,MvB with the 8-bit adaptor baseline and 3.93--8.64\,MvB
     per hash-based key set for the final Ziren verifier's 520{,}832-bit input,
     against a few thousand virtual bytes for Groth16. We also
-    serialize a hash-based construction that would match the adaptor cost
-    under a batch opcode.
+    serialize a hash-based construction that would match the adaptor cost under a proposed batch hash-verification opcode.
   \item \textbf{Circuit-input reduction (C2).} Narrow recursion over Ziren's binary
     stage yields a final verifier input of $520{,}832$ bits for a real
     Ethereum block. The construction combines
@@ -203,9 +200,9 @@ and the transaction layer have the separate assumptions stated in
     GPUs. A model derives proof size and the distribution of proving time
     from the WHIR schedule (\S~\ref{sec:cost_model}).
   \item \textbf{Circuit compilation of the recursive verifier (C1).}
-    We translate the verifier produced by Ziren's binary stage and narrow
+    We compile the verifier produced by Ziren's binary stage and narrow
     recursion from a recorded program over $\F$ into a Boolean circuit with
-    one acceptance output. The translation implements its arithmetic and
+    one acceptance output. The compiled circuit implements its arithmetic and
     hashing operations, preserves its equality and nonzero assertions, and
     constrains byte and selector operands. The recorded program includes the
     transcript, multi-table constraint verification and Boolean WHIR
@@ -229,7 +226,7 @@ Section~\ref{sec:eval} estimates the final WHIR-proof verifier's
 garbling and input-publication costs, and compares the
 results with BitVM3's Groth16-based verification and the post-quantum
 Bitcoin-bridge cost analysis of Tiwari and Feickert~\cite{tf26pq}.
-The circuit translator and benchmark commands are open source;
+The circuit compiler and benchmark commands are open source;
 Appendix~\ref{app:artifact} documents the reproduction sources and commands.
 The Blake3 circuit and a label-level evaluator are contributed to
 GOAT's bitvm-gc~\cite{bitvmgc}.
@@ -254,8 +251,7 @@ garbled the verifier~\cite{bitvm3paper,che25sok}, defining BitVM3-CORE as a
 sound and complete on-chain proof system with on-chain costs of about \$9.
 
 \paragraph{Garbled verifiers.} The Boolean-garbled Groth16 verifier~\cite{bit25b}
-has about $3\times10^9$ non-free gates and 42\,GiB of
-garbled tables~\cite{babe2026}. Garbling Groth16 with native
+has about $2.7\times10^9$ non-free gates~\cite{babe2026}. Garbling Groth16 with native
 elliptic-curve group operations reduced the garbled program to
 2.4\,MiB~\cite{kflt26native}. Glock~\cite{eag25glock} formalized garbled locks and
 garbled a designated-verifier variant of Pari; BABE reported its garbled circuit at
@@ -267,7 +263,7 @@ We garble Ziren's final recursive verifier with bitvm-gc, and we contribute our
 Blake3 circuit back to it. BitVM3's comparison of garbling schemes already listed a
 Yao-style garbled STARK verifier, at about 10\,GB of off-chain storage and as an
 estimate~\cite[Table~9]{bitvm3paper}; \S~\ref{sec:cost_comparison} compares it
-with our measured artifact. TRAPGC-DV~\cite{trapgcdv26} verified Groth16 by designated evaluation:
+with our measured garbled tables. TRAPGC-DV~\cite{trapgcdv26} verified Groth16 by designated evaluation:
 the prover wraps its proof in an outer Groth16 proof under a per-session trapdoor
 structured reference string (SRS) and garbles a small circuit that checks it in scalar form, with
 cut-and-choose and a universal-composability analysis. It too rests on pairings.
@@ -328,7 +324,7 @@ Gentry, Sahai and Waters~\cite{ggsw13}. BABE~\cite{babe2026} replaced the garble
 Groth16 verifier with witness encryption for linear pairing
 relations~\cite{gkpw24}, making the one quadratic pairing linear with a small
 garbled circuit built from decomposable randomized encodings on the Argo
-message-authentication code (MAC)~\cite{el26argo}: a 22\,MiB artifact per instance, on-chain cost
+message-authentication code (MAC)~\cite{el26argo}: 22\,MiB of off-chain setup data per instance, on-chain cost
 comparable to BitVM3~\cite{babe2026}. Deferred
 binding~\cite{goatpbwe} extended it to public inputs known only at dispute
 time with two further garbled circuits, at 0.92\,GiB per finalized instance,
@@ -410,12 +406,12 @@ of the protected outputs; graph notation alone does not enforce that
 property.
 
 \paragraph{Refutation predicate.} The refutation witness is a reject-output
-label from a kept garbled verifier. Let $\ell^j_0$ denote the reject-output
-label of kept instance $j$, and let $h_j=\mathrm{SHA256}(\ell^j_0)$ be its
+label from a garbled verifier kept for evaluation after cut-and-choose (\S~\ref{sec:dispute}). Let $\ell^j_0$ denote the reject-output
+label of kept instance $j$, and let $\eta_j=\mathrm{SHA256}(\ell^j_0)$ be its
 committed hash. For a candidate label $\ell$, the refutation condition is
 \[
   \mathsf{Reject}_j(\ell)
-  :=\mathbf{1}\{\mathrm{SHA256}(\ell)=h_j\}.
+  :=\mathbf{1}\{\mathrm{SHA256}(\ell)=\eta_j\}.
 \]
 Here $\mathbf{1}\{\cdot\}$ is 1 when its condition holds and 0 otherwise.
 Circuit authenticity and cut-and-choose relate this hashlock witness to an
@@ -437,8 +433,7 @@ into $k$ chunks $x^{(1)},\ldots,x^{(k)}$ of fixed layout, define
 where $\mathsf{Auth}_i$ requires publication and authentication of the
 prescribed chunk and its binding to the same dispute instance. The chunks
 must cover every input wire. Table~\ref{tab:graph_transitions} specifies the
-required transition guards. The conditions on unspent connectors encode
-conflicts, rather than asking Script to prove the absence of a transaction.
+required transition guards. A \emph{connector} is an output that conflicting transactions both spend, so confirming one disables the others~\cite{laa25bitvm2}; conditions on unspent connectors encode conflicts, rather than asking Script to prove the absence of a transaction.
 
 \begin{table}[t]\centering\small
 \begin{tabularx}{\textwidth}{lX}\toprule
@@ -486,9 +481,7 @@ and honest-monitoring assumptions.
 \draw[arr] (assert) -- node[above, sloped] {$\Delta_D$} (take2);
 \draw[arr] (assert) -- node[below] {$\ell^j_0$} (disprove);
 \end{tikzpicture}
-\caption{Dispute graph. The dashed Assert$_1,\ldots,$Assert$_k$ node groups
-the input-publication transactions; only after their completion can the
-protocol reach the mutually conflicting Take2 and Disprove outcomes.}
+\caption{Dispute graph. The dashed Assert$_1,\ldots,$Assert$_k$ node groups the input-publication transactions: a funding transaction, the reveal transactions that publish the input chunks, and a join that spends the reveals' outputs and creates the completion output. Only after the join can the protocol reach the mutually conflicting Take2 and Disprove outcomes.}
 \label{fig:graph}
 \end{figure}
 
@@ -502,8 +495,7 @@ tapscripts, control blocks, transaction inputs and outputs, anchors, timeouts
 and fee-management transactions. A transaction's virtual size is its weight
 divided by four, rounded up to an integer~\cite{bip141}; it differs from
 the transaction's serialized size in bytes. We measure the input-publication component
-of that footprint: bounded funding--reveal publication slices for all four
-schemes, and a signed join for Lamport. The challenge, timeout, Disprove,
+of that footprint: bounded publication slices, each a funding transaction and reveals that spend it, for all four schemes, and a signed join for Lamport. The challenge, timeout, Disprove,
 anchor and fee-management branches, the hash-based soldering across the kept
 garblings and the complete transaction graph are not constructed, so the
 figures are components of that footprint and conditional projections.
@@ -513,7 +505,7 @@ acceptance output, $N$ the total number of garbled instances and $M$
 the number retained for evaluation, with $1\le M<N$.
 The operator garbles $N$ instances of $C$ from independent
 seeds and commits, for every instance $j$, the hash of its garbled tables,
-the reject-label hash $h_j$ and the hashes of its one-time keys and label translations. A challenger chooses
+the reject-label hash $\eta_j$ and the hashes of its one-time keys and label ciphertexts. A challenger chooses
 $N-M$ instances to open, re-garbles each from its seed and checks every
 commitment;
 only then is the transaction graph signed, by a committee as in
@@ -521,7 +513,7 @@ BitVM2~\cite{laa25bitvm2}, whose enforcement requires at least one honest
 signer to delete its signing key after setup.
 
 Publishing bit $b$ of input $i$ must give a challenger only the label of value
-$b$ on wire $i$ in every kept instance; Mosaic provides this correlation for
+$b$ on wire $i$ in every kept instance. We call this correlation \emph{soldering}; Mosaic provides it for
 its adaptor-signature path~\cite{mosaic26}.
 
 \paragraph{Intended dispute.} The operator's Kickoff claims a reimbursement;
@@ -531,7 +523,7 @@ its stake on timeout. A challenger then reads the published bits, derives
 the input labels of every kept instance and evaluates each off-chain, one
 Blake3 call per non-free gate. An
 invalid proof yields $\ell^j_0$ from a correctly garbled instance, which opens
-Disprove$_j$. The public-value digest binds the verified off-chain computation
+Disprove$_j$. The public-value digest, eight field elements that commit to the zkVM program's verifying key and outputs, binds the verified off-chain computation
 to its program and public outputs; for a bridge, these outputs include the
 rollup-state commitment and withdrawal. Section~\ref{sec:protocol} reduces
 the bits Assert publishes and the bytes each bit costs.
@@ -594,8 +586,7 @@ following stages:
     specify polynomial constraints on
     current and next trace rows; these constraints, the table dimensions
     and the verifying key determine the expected proof structure.
-  \item \emph{Cross-table consistency.} Verify the binary-bus product
-    argument linking the recursion machine's tables, together with any lookup
+  \item \emph{Cross-table consistency.} Verify the binary-bus product argument, which matches the values each table of the recursion machine (\S~\ref{sec:tape}) sends with those another receives, together with any lookup
     reductions required by the configured AIRs. The resulting evaluation
     claims must subsequently be bound to committed trace values.
   \item \emph{Constraint reduction.} Verify the shared \emph{zerocheck}
@@ -617,7 +608,7 @@ following stages:
     using the authenticated openings, discharge the remaining lookup claims,
     and check consistency with the sumcheck's terminal claim. The circuit
     returns acceptance only if these checks and all assertions introduced by
-    the Boolean translation hold.
+    the Boolean compilation hold.
 \end{enumerate}
 All challenges come from a Blake3~\cite{blake3spec} sponge over bytes, and all
 Merkle trees use Blake3 compressions.
@@ -655,7 +646,7 @@ instructions cover field arithmetic and assertions, byte conversion,
 selection, Blake3 compression, and Merkle-path verification. ``Binary'' here
 identifies Ziren's binary-field recursion stage; the tape is neither a bit
 string nor a Turing-machine tape. Ziren proves its execution with seven AIR
-tables: the ledger tracks values and their uses, the arithmetic table checks
+tables, which form the recursion machine: the ledger table tracks values and their uses, the arithmetic table checks
 field operations, two rewiring tables check representation changes, one for
 whole elements and bytes and one for the gathers of transposes, the hash
 table schedules hash calls, the Blake3-round table checks their internal
@@ -688,8 +679,7 @@ non-free arithmetic (\S~\ref{sec:gadgets}).
 \paragraph{Why Blake3.} One hash serves three roles: the Merkle commitments
 and the Fiat--Shamir sponge of the proof system, and the garbling hash $H$ of
 \S~\ref{sec:garbling}. Blake3 is an add-rotate-XOR design, so its only
-non-free operations are 32-bit additions; a width-16 Poseidon2 permutation
-over KoalaBear~\cite{poseidon2} costs about 120 Blake3 compressions
+non-free operations are 32-bit additions; a width-16 Poseidon2 permutation over the 31-bit KoalaBear field~\cite{poseidon2} costs about 120 Blake3 compressions
 (Table~\ref{tab:gadgets}). A prover that already commits and samples with Blake3 needs
 no change, and the circuit's transcript can be checked byte for byte against
 it. A single hash also keeps the
@@ -701,8 +691,7 @@ post-quantum (\S~\ref{sec:pq}).
 \subsubsection{Gadgets}\label{sec:gadgets}
 
 \paragraph{Tower arithmetic.} We retain Plonky3's Wiedemann tower
-representation~\cite{plonky3,wiedemann88} and translate its reference
-arithmetic into Boolean gates. A wire vector for an element of $\T_k$ is its
+representation~\cite{plonky3,wiedemann88} and compile its reference arithmetic into Boolean gates. A wire vector for an element of $\T_k$ is its
 bit pattern, so gadget outputs can be read back directly as field elements.
 Multiplication follows the existing tower algorithm recursively, using
 Karatsuba at each level. For
@@ -775,8 +764,7 @@ hash-based projections of \S~\ref{sec:pq}.
 
 The adaptor uses one \texttt{CHECKSIG} per digit for both selection and
 transaction binding, which is why its script is three bytes per digit.
-Hash-based schemes additionally authenticate their openings with hash ladders
-in Script and require a separate transaction signature; only their selection
+Hash-based schemes additionally authenticate their openings with hash ladders in Script, which hash a revealed chain node forward to its committed end, and require a separate transaction signature; only their selection
 is hash-based. Table~\ref{tab:bytes} breaks down their costs per digit or
 bit, and \S~\ref{sec:publication_eval} gives the totals; WOTS denotes a
 Winternitz one-time signature. Appendix~\ref{app:pqsel} separately considers
@@ -792,29 +780,27 @@ Lamport & one 16-byte preimage per bit & 49 bytes per bit & separate 64-byte Sch
 \end{tabularx}
 \caption{Where the four input schemes spend their bytes. Selection material
 and script are per digit or per bit as stated; vB/bit is the measured
-one-key-set component of Table~\ref{tab:ziren_publication}, including transaction
-shells.}
+one-key-set component of Table~\ref{tab:ziren_publication}, including each transaction's fixed fields.}
 \label{tab:bytes}
 \end{table}
 
 \paragraph{One-time signature schemes.} We price four one-time schemes for
 carrying the input bits. \emph{Lamport}~\cite{lamport79} reveals one of two
 hashed preimages per bit. \emph{Antichain Winternitz}~\cite{antichain26} and
-\emph{Winternitz with a translation table}~\cite{wotstranslation26} close the
-forward-hashing gap of plain Winternitz chains, the latter by making each label
-a Shamir secret whose threshold a signed chunk's checksum sets.
+\emph{Winternitz with a translation table}~\cite{wotstranslation26} close the forward-hashing gap of plain Winternitz chains, in which anyone can
+hash a revealed node forward to the node of another digit value. The
+translation-table variant makes each label a Shamir secret whose threshold a
+signed chunk's checksum sets.
 \emph{Schnorr adaptor signatures} over 8-bit digits, as in BitVM3 and
 Mosaic~\cite{bitvm3paper,mosaic26}, rest on discrete logarithms. Increasing
 the adaptor's digit width reduces the number of on-chain signatures but
-expands the off-chain choice table exponentially; we retain the 8-bit
-construction as the authenticated baseline. Appendix~\ref{app:schemes} gives
-the four scripts and fixtures.
+expands the off-chain choice table, the label ciphertexts of every candidate digit value, exponentially; we retain the 8-bit
+construction as the authenticated baseline. Appendix~\ref{app:schemes} gives the four scripts and their fixtures, the signed transactions we serialize and execute.
 
 Our labels are free-XOR correlated, so a hash-based preimage $s$ cannot itself
-be a label: a key-derivation function (KDF) maps it to one by a translation
-ciphertext $\mathrm{KDF}(s)\oplus w_b$, two per input bit and instance.
+be a label: a key-derivation function (KDF) maps it to one by a label ciphertext $\mathrm{KDF}(s)\oplus w_b$, two per input bit and instance.
 Using one on-chain key set for all $M$ kept
-instances requires a proof that the translations of opened and kept instances
+instances requires a proof that the label ciphertexts of opened and kept instances
 encode the same bit choices. BABE's zero-knowledge soldering~\cite{babe2026}
 and Glock's verifiable secret sharing~\cite{eag25glock} give related mechanisms
 at smaller input sizes; we have neither constructed nor costed one for
@@ -844,7 +830,7 @@ commitment openings remain necessary to authenticate the reduced claims.
 
 Concretely, fix the basis $\beta_0,\ldots,\beta_{127}$ of $\F$ over
 $\mathbb F_2$, and pack 128 bits as
-$p(u)=\sum_{j=0}^{127}\beta_j t(u,j)$. A ring-switch proof sends a
+$p(u)=\sum_{j=0}^{127}\beta_j t(u,j)$, where $t(u,j)$ is bit $j$ of the element packed at $u$. A ring-switch proof sends a
 \emph{tensor witness}
 \[
   T=\sum_{i,j}M_{i,j}\,\beta_i\otimes\beta_j
@@ -883,8 +869,7 @@ $q$, $w$ and $E(r,z)$ are verifier-derived weights.
 
 \paragraph{Recursing over the verification program.} Each narrow-recursion
 level proves its single child's verifier in the machine of
-\S~\ref{sec:tape} through a wrap node, which checks the child's shard chain
-in binary-field arithmetic, so the recorded tapes carry no KoalaBear
+\S~\ref{sec:tape} through a wrap node, a recursion step over a single child proof, which checks in binary-field arithmetic that the child's shards form one consecutive chain, so the recorded tapes carry no KoalaBear
 operations. The final garbled circuit therefore verifies a proof of a narrow
 machine rather than exposing the original verification program's trace width
 at its input, which moves work from the final verifier into recursive proof
@@ -926,7 +911,7 @@ opens a tenth of their values.
 
 \subsubsection{Specializing fixed data and input encodings}
 
-\paragraph{Typed inputs and known values.} The translator allocates one bit,
+\paragraph{Typed inputs and known values.} The compiler allocates one bit,
 eight bits or 128 bits according to a consumed input's type, while enforcing
 its byte and selector ranges. Unread proof values receive no input wires.
 The recorder also replaces known padding values and preprocessed columns
@@ -940,7 +925,7 @@ that read them.
 
 \paragraph{Dead operations.} The circuit's output is the \AND{} of its
 checks, so an operation matters only if it checks something or a live
-operation reads its result. The translator omits additions, products,
+operation reads its result. The compiler omits additions, products,
 squares, byte splits and transposes whose results no live operation reads,
 and an input read only by such operations receives no wires. Assertions,
 inversions, range-checked operands, hashes, selections and Merkle steps
@@ -961,7 +946,7 @@ main commitments cannot be treated as constants.
 
 \subsubsection{Opening only the linear forms used by verification}
 
-\paragraph{Packed operands and general linear forms.} The ledger's values
+\paragraph{Packed operands and general linear forms.} The ledger table's values
 and arithmetic operands are read by their constraints and buses as packed
 field elements. We first replace each such group of column openings by its
 packed value. We then generalize this compression: symbolic AIR and bus
@@ -1066,26 +1051,24 @@ characteristic two would not allow. Index the table's main and preprocessed
 columns in one space of $n_t$ coordinates, preprocessed columns in the upper
 half, and let $V_t(u)$ be the multilinear extension over column indices of
 the column values, so $V_t(u)$ is column $u$'s value for Boolean $u$. We
-extend every table by zeros to the widest space, $M$ coordinates, write
+extend every table by zeros to the widest space, $d_{\mathrm{cl}}$ coordinates, write
 $L_t$, $Q_t$ and $T_t$ also for the multilinear extensions of their
 coefficient tensors, and let $\delta(z)=\operatorname{eq}(0,z)$. The claim
 $Y=\sum_tP_t(v_t)$ is then
 \[
-  Y-\sum_tc_t=\sum_{z_0,z_1,z_2\in\{0,1\}^M}\sum_tV_t(z_0)\Bigl[L_t(z_0)\delta(z_1)\delta(z_2)
+  Y-\sum_tc_t=\sum_{z_0,z_1,z_2\in\{0,1\}^{d_{\mathrm{cl}}}}\sum_tV_t(z_0)\Bigl[L_t(z_0)\delta(z_1)\delta(z_2)
   +V_t(z_1)\bigl(Q_t(z_0,z_1)\delta(z_2)+V_t(z_2)T_t(z_0,z_1,z_2)\bigr)\Bigr].
 \]
-Three sumchecks of $M$ rounds each, one per point $z_0$, $z_1$ and $z_2$,
+Three sumchecks of $d_{\mathrm{cl}}$ rounds each, one per point $z_0$, $z_1$ and $z_2$,
 prove this identity. Each round polynomial has degree two in its variable
 and is sent as two values. Once $z_0$ is bound to its challenges,
 $V_t(z_0)$ is a fixed factor of the remaining sum, and likewise $z_1$. The
 last round leaves each table's columns at the three points, which the prover
-sends as one fold per aligned column block and side; the folds become claims
-of the paired ring switch and its WHIR opening. The verifier evaluates
+sends as one fold per aligned column block and side; the folds become claims of the joint main/preprocessed ring switch below and its paired WHIR opening. The verifier evaluates
 $L_t$, $Q_t$ and $T_t$ at the three points by running the table's constraints
 and bus terms once over the points' equality tables.
 
-\paragraph{Cost and scope.} The closing replaces the opened values by $6M$
-round values and one fold per aligned column block, side and point. In
+\paragraph{Cost and scope.} The closing replaces the opened values by $6d_{\mathrm{cl}}$ round values and one fold per aligned column block, side and point. In
 exchange the verifier evaluates every table's constraints over three equality
 tables, which adds non-free gates. The closing requires that no table read the next row and that
 the batch have no lookup or indexed argument; the final machine meets both.
@@ -1109,8 +1092,7 @@ Linearity makes the second equality the randomly weighted combination of
 the original incoming-claim checks. After the merged witness is absorbed,
 the transcript derives its row weights and the ring-switch sumcheck binds
 that row reading to the packed polynomial. The implementation checks the
-shared-coordinate condition and excludes successor views, whose shifted
-reading additionally needs carry and last-row tensors. Sending one tensor
+shared-coordinate condition and excludes successor views, the openings of the next row, whose shifted reading needs additional tensors. Sending one tensor
 witness saves repeated input elements and verification work. The batching error and subsequent
 authentication are treated in Appendix~\ref{app:recursion}.
 
@@ -1133,8 +1115,7 @@ coordinate. This operation complements tensor merging: tensor merging combines c
 while the joint switch combines the main and preprocessed packing domains.
 
 \paragraph{Eq-factored bus rounds.} The bus product argument reduces a
-claim about products to claims about their children. In a radix-four layer,
-the product of four multilinear child values has degree at most four in
+claim about products to claims about their children. In a radix-four layer, where each node of the product tree multiplies four children, the product of four multilinear child values has degree at most four in
 the current sumcheck variable. Multiplication by the known equality weight
 raises the round degree to five. We avoid transmitting the extra polynomial
 data contributed by that known factor. The round polynomial has the form $g(X)=e_r(X)h(X)$, with known
@@ -1191,8 +1172,7 @@ universal setting for other recursion traces.
 from 32 bytes to 25 bytes (256 bits to 200 bits). This directly
 reduces proof input; it does not imply a proportional reduction in hash
 gates. It also caps generic collision resistance at 100 classical bits and
-about 66.7 quantum bits~\cite{bht98}. The collision metadata and the
-remaining composition terms are stated in Appendix~\ref{app:recursion}.
+about 66.7 quantum bits~\cite{bht98}. The collision bound that the configuration records for its digests, and the remaining composition terms, are stated in Appendix~\ref{app:recursion}.
 
 \paragraph{GPU grinding.} To reduce the wall-clock cost of the increased
 grinding budget, the prover prepares the candidate-independent Blake3
@@ -1219,15 +1199,14 @@ stages $i=0,\dots,r$, $r$ intermediate and one terminal, fold $k_i$ variables
 each, leaving $f=v-\sum_ik_i$ for the final polynomial. Write
 $v_i=v-\sum_{j<i}k_j$. Stage $i$ reads a codeword of $2^{v_i+\rho_i}$
 positions at log inverse rate $\rho_i$, with $\rho_{i+1}=\rho_i+k_i-1$, or
-$\rho_i+k_i$ when the round keeps its domain. A query opens a coset of
+$\rho_i+k_i$ when the round keeps its domain, committing the next, smaller polynomial on the same evaluation domain rather than on one half its size. A query opens a coset of
 $2^{k_i}$ positions, which is a leaf of a Merkle tree of height
 $h_i=v_i+\rho_i-k_i$. The schedule prices every WHIR error term at
 $\lambda=108$ bits under the Johnson bound, against a composed target of
-100 bits. The proximity parameter is $1-\delta=\tfrac{21}{20}2^{-\rho/2}$, so
-a query at rate $\rho$ buys $a_\rho=\rho/2-\log_2(21/20)$ bits. Each folded
+100 bits. The proximity parameter is $1-\delta=(1+\tfrac{1}{2m})2^{-\rho/2}=\tfrac{21}{20}2^{-\rho/2}$ for list parameter $m=10$, so a query at log inverse rate $\rho$ buys $a_\rho=\rho/2-\log_2(21/20)$ bits. Each folded
 variable is ground against the proximity-gap error of the codeword it folds.
 That error is a line bound of $2^{v_i+2\rho_i+11.59-126}$, where
-$11.59=\log_2(8\cdot10.5^3/3)$ for list parameter $m=10$ and the analysis
+$11.59=\log_2(8\cdot10.5^3/3)$ for the same $m$ and the analysis
 prices $\F$ at 126 bits, two below its size. Each of stage $i$'s $k_i$
 folding grinds therefore takes
 \begin{equation}\label{eq:foldgrind}
@@ -1267,21 +1246,20 @@ Here $D_\kappa$ counts the first-stage siblings in the top $\kappa$ levels
 of the preprocessed tree, which the deep cap makes constants. The proof
 file stores whole 32-byte digests, while the circuit reads 200 bits of each.
 $I_A$ and $B_A$ are the algebraic part: the bus product reduction, the shared
-and closing sumchecks, the closing folds and the ring-switch claim. None of
+and closing sumchecks, their column folds and the ring-switch claim. None of
 these depends on the WHIR schedule.
 
 \paragraph{Proving time.} A $b$-bit grind tests candidates in order until one
 passes. The witness it returns, the smallest passing index $N$, is geometric
 with mean and standard deviation about $2^b$. On $c$ cards that each test
-$\varrho$ candidates per second, a level takes
+$\nu$ candidates per second, a level takes
 \begin{equation}\label{eq:provetime}
-T=T_{\mathrm{set}}+T_{\mathrm{host}}+\frac{W}{c\varrho},\qquad
+T=T_{\mathrm{set}}+T_{\mathrm{host}}+\frac{W}{c\nu},\qquad
 W=\sum_jN_j,\quad \mathbb{E}[W]=\sum_j2^{b_j},\quad
 \mathrm{Var}[W]\approx\sum_j4^{b_j}.
 \end{equation}
 Each nonce is the number of candidates its search tested, so a proof's
-nonces calibrate $\varrho$ in place. At price $p$ per card-hour, a proof's
-card cost is $p\sum cT$ over its proving stages.
+nonces calibrate $\nu$ in place.
 
 % =====================================================================
 \section{Evaluation}\label{sec:eval}
@@ -1303,7 +1281,7 @@ $1\,\mathrm{MvB}=10^6\,\mathrm{vB}$.
 \subsection{WHIR-proof verification in Ziren}
 
 The statement is Ethereum mainnet block 26{,}206{,}588, executed by Ziren in
-110.8M cycles over 49 shards. Ziren's GPU prover proves the shards and
+110.8M cycles over 49 shards, segments of the execution proved separately. Ziren's GPU prover proves the shards and
 compresses them into one binary-stage root proof. Four recursion levels
 follow (Table~\ref{tab:proving}); each proves an execution of the verifier for
 the preceding proof. The first two use the plain recursion machine on the
@@ -1317,8 +1295,7 @@ recording and compilation procedure of \S~\ref{sec:tape}, after four recursion
 levels and the optimizations of \S~\ref{sec:reduce}, the verifier
 of the last proof has 520{,}832 input bits, comprising 79{,}360 bits from
 byte-valued inputs and 441{,}472 bits from field-valued inputs, in 175.4M non-free gates
-and an estimated 2.81\,GB of garbled tables. The public-value digest's eight
-field elements add at most 1{,}024 bits (0.20\%) to this input. This verifier is compiled from a
+and an estimated 2.81\,GB of garbled tables. The public-value digest adds at most 1{,}024 bits (0.20\%) to this input. This verifier is compiled from a
 recorded execution on the block's real final proof. The archived run accepts that proof,
 rejects three single-input changes, records agreement on all 10{,}121{,}640
 intermediate values and performs a full streaming garbling of the
@@ -1331,7 +1308,7 @@ padding.
 \paragraph{Effect of the final reductions.} The dead-operation pass omits
 300{,}771 operations of the final tape, and the deep cap at depth $\kappa=18$
 removes 40{,}656 input bits from the uncapped final verifier. The closing
-column sumcheck sends 126 folds and the round values in place of 1{,}744
+column sumcheck sends 126 column folds and the round values in place of 1{,}744
 opened values and shrinks the final proof from 102{,}766 to 79{,}219 bytes.
 Without the deep cap, it lowers the final verifier's input from 768{,}592 to
 561{,}488 bits and raises its size from 125.4M to 176.7M non-free gates.
@@ -1339,14 +1316,13 @@ Without the deep cap, it lowers the final verifier's input from 768{,}592 to
 \begin{table}[t]\centering\small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{llrrr}\toprule
 stage & schedule & proof & setup & proving\\\midrule
-core and compress & Ziren GPU prover, 2 cards & 511{,}766\,B & -- & 177.7\,s\\
+shards and compression & Ziren GPU prover, 2 cards & 511{,}766\,B & -- & 177.7\,s\\
 level 1 & rate $1/32$, fold 3, $\le33$-bit grinding & 329{,}412\,B & 3.9\,s & 2.3\,s\\
 level 2 & rate $1/32$, fold 4, $\le36$-bit grinding & 321{,}492\,B & 2.0\,s & 2.2\,s\\
 level 3 (narrow) & rate $1/256$, fold 4, $\le41$-bit grinding & 191{,}241\,B & 37.5\,s & 120.4\,s\\
 level 4 (narrow, final) & rate $1/1024$, folds 4-5-4-4, $\le44$-bit grinding & 79{,}219\,B & 70.9\,s & 752.4\,s\\\bottomrule
 \end{tabular}
-\caption{Proving Ethereum block 26{,}206{,}588 to the final proof on RTX~5090
-cards and 64 host cores. The core and compress row is one run on two cards
+\caption{Proving Ethereum block 26{,}206{,}588 to the final proof on RTX~5090 cards and 64 host cores. Setup is the time to build a level's proving keys. The shards-and-compression row is one run on two cards
 with proving keys built cold (162.4\,s with keys reused). The four recursion levels are one job on four cards,
 996\,s of wall time including recording and checking each level. Levels 1
 and 2 prove on the cards. Levels 3 and 4 prove on the host, since at rate
@@ -1357,10 +1333,8 @@ $1/1024$ the final codeword has about $2^{33}$ field elements, beyond a card's
 
 \paragraph{Proving cost.} From the block to the final proof the prover takes
 1{,}174\,s of wall time on at most four cards (Table~\ref{tab:proving}), or
-1.21 card-hours: 0.10 for the core and compression and 1.11 for the
-recursion job. At a rental price of 400\,USD per card per month of 730 hours,
-the cards cost about 0.66\,USD per proof; host processors and memory are not
-included. Most of the final level's time is proof-of-work grinding, whose
+1.21 card-hours: 0.10 for the shards and compression and 1.11 for the
+recursion job. Most of the final level's time is proof-of-work grinding, whose
 length depends on where each search's smallest passing nonce falls. The
 transcript fixes those nonces, so a rerun of the same proof repeats the same
 searches: an earlier run of the level took 738.2\,s. The rerun reproduced
@@ -1368,8 +1342,7 @@ every level's earlier proof byte for byte, since the prover, including its
 multi-card grinding, is deterministic. Another statement draws new nonces;
 \S~\ref{sec:cost_eval} gives the resulting distribution.
 
-\paragraph{Independent-proof recorder regression.} On the public
-reconstruction, with the collision metadata corrected, we generated two
+\paragraph{Independent-proof recorder regression.} On the public reconstruction of an earlier configuration (Appendix~\ref{app:artifact}), with its digests' collision bound corrected, we generated two
 proofs of one small binary-machine program using different execution
 witnesses. Both recordings contain exactly the same 769{,}910 operations,
 including operands and constants, with 87{,}426 input field values.
@@ -1378,8 +1351,8 @@ Each tape accepts the other proof's input vector and reproduces all
 public-digest elements separately causes rejection. Boolean evaluation also
 accepts both input vectors using the first tape's operations, constants and
 input encoding, matching all native intermediate values for each proof.
-This tests the recorded program and its Boolean translation; it does not
-reuse a stored garbled artifact. Appendix~\ref{app:artifact} gives the
+This tests the recorded program and its Boolean compilation; it does not
+reuse stored garbled tables. Appendix~\ref{app:artifact} gives the
 reconstruction and test commands.
 
 \subsection{Proof size and proving cost}\label{sec:cost_eval}
@@ -1408,18 +1381,15 @@ $\mathbb{E}[W]=2^{44}(6+4\cdot2^{-2}+2^{-3}+6\cdot2^{-5}+5\cdot2^{-7})
 =7.35\cdot2^{44}\approx1.29\cdot10^{14}$, with standard deviation
 $2.50\cdot2^{44}$. The four 44-bit folding grinds are 54\% of the expected
 work. The final proof's 22 nonces sum to $1.011\cdot10^{14}$, tested in
-610.0\,s of logged search time. This gives $4\varrho=1.66\cdot10^{11}$, or
-$\varrho=4.14\cdot10^{10}$ per card, at one Blake3 compression per candidate.
+610.0\,s of logged search time. This gives $4\nu=1.66\cdot10^{11}$, or
+$\nu=4.14\cdot10^{10}$ per card, at one Blake3 compression per candidate.
 Every search longer than five seconds ran within 0.5\% of this rate. The
 realized work is $0.78\,\mathbb{E}[W]$, at the 28th percentile of its
 distribution; level~3's 26 nonces give $0.73\,\mathbb{E}[W]$. The remaining
 host work is 128\,s at the final level and 51\,s at level~3.
 
 Replace the two narrow levels' realized grinding, 679\,s on four cards, by
-its distribution, at $p=400/730$\,USD per card-hour. From block to final
-proof, the expectation is 1{,}369\,s (22.8\,min), 1.42 card-hours and
-0.78\,USD. The 90th and 99th percentiles are 1{,}724\,s (1.00\,USD) and
-2{,}136\,s (35.6\,min, 1.25\,USD). The measured 1{,}174\,s run falls below
+its distribution. From block to final proof, the expectation is 1{,}369\,s (22.8\,min) and 1.42 card-hours. The 90th and 99th percentiles are 1{,}724\,s and 2{,}136\,s (35.6\,min). The measured 1{,}174\,s run falls below
 the median. One card grinds four times longer: the final level alone expects
 3{,}121\,s.
 
@@ -1466,7 +1436,7 @@ same expected grinding or less.
 We serialize the four input-authentication schemes for the final Ziren
 verifier's 520{,}832 input bits. Table~\ref{tab:ziren_publication} includes
 selection witnesses, transaction-binding signatures, authentication scripts,
-control blocks and reveal-transaction shells. Every selected leaf is
+control blocks and the reveal transactions' fixed fields. Every selected leaf is
 executed under the stack limit. These serializations have not been replayed
 in Bitcoin Core.
 
@@ -1493,11 +1463,9 @@ policy, every witness item is at most 80 bytes, and every leaf runs under the
 1{,}000-item stack limit. The WOTS-translation input therefore needs 41
 standard transactions, one more than its size alone requires. One funding
 transaction creates the 443 publication outputs. The funding transactions
-measured in Core have one wallet input and one P2TR output per publication
+measured in Bitcoin Core have one wallet input and one P2TR output per publication
 input plus change; that shape reproduces their sizes exactly and gives about
-19.2\,kvB for 443 outputs. In strict Core~31.1 replays of the adaptor, Antichain
-and Lamport publication slices at the 1{,}041{,}024-bit Keccak input, Core
-rejected a full reveal transaction while its funding parent was unconfirmed,
+19.2\,kvB for 443 outputs. In strict Bitcoin Core~31.1 replays of the adaptor, Antichain and Lamport publication slices at the 1{,}041{,}024-bit input of an earlier verifier for a Keccak-f permutation trace, Bitcoin Core rejected a full reveal transaction while its funding parent was unconfirmed,
 because the pair exceeded the mempool's cluster size limit, and accepted every
 reveal once the funding had confirmed. It likewise accepted Lamport's join only
 after the join's reveal parents had confirmed. Reveal transactions near the
@@ -1509,14 +1477,14 @@ reveals, 15.73M weight units in all, since a block holds at most $4\times10^6$ w
 completion join follows in a later block; $\Delta_A$ must cover these blocks
 and the competition for block space. The 97\,vB Disprove transaction, a SHA256
 hashlock on the 16-byte reject label next to its timeout branch, was accepted
-and mined under strict Core~31.1 policy; the challenger builds it and pays its
+and mined under strict Bitcoin Core~31.1 policy; the challenger builds it and pays its
 fee. A challenged dispute thus needs about 46 transactions: Kickoff, Challenge,
 funding, 41 reveals, the completion join, and Disprove or Take2. Of these, the
 41 reveals and Disprove are serialized, and the funding size is derived. An
 unchallenged claim needs only Kickoff and Take1.
 
 WOTS translation requires a 953{,}151{,}840-byte off-chain table per
-instance, and the KDF translation ciphertexts of \S~\ref{sec:input}, two per
+instance, and the label ciphertexts of \S~\ref{sec:input}, two per
 input bit and instance, occupy 16.67\,MB. A single on-chain key set across all kept instances requires the
 soldering discussed in \S~\ref{sec:input}. Independent publication for seven
 sets multiplies the WOTS, Antichain and Lamport components to 27.53, 41.50
@@ -1527,12 +1495,11 @@ transaction graph and do not enforce cross-instance input consistency.
 
 Table~\ref{tab:compare} compares our approach with Boolean-garbled Groth16
 verification in BitVM3 and the post-quantum Bitcoin-bridge analysis of
-Tiwari and Feickert~\cite{tf26pq}. We separate transaction data and stored
-artifacts. Our circuit-cost estimates use the complete verifier for
-Ziren's final narrow-recursion proof. The Tiwari--Feickert column uses their estimated
-RISC Zero configuration with Blake3 substituted for the internal hash;
-it is the combined-cost example in their Section~3.5, using Antichain
-Winternitz (ACW) for input-label revelation.
+Tiwari and Feickert~\cite{tf26pq}, separating on-chain data from off-chain
+storage. The Tiwari--Feickert column is the combined-cost example of their
+Section~3.5: RISC Zero's verifier with Blake3 as its internal hash, at an
+estimated 1.56 billion non-free gates, its proof's length as the input, and
+Antichain Winternitz (ACW) for input-label revelation.
 
 \begin{table}[t!]\centering\small\setlength{\tabcolsep}{4pt}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.6cm}*{3}{>{\raggedright\arraybackslash}X}}\toprule
@@ -1552,16 +1519,12 @@ Total tables per instance (GiB) & --- & $\approx96.0$ & 3.50\\
 Garbled tables, seven instances (GiB; derived) & 283.5 & 163.1 (derived) & 18.30\\\bottomrule
 \end{tabularx}
 \caption{On-chain data and off-chain storage for Bitcoin proof verification.
-kvB is decimal and GiB binary; a dash marks an unreported or inapplicable
-entry. PQ-safe refers to the proof verifier and its garbling only
-(\S~\ref{sec:pq}). The subtotal counts input publication and Disprove:
-BitVM3's Assert pads the proof to 1{,}024 bits, and ours excludes funding, the
-rest of the dispute graph and cross-instance input consistency
-(\S~\ref{sec:publication_eval}). Garbled tables hold one 16-byte ciphertext
-per non-free gate: 175{,}411{,}008 gates for ours, 2.7 billion for the BitVM3
-Groth16 circuit~\cite{babe2026} and an estimated 1.56 billion for the
-Tiwari--Feickert verifier, whose input bits are its proof's length. Seven
-instances are the garblings kept by cut-and-choose at $(N,M)=(181,7)$.}
+A dash marks an unreported or inapplicable entry. PQ-safe concerns the proof
+verifier and its garbling only (\S~\ref{sec:pq}). The subtotal counts input
+publication and Disprove only; BitVM3 pads its proof to 1{,}024 bits. Garbled
+tables are 16 bytes per non-free gate in every column (\S~\ref{sec:garbling}).
+Seven instances are the garblings kept by cut-and-choose at
+$(N,M)=(181,7)$.}
 \label{tab:compare}
 \end{table}
 
@@ -1574,9 +1537,9 @@ their complete reported storage costs rather than matching individual components
 
 \paragraph{On-chain data.} Even the 1.11\,MvB adaptor baseline for the Ziren
 input remains far larger than BitVM3's accounted subtotal. Tiwari and
-Feickert estimate 14.9\,MvB for ACW input revelation or 31.7\,MvB for
-Lamport, excluding fixed transaction overheads, against our serialized
-5.93\,MvB for Antichain and 8.64\,MvB for Lamport. Their 0.043\,kvB witness
+Feickert's ACW estimate, like their 31.7\,MvB for Lamport, excludes fixed
+transaction overheads; our serialized Antichain and Lamport publications,
+overheads included, take 5.93 and 8.64\,MvB. Their 0.043\,kvB witness
 contribution for a hashlock fault signal is not a complete Disprove
 transaction, so it is not entered in that row of Table~\ref{tab:compare}.
 The comparison therefore identifies two distinct costs: Boolean compilation
@@ -1589,20 +1552,19 @@ parameter selection.
 \section{Security}\label{sec:security}
 
 This section states what the garbled verifier guarantees and on which
-assumptions. It distinguishes the recording and translation assumptions of
+assumptions. It distinguishes the recording and compilation assumptions of
 the Ziren path, combines
 proof-system soundness with garbling authenticity, and then accounts for
 the dispute of \S~\ref{sec:dispute}.
 
 \paragraph{The circuit and the verifier.} For the Ziren path, the argument
 assumes that the recorder captures every check of the reference verifier and
-that the Boolean translation preserves the tape's semantics. The translator
-enforces the tape's equality and nonzero assertions and the ranges of byte
+that the Boolean compilation preserves the tape's semantics. The compiler enforces the tape's equality and nonzero assertions and the ranges of byte
 and selector operands. The theorem below states recorder fidelity as an
 assumption; the tests of \S~\ref{sec:eval} are implementation evidence for it.
 
 In the theorem below, $\varepsilon_{\mathrm{guard}}$ denotes the completeness
-loss introduced by the circuit translation and additional protocol guards.
+loss introduced by the circuit compilation and additional protocol guards.
 The eq-factored bus guard is analyzed in Appendix~\ref{app:recursion}; a
 bound for the complete recorded verifier requires accounting for all guards.
 
@@ -1628,7 +1590,7 @@ secure~\cite{bhr12adaptive}.
 
 \noindent The following circuit-level statement is conditional on the Blake3
 circular-correlation-robustness and adaptive-authenticity assumptions stated
-above, and assumes that the circuit translation is faithful to its reference
+above, and assumes that the circuit compilation is faithful to its reference
 verifier with completeness loss at most $\varepsilon_{\mathrm{guard}}$.
 It does not cover cut-and-choose, input soldering or Bitcoin transaction
 enforcement.
@@ -1769,7 +1731,7 @@ proof-layout and opening reductions and a closing column sumcheck, the final
 verifier for an Ethereum block consumes 520{,}832
 input bits and contains 175.4M non-free gates and
 2.81\,GB of garbled tables. The block reaches that final proof in 1{,}174\,s on
-at most four GPUs, about 0.66\,USD of card time at 400\,USD per card per month.
+at most four GPUs.
 For one authenticated input-key set, the measured
 publication cost is 3.93\,MvB in 41 standard-size transactions with
 translated Winternitz keys. These results
@@ -1927,8 +1889,7 @@ Table~\ref{tab:pqsel} gives the results together with a projection whose model
 reproduces both serialized fixtures within $0.03\%$. The operative row is
 $n=32$, $k=8$, which matches the adaptor's size at the price of 255 hash steps per
 byte inside the opcode, about $3.3\times10^7$ compressions for the input. Its setup is two seeds per digit rather than the adaptor's $2^k$
-secrets, so widening $k$ does not grow the choice table; only the translation
-table grows, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
+secrets, so widening $k$ does not grow the choice table; only the label ciphertexts grow, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
 $k=8$. The delivery and soldering of that table across the $M$ kept
 garblings is the same open item as for every other row.
 
@@ -1947,7 +1908,7 @@ batched selector, projected & same & 32 & 8 & $\approx2.05$ & $\approx2.13$\,MvB
 separate 1{,}041{,}024-bit publication fixture, funding plus reveals. This
 fixture evaluates the selector design and is not the final 520{,}832-bit
 verifier input reported in Table~\ref{tab:ziren_publication}. The first three rows are the
-independent Core-tested publication fixtures at this payload size. The batched-selector rows are
+independent publication fixtures tested in Bitcoin Core at this payload size. The batched-selector rows are
 exact rust-bitcoin serializations of a construction that requires the draft
 P2MR output, a hash-based transaction signature and a hypothetical batch
 verification opcode; the last row is a model projection. The security column
@@ -2017,7 +1978,7 @@ final WHIR verifier's 520{,}832-bit input.
     64-byte-\texttt{SIGHASH\_DEFAULT} implementation implies 9{,}323 WU for
     that shell. Our executable fixture reproduces 9{,}323 WU, uses the BIP342
     opcode index rather than a byte offset for every code separator, and reaches
-    the exact 998-signature stack capacity. Core 31.1 validates all completed
+    the exact 998-signature stack capacity. Bitcoin Core 31.1 validates all completed
     signatures. The final-input serialization uses 65{,}104 eight-bit digits;
     its size is the adaptor row
     of Table~\ref{tab:ziren_publication}. Mosaic's source construction solders all
@@ -2039,8 +2000,7 @@ dependencies and benchmark commands; the commands and memory caps are listed in
 \texttt{paper/data/}, together with a SHA-256 manifest and a README listing
 the archived logs and reproduction commands. The final measurement uses
 Ziren's binary-field recursion at \texttt{fd2a95c4}, Ziren's GPU prover at
-\texttt{e4394727}, Plonky3 at \texttt{bbeebecb} and this repository's
-translator at \texttt{c100153}. The archive contains the final gate-count,
+\texttt{e4394727}, Plonky3 at \texttt{bbeebecb} and this repository's compiler at \texttt{c100153}. The archive contains the final gate-count,
 value-consistency, mutation, streaming-garbling and proving logs. The
 recorder regression of \S~\ref{sec:eval} uses the public reconstruction of
 an earlier configuration, Ziren \texttt{9398469a} with the preserved patch
@@ -2051,10 +2011,8 @@ the reconstruction and commands. Gate, wire and input counts are deterministic.
 
 \subsection{Narrow recursion}\label{app:recursion}
 
-The final proof is produced from the preceding verifier tape at the Johnson
-rate $1/1024$ and re-recorded. The tape machine binds up to eight of a tape's first inputs as
-public values, enough for the binary stage's public-value digest, which commits
-to the zkVM program's verifying key and outputs.
+The final proof is produced from the preceding verifier tape at rate $1/1024$ and re-recorded. The tape machine binds up to eight of a tape's first inputs as
+public values, enough for the public-value digest.
 
 Section~\ref{sec:reduce} describes the layout, recording, opening and
 commitment optimizations used in the final configuration. Here we give their
@@ -2063,7 +2021,7 @@ Appendix~\ref{app:artifact} documents the public reconstruction and its
 differences from the measurement version.
 
 \paragraph{Algebraic reductions and their scope.}
-Write $q=|\F|$. The following arguments concern the interactive algebraic
+The following arguments concern the interactive algebraic
 reductions, conditional on fixed statement shapes, correctly derived linear
 forms and fresh uniform challenges after the preceding messages are fixed.
 When a commitment admits several candidate
@@ -2073,7 +2031,7 @@ traces, the error must also account for that candidate set.
 For the merged witness of \S~\ref{sec:reduce}, with $\mu$ uniform in $\F$
 after the points and claims are fixed, and any fixed nonzero discrepancy vector,
 $\sum_i\mu^i(\ell_q(T_i)-y_i)$ has degree at most $m-1$, giving error at most
-$(m-1)/q$. The subsequent tensor checks and sumcheck must still bind $T$ to
+$(m-1)/|\F|$. The subsequent tensor checks and sumcheck must still bind $T$ to
 the packing; their errors are additional. The outer opening transcript binds the claimed forms and column folds
 before the ring switch draws $\mu$; the ring-switch transcript then binds
 $T$ before drawing $\rho$. The standalone ring-switch routine relies on that
@@ -2113,16 +2071,16 @@ commitments admit at most $K$ candidate collections
 of column evaluations before $\rho$. A degree-two sumcheck over the
 zero-extended column tables reduces these claims to authenticated column
 folds with algebraic error at most
-$K(m_{\mathrm{form}}-1+2d_{\mathrm{col}})/q$, in addition to the error of
+$K(m_{\mathrm{form}}-1+2d_{\mathrm{col}})/|\F|$, in addition to the error of
 authenticating those folds.
 \end{lemma}
 \begin{proof}
 For a fixed candidate collection, let $\delta_j$ be claimed form $j$ minus
 its candidate evaluation. A false vector of forms gives a nonzero
 polynomial $\sum_{j=0}^{m_{\mathrm{form}}-1}\rho^j\delta_j$, which vanishes with probability
-at most $(m_{\mathrm{form}}-1)/q$. Otherwise the initial weighted claim is false. Each
+at most $(m_{\mathrm{form}}-1)/|\F|$. Otherwise the initial weighted claim is false. Each
 round checks a polynomial of degree at most two, so the usual sumcheck
-induction adds at most $2d_{\mathrm{col}}/q$ before a false terminal claim remains.
+induction adds at most $2d_{\mathrm{col}}/|\F|$ before a false terminal claim remains.
 Union-bounding over the $K$ candidate collections gives the stated term.
 \end{proof}
 The implementation uses the squared prefix factor of the terminal check,
@@ -2134,10 +2092,9 @@ cannot be reused solely because the transcript is shorter.
 \begin{lemma}[Closing sumcheck]\label{lem:closing}
 Suppose the closing relation, its target $Y$ and the relevant commitments are
 fixed before the first challenge of the closing sumcheck, and the commitments
-admit at most $K$ candidate collections of column values. Let $M$ be the
-widest table's column-coordinate count. The three sumchecks of
+admit at most $K$ candidate collections of column values. Let $d_{\mathrm{cl}}$ be the widest table's column-coordinate count. The three sumchecks of
 \S~\ref{sec:closing} reduce the claim $Y=\sum_tP_t(v_t)$ to the column folds
-at three points with algebraic error at most $6MK/q$, in addition to the
+at three points with algebraic error at most $6d_{\mathrm{cl}}K/|\F|$, in addition to the
 error of authenticating those folds.
 \end{lemma}
 \begin{proof}
@@ -2146,22 +2103,22 @@ $z_2$ against $\delta$ select the zero point, and the triple sum equals
 $L_t(v_t)+Q_t(v_t,v_t)+T_t(v_t,v_t,v_t)$ for every table. The identity of
 \S~\ref{sec:closing} therefore holds exactly for the true column values. Fix
 a candidate collection whose closing value differs from $Y$. Each of the
-$3M$ rounds checks a polynomial of degree at most two in its variable: in
+$3d_{\mathrm{cl}}$ rounds checks a polynomial of degree at most two in its variable: in
 the first sumcheck the integrand is a product of $V_t(z_0)$ and a part
 multilinear in $z_0$, and in the later ones $V_t(z_0)$, then $V_t(z_1)$, is a
-fixed factor. The usual sumcheck induction gives at most $2/q$ per round
-before a false terminal claim remains, $6M/q$ in total, and a union bound
+fixed factor. The usual sumcheck induction gives at most $2/|\F|$ per round
+before a false terminal claim remains, $6d_{\mathrm{cl}}/|\F|$ in total, and a union bound
 over the $K$ candidates gives the stated term.
 \end{proof}
 The implementation absorbs each round's two values before drawing its
-coordinate, and binds the folds before the paired ring switch draws its
+coordinate, and binds the folds before the joint ring switch draws its
 batching scalar.
 
 \paragraph{Eq-factored bus rounds.}
 For $r\ne0$, the reconstruction of $h(1)$ in \S~\ref{sec:reduce} enforces
 $g(0)+g(1)=s$ exactly. The round message is absorbed before $\alpha$ is
 sampled, so the degree-five sumcheck argument still applies. The implementation rejects $r=0$, introducing a completeness
-loss of at most $n_{\mathrm{guard}}/q$ for $n_{\mathrm{guard}}$ such coordinates under uniform challenges.
+loss of at most $n_{\mathrm{guard}}/|\F|$ for $n_{\mathrm{guard}}$ such coordinates under uniform challenges.
 This guard contributes to the recursion path's completeness loss.
 
 \paragraph{Collision accounting and composition.}

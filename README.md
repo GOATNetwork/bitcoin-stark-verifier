@@ -40,8 +40,8 @@ sumcheck replaces the final proof's opened values, and the statement is a real
 Ethereum block. The final verifier is then 175.4M non-free gates and 2.81 GB
 garbled, and reads 520,832 input bits. Publishing them takes 3.93 MvB with
 translated Winternitz keys. Proving the block to the final proof takes about
-20 minutes on at most four RTX 5090 cards, about 0.66 USD of card rental. These
-numbers rest on Plonky3, Ziren and `whir-gc` revisions that are not public yet.
+20 minutes on at most four RTX 5090 cards. These numbers rest on Plonky3, Ziren
+and `whir-gc` revisions that are not public yet.
 
 ## Scope
 
