@@ -1713,8 +1713,63 @@ audited without seeds that expose the others. 2026/1684 uses a key per
 evaluated circuit. So 7.86 MvB of reveals is one key set, and the rest of the dispute
 graph is not built.
 
+## 7p. Final verifier for an Ethereum block: closing sumcheck (2026-11-15)
+
+**Statement.** Ethereum mainnet block 26,206,588, 110.8M cycles, 49 shards,
+proved by Ziren's GPU prover (`feat/blake3-on-main` + multi-card grind
+`e4394727`) and four recursion levels (Ziren `exp/b3main-narrow` `fd2a95c4`,
+Plonky3 `zkm/binary-whir-narrow` `bbeebecb`). Logs: `data/run-reth-*`,
+`data/run-closing-final-*`.
+
+| stage | cards | schedule | proof | setup | proving |
+|---|---|---|---:|---:|---:|
+| core + word compress | 2 | GPU | root 511,766 B | | 177.7 s cold / 162.4 s warm |
+| level 1 | 4 | Johnson 1/32, fold 3, ≤33 | 329,412 B | 3.9 s | 2.3 s |
+| level 2 | 4 | Johnson 1/32, fold 4, ≤36 | 321,492 B | 2.0 s | 2.2 s |
+| level 3 | 4 (host + GPU grind) | 1/256, fold 4, ≤42, merge, forms | 191,241 B | 37.5 s | 120.4 s |
+| level 4 | 4 (host + GPU grind) | 1/1024, folds 4-5-4-4, ≤44, merge, forms, half, short, joint, gruen, closing | 79,219 B | 70.9 s | 752.4 s (first run 738.2 s) |
+
+Recursion job 996 s wall on cards 3, 6, 5, 2; box memory peak 763 GB with
+about 313 GB of other work at the start. Block to final proof 1,174 s,
+1.21 card-hours, 0.66 USD at 400 USD per card-month (730 h). Rerun proofs are
+byte-identical to the earlier ones at every level.
+
+**Final verifier** (whir-gc `c100153`, dead-operation elimination on):
+
+| deep cap | input bits | bytes | full-width | non-free gates |
+|---|---:|---:|---:|---:|
+| none | 561,488 | 11,738 | 3,653 | 176.74M |
+| 0 | 561,232 | 11,738 | 3,651 | 176,709,503 |
+| 10 | 541,632 | 10,856 | 3,553 | 175,666,504 |
+| 14 | 531,232 | 10,388 | 3,501 | 175,193,156 |
+| 18 | 520,832 | 9,920 | 3,449 | 175,411,008 |
+
+k18: 175,298,831 AND + 112,177 OR, 2.81 GB garbled; 10,121,640 values agree;
+inputs 1177, 2355 and 7857 changed are rejected; 300,771 dead operations;
+streaming garbling 121 s on one core, output 1. Without closing (same chain,
+DCE, no cap): 768,592 bits, 125.35M gates; final proof 102,766 B with 978 main
+and 766 preprocessed opened values (126 folds under closing).
+
+**Publication at 520,832 bits** (`data/run-closing-final-publication.txt`):
+adaptor 8-bit 67 inputs / 12 tx / 1,111,863 vB; WOTS translation 443 / 41 /
+3,933,134 vB (15,732,534 WU); Antichain 393 / 66 / 5,928,181 vB; Lamport
+522 / 87 / 8,638,098 vB + 6,557 vB join. Disprove 97 vB. Funding for 443
+outputs about 19.2 kvB (derived as in 7o). Seven sets: 27.53 / 41.50 / 60.47 MvB.
+WOTS table 21,702 chunks × 43,920 B = 953,151,840 B. Translation ciphertexts
+520,832 × 32 B = 16.67 MB. Lamport multi-target T = 520,832: 109.0 / 54.5 bits
+(seven sets 106.2 / 53.1).
+
+**Further compression (schedule sweep, not proved).** Kept domain on round 1
+with 46-bit grinding: −17.0k bits for about 4.6× grinding; rate 1/2048 does
+not fit beside the box's other work. Serializing digests at 25 bytes would cut
+the proof file by about 9 KB without changing input bits.
+
 ## 8. To fix or check before release
 
+0. Before release, publish the revisions the paper cites for the final
+   verifier (Ziren `fd2a95c4`, the GPU prover `e4394727`, Plonky3 `bbeebecb`,
+   this repository `c100153`); none is pushed yet. The recursion runner that
+   drives the four levels (`zgshrink-narrow`) lives only on the GPU box.
 1. bitvm-gc `docs/partial_binding_we.tex` credits BABE to "Goat Research Team".
    The authors are Garg, Kolonelos, Sergeevitch, Sridhar and Tse.
 2. BABE's garbled-circuit size: the note says ~4.7·10^8 gates, BABE says a
