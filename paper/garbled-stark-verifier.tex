@@ -68,9 +68,14 @@ implementation uses Ziren's binary-field proof stage and narrow recursion.
 For an Ethereum block proved through four recursion levels, the final
 recursive WHIR-proof verifier has
 174.5M non-free gates and $504{,}240$ input bits, corresponding to
-2.79\,GB of garbled tables. The transactions publishing that input with translated
-Winternitz keys have a total virtual size of 3.81 million virtual bytes (MvB)
-for one key set, in 39 transactions within Bitcoin's standard size limit.
+2.79\,GB of garbled tables, and publishing that input with translated
+Winternitz keys takes 3.81 million virtual bytes (MvB) for one key set, in 39
+standard transactions. The costs are coupled: on-chain cost grows linearly
+with the input bits, off-chain storage with the gate count, and proving time
+exponentially with the grinding that shortens the input. The WHIR schedule,
+the Merkle cap depth and the input encoding trade these costs against one
+another, and a model of proof size and proving time selects the setting, a
+step toward practical post-quantum Bitcoin bridges.
 \end{abstract}
 
 \noindent\textbf{Keywords:} Bitcoin bridges; post-quantum security;
@@ -1160,6 +1165,10 @@ also avoids the corresponding path hashes. We score the complete opening
 schedule, including round messages and terminal data, rather than minimizing
 the number of queries alone. Since polynomial arity decreases through the
 protocol, different folding factors can be preferable in different rounds.
+A round may also keep its domain: it commits the folded polynomial on the
+same evaluation domain instead of one half its size. The next codeword then
+has twice the redundancy, so later rounds need fewer queries, at the price of
+harder later grinding and a committed codeword twice as large.
 
 Section~\ref{sec:cost_model} states the rules that derive each round's
 queries and grinding from its rate and fold. A schedule must fit the actual
@@ -1197,7 +1206,7 @@ stages $i=0,\dots,r$, $r$ intermediate and one terminal, fold $k_i$ variables
 each, leaving $f=v-\sum_ik_i$ for the final polynomial. Write
 $v_i=v-\sum_{j<i}k_j$. Stage $i$ reads a codeword of $2^{v_i+\rho_i}$
 positions at log inverse rate $\rho_i$, with $\rho_{i+1}=\rho_i+k_i-1$, or
-$\rho_i+k_i$ when the round keeps its domain, committing the next, smaller polynomial on the same evaluation domain rather than on one half its size. A query opens a coset of
+$\rho_i+k_i$ when the round keeps its domain. A query opens a coset of
 $2^{k_i}$ positions, which is a leaf of a Merkle tree of height
 $h_i=v_i+\rho_i-k_i$. The schedule prices every WHIR error term at
 $\lambda=108$ bits under the Johnson bound, against a composed target of
@@ -1258,6 +1267,16 @@ W=\sum_jN_j,\quad \mathbb{E}[W]=\sum_j2^{b_j},\quad
 \end{equation}
 Each nonce is the number of candidates its search tested, so a proof's
 nonces calibrate $\nu$ in place.
+
+\paragraph{Coupled costs.} The input length $I$ sets the on-chain cost: an
+input-publication scheme spends a fixed $\gamma$ virtual bytes per input bit,
+so publication costs $\gamma I$. Off-chain, each kept instance stores
+16 bytes per non-free gate and the scheme's translation table, $\tau I$
+bytes. Proving time follows \eqref{eq:provetime}. Shortening $I$ moves cost
+into the other two: the schedule buys fewer queries with exponentially more
+grinding, a deeper cap removes $D_\kappa$ digests while its selection gates
+grow as $2^\kappa$, and a wider input digit lowers $\gamma$ while $\tau$ grows exponentially
+with the digit width.
 
 % =====================================================================
 \section{Evaluation}\label{sec:eval}
@@ -1450,7 +1469,9 @@ verifier's 504{,}240 input bits. Table~\ref{tab:ziren_publication} includes
 selection witnesses, transaction-binding signatures, authentication scripts,
 control blocks and the reveal transactions' fixed fields. Every selected leaf is
 executed under the stack limit. These serializations have not been replayed
-in Bitcoin Core.
+in Bitcoin Core. Per input bit they cost $\gamma=2.13$, 7.55, 11.38 and
+16.59\,vB for the adaptor, WOTS translation, Antichain and Lamport, and the
+WOTS translation table adds $\tau=1{,}830$ bytes off-chain.
 
 \begin{table}[t]\centering\small
 \begin{tabular}{lrrr}\toprule
@@ -1748,6 +1769,11 @@ publication cost is 3.81\,MvB in 39 standard-size transactions with
 translated Winternitz keys. These results
 show that binary-field verification can reduce the retained garbled verifier,
 while authenticated proof input remains the dominant accounted on-chain cost.
+That cost is linear in the input, so the reductions that shorten the input
+pay for it in grinding or gates: keeping one WHIR domain removed 3.2\% of the
+input for 4.6 times the expected grinding. Choosing the schedule, cap depth
+and input encoding against these relations is a step toward practical
+post-quantum Bitcoin bridges.
 
 The verifier supports any off-chain computation proved by Ziren, including
 rollup withdrawals. Correlating one published input across the retained
