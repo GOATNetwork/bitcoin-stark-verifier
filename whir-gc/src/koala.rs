@@ -277,6 +277,13 @@ pub fn reduce<T: CircuitTrait>(b: &mut T, mut pos: Cols, mut neg: Cols) -> Fp {
 // Field operations.
 // ---------------------------------------------------------------------------
 
+/// One wire that is 1 iff the 31-wire `x` is below `p`, a canonical element.
+pub fn is_canonical<T: CircuitTrait>(b: &mut T, x: &[usize]) -> usize {
+    let (_, at_least_p) = sub_const(b, x, P as u128, BITS);
+    let one = b.one();
+    b.xor_wire(at_least_p, one)
+}
+
 pub fn constant<T: CircuitTrait>(b: &mut T, v: u32) -> Fp {
     (0..BITS).map(|i| if (v >> i) & 1 == 1 { b.one() } else { b.zero() }).collect()
 }
