@@ -69,7 +69,7 @@ For an Ethereum block proved through four recursion levels, the final
 recursive WHIR-proof verifier has
 175.4M non-free gates and $520{,}832$ input bits, corresponding to
 2.81\,GB of garbled tables, and publishing that input with translated
-Winternitz keys takes 3.93 million virtual bytes (MvB) for one key set, in 41
+Winternitz keys takes 3.93 million virtual bytes (MvB), in 41
 standard transactions. The costs are coupled: on-chain cost grows linearly
 with the input bits, off-chain storage with the gate count, and proving time
 exponentially with the grinding that shortens the input. The WHIR schedule,
@@ -190,9 +190,9 @@ and the transaction layer have the separate assumptions stated in
     verifier in a BitVM3-style dispute, state the label-selection task that
     publishing its input must solve, and price four one-time input schemes
     using signed transaction serializations for the final verifier input.
-    We separate the measured component for one input-key set from two unimplemented parts: the transaction graph, and the soldering that lets one key set select the same labels in every kept garbling (\S~\ref{sec:dispute}, \S~\ref{sec:input}). The component
+    The operator garbles the verifier once and proves the garbling correct, so one input-key set selects its labels (\S~\ref{sec:dispute}, \S~\ref{sec:input}). We measure the input-publication component; the transaction graph and the proof of correct garbling are not constructed. The component
     measures 1.11\,MvB with the 8-bit adaptor baseline and 3.93--8.64\,MvB
-    per hash-based key set for the final Ziren verifier's 520{,}832-bit input,
+    with hash-based keys for the final Ziren verifier's 520{,}832-bit input,
     against a few thousand virtual bytes for Groth16. We also
     serialize a hash-based construction that would match the adaptor cost under a proposed batch hash-verification opcode.
   \item \textbf{Circuit-input reduction (C2).} Narrow recursion over Ziren's binary
@@ -225,7 +225,7 @@ and the transaction layer have the separate assumptions stated in
 \end{itemize}
 For the post-quantum goal, \S~\ref{sec:pq} analyzes the STARK and garbling components in
 the quantum random-oracle model (QROM), including Grover search on the garbling
-offset, and distinguishes those bounds from the lower cut-and-choose security,
+offset, and distinguishes those bounds from the soundness of the garbling proof,
 the underlying Ziren assumptions and the non-post-quantum transaction layer.
 Section~\ref{sec:eval} estimates the final WHIR-proof verifier's
 garbling and input-publication costs, and compares the
@@ -357,10 +357,13 @@ evaluate the verifier off-chain. An invalid proof yields a reject-output
 label that unlocks an on-chain hashlock and prevents reimbursement. The
 proof is public, so the garbling needs authenticity rather than privacy:
 the evaluator may know the wire values but must not derive the label for
-an incorrect output. Cut-and-choose checks the garbler's construction;
-BABE~\cite{babe2026}, Mosaic~\cite{mosaic26} and bitvm-gc~\cite{bitvmgc}
-use this approach. Our construction follows this division between off-chain
-verification and on-chain input publication and refutation.
+an incorrect output. The garbler's construction must itself be checked.
+BABE~\cite{babe2026} and Mosaic~\cite{mosaic26} use cut-and-choose: the
+garbler prepares many instances and opens most of them. BitVM3 also names a
+proof that the setup is correct~\cite{bitvm3paper}. Our construction takes
+the second route: the operator garbles the verifier once and proves the
+garbling correct. It keeps the division between off-chain verification and
+on-chain input publication and refutation.
 
 \subsubsection{Dispute graphs}\label{sec:disputegraph}
 
@@ -407,15 +410,15 @@ of the protected outputs; graph notation alone does not enforce that
 property.
 
 \paragraph{Refutation predicate.} The refutation witness is a reject-output
-label from a garbled verifier kept for evaluation after cut-and-choose (\S~\ref{sec:dispute}). Let $\ell^j_0$ denote the reject-output
-label of kept instance $j$, and let $\eta_j=\mathrm{SHA256}(\ell^j_0)$ be its
+label of the operator's garbled verifier (\S~\ref{sec:dispute}). Let $\ell_0$ denote that reject-output
+label, and let $\eta=\mathrm{SHA256}(\ell_0)$ be its
 committed hash. For a candidate label $\ell$, the refutation condition is
 \[
-  \mathsf{Reject}_j(\ell)
-  :=\mathbf{1}\{\mathrm{SHA256}(\ell)=\eta_j\}.
+  \mathsf{Reject}(\ell)
+  :=\mathbf{1}\{\mathrm{SHA256}(\ell)=\eta\}.
 \]
 Here $\mathbf{1}\{\cdot\}$ is 1 when its condition holds and 0 otherwise.
-Circuit authenticity and cut-and-choose relate this hashlock witness to an
+Circuit authenticity and the proof of correct garbling relate this hashlock witness to an
 invalid verifier input (\S~\ref{sec:security}); the transaction graph
 controls how its disclosure prevents reimbursement.
 
@@ -448,8 +451,8 @@ $\mathsf{Complete}(x)=1$, and create the completion output while its
 required inputs remain unspent.\\
 Challenge $\to$ AssertTimeout & $h\ge h_C+\Delta_A$ and a connector needed
 for completion remains unspent; penalize the operator and disable completion.\\
-completed Assert $\to$ Disprove$_j$ & Supply $\ell$ with
-$\mathsf{Reject}_j(\ell)=1$ and consume a connector required by Take2;
+completed Assert $\to$ Disprove & Supply $\ell$ with
+$\mathsf{Reject}(\ell)=1$ and consume a connector required by Take2;
 prevent reimbursement.\\
 completed Assert $\to$ Take2 & $h\ge h_A+\Delta_D$ and every required
 refutation connector remains unspent; reimburse the operator.\\\bottomrule
@@ -473,14 +476,14 @@ and honest-monitoring assumptions.
 \node[tx, below right=2mm and 9mm of kick] (chal) {Challenge};
 \node[tx, dashed, right=of chal] (assert) {Assert$_1,\dots,$Assert$_k$};
 \node[tx, above right=2mm and 9mm of assert] (take2) {Take2};
-\node[tx, right=of assert] (disprove) {Disprove$_j$};
+\node[tx, right=of assert] (disprove) {Disprove};
 \node[tx, below=4mm of assert] (noassert) {AssertTimeout};
 \draw[arr] (kick) -- node[above, sloped] {$\Delta_C$} (take1);
 \draw[arr] (kick) -- (chal);
 \draw[arr] (chal) -- (assert);
 \draw[arr] (chal) |- node[pos=0.75, below] {$\Delta_A$} (noassert);
 \draw[arr] (assert) -- node[above, sloped] {$\Delta_D$} (take2);
-\draw[arr] (assert) -- node[below] {$\ell^j_0$} (disprove);
+\draw[arr] (assert) -- node[below] {$\ell_0$} (disprove);
 \end{tikzpicture}
 \caption{Dispute graph. The dashed Assert$_1,\ldots,$Assert$_k$ node groups the input-publication transactions: a funding transaction, the reveal transactions that publish the input chunks, and a join that spends the reveals' outputs and creates the completion output. Only after the join can the protocol reach the mutually conflicting Take2 and Disprove outcomes.}
 \label{fig:graph}
@@ -497,34 +500,39 @@ and fee-management transactions. A transaction's virtual size is its weight
 divided by four, rounded up to an integer~\cite{bip141}; it differs from
 the transaction's serialized size in bytes. We measure the input-publication component
 of that footprint: bounded publication slices, each a funding transaction and reveals that spend it, for all four schemes, and a signed join for Lamport. The challenge, timeout, Disprove,
-anchor and fee-management branches, the hash-based soldering across the kept
-garblings and the complete transaction graph are not constructed, so the
+anchor and fee-management branches, the proof of correct garbling and the
+complete transaction graph are not constructed, so the
 figures are components of that footprint and conditional projections.
 
 \paragraph{Setup.} Let $C$ be the proof-verification circuit with one
-acceptance output, $N$ the total number of garbled instances and $M$
-the number retained for evaluation, with $1\le M<N$.
-The operator garbles $N$ instances of $C$ from independent
-seeds and commits, for every instance $j$, the hash of its garbled tables,
-the reject-label hash $\eta_j$ and the hashes of its one-time keys and label ciphertexts. A challenger chooses
-$N-M$ instances to open, re-garbles each from its seed and checks every
-commitment;
-only then is the transaction graph signed, by a committee as in
-BitVM2~\cite{laa25bitvm2}, whose enforcement requires at least one honest
-signer to delete its signing key after setup.
+acceptance output. The protocol is BitVM2~\cite{laa25bitvm2} with the
+on-chain verifier replaced by a garbled one. The operator garbles $C$ once.
+It commits the hash of the garbled tables, the reject-label hash $\eta$, the
+hashes of its one-time input keys, and the label ciphertexts that map each
+key secret to an input label (\S~\ref{sec:input}). It then gives a
+zero-knowledge proof that these commitments come from one correct garbling
+of $C$: the tables garble $C$ under a single offset, $\eta$ is the hash of
+its reject-output label, and the ciphertext for value $b$ of input $i$
+encrypts the label of value $b$ on wire $i$ under the committed key for that
+value. Anyone can check this proof, and it replaces cut-and-choose: there is
+one garbled instance and no opened ones. To keep the verifier's assumptions,
+the proof must itself be hash-based. We neither construct this proof nor
+measure its proving cost. Only after it is checked is the transaction graph
+signed, by a committee as in BitVM2, whose enforcement requires at least one
+honest signer to delete its signing key after setup.
 
-Publishing bit $b$ of input $i$ must give a challenger only the label of value
-$b$ on wire $i$ in every kept instance. We call this correlation \emph{soldering}; Mosaic provides it for
-its adaptor-signature path~\cite{mosaic26}.
+Publishing bit $b$ of input $i$ then gives a challenger exactly the label of
+value $b$ on wire $i$. With one garbled instance, one input-key set suffices,
+and no correlation of labels across instances is needed.
 
 \paragraph{Intended dispute.} The operator's Kickoff claims a reimbursement;
 a challenger may spend its challenge output within $\Delta_C$, after which the
 operator must publish every authenticated input bit through Assert or lose
 its stake on timeout. A challenger then reads the published bits, derives
-the input labels of every kept instance and evaluates each off-chain, one
+the input labels and evaluates the garbled verifier off-chain, one
 Blake3 call per non-free gate. An
-invalid proof yields $\ell^j_0$ from a correctly garbled instance, which opens
-Disprove$_j$. The public-value digest, eight field elements that commit to the zkVM program's verifying key and outputs, binds the verified off-chain computation
+invalid proof yields $\ell_0$, which opens
+Disprove. The public-value digest, eight field elements that commit to the zkVM program's verifying key and outputs, binds the verified off-chain computation
 to its program and public outputs; for a bridge, these outputs include the
 rollup-state commitment and withdrawal. Section~\ref{sec:protocol} reduces
 the bits Assert publishes and the bytes each bit costs.
@@ -632,7 +640,7 @@ and Appendix~\ref{app:recursion} gives the algebraic arguments.
 
 The circuit sets the first quantity: it reads the proof's bits, so its input
 layout is the bit count that Assert publishes. Its size is also what
-cut-and-choose garbles and challengers store. This subsection turns the
+the operator garbles and proves, and what challengers store. This subsection turns the
 verifier of \S~\ref{sec:setting} into a Boolean circuit with one output wire.
 We first describe how the recursive verifier is recorded and compiled, then
 the arithmetic and hash gadgets that reduce its non-free gate count.
@@ -671,7 +679,7 @@ the streaming pass reuses storage after a wire's final use, retaining the
 acceptance output. This reduces the live-label memory required to execute
 the circuit without changing its gates or input. Planning metadata and the
 stored garbled tables remain separate costs. In particular, streaming does
-not remove the challenger's obligation to retain the kept garblings.
+not remove the challenger's obligation to retain the garbled tables.
 
 \paragraph{Why a binary field.} Boolean WHIR commits over $\F$, whose
 addition is \XOR{} and free under free-XOR; field multiplication is the only
@@ -740,9 +748,9 @@ Poseidon2 permutation, width 16 over KoalaBear & 1{,}240{,}747\\\bottomrule
 \paragraph{Label selection.} Every input mechanism we price is an instance of
 a single two-party task. The \emph{garbler} $\mathsf{G}$ (the operator, who also
 proves) holds the two labels $\ell_w^0,\ell_w^1$ of every input wire $w$ of the
-kept garblings; the \emph{evaluator} $\mathsf{E}$ (a challenger) will run the
+garbled verifier; the \emph{evaluator} $\mathsf{E}$ (a challenger) will run the
 garbled verifier on the proof $\pi$. Write $\pi_w$ for bit $w$ of its fixed
-circuit-input encoding; instance indices are suppressed in $\ell_w^b$.
+circuit-input encoding.
 Publishing $\pi$ on-chain must
 (i)~\emph{deliver} $\ell_w^{\pi_w}$ to $\mathsf{E}$ for every $w$, (ii)~be
 \emph{exclusive}: an evaluator given the published input labels cannot
@@ -799,17 +807,15 @@ expands the off-chain choice table, the label ciphertexts of every candidate dig
 construction as the authenticated baseline. Appendix~\ref{app:schemes} gives the four scripts and the signed transactions we serialize and execute for them.
 
 Our labels are free-XOR correlated, so a hash-based preimage $s$ cannot itself
-be a label: a key-derivation function (KDF) maps it to one by a label ciphertext $\mathrm{KDF}(s)\oplus w_b$, two per input bit and instance.
-Using one on-chain key set for all $M$ kept
-instances requires a proof that the label ciphertexts of opened and kept instances
-encode the same bit choices. BABE's zero-knowledge soldering~\cite{babe2026}
-and Glock's verifiable secret sharing~\cite{eag25glock} give related mechanisms
-at smaller input sizes; we have neither constructed nor costed one for
-our input, so the one-key-set hash rows of Table~\ref{tab:ziren_publication} are
-conditional on it.
-Authenticating each input independently for every kept instance instead
-multiplies the component by $M$, still without enforcing the same bit choice
-across the sets.
+be a label: a key-derivation function (KDF) maps it to one by a label ciphertext $\mathrm{KDF}(s)\oplus w_b$, two per input bit.
+The garbling proof of \S~\ref{sec:dispute} covers these ciphertexts: it shows
+that each one encrypts the label of its bit value under the committed key
+for that value. The one key set of Table~\ref{tab:ziren_publication}
+therefore selects the labels of the single garbled verifier. A
+cut-and-choose setup would instead keep several garblings and need a further
+proof that one key set selects the same bits in each, as in BABE's
+zero-knowledge soldering~\cite{babe2026}; a single proved garbling has no
+such step.
 
 \subsection{Reducing recursive-proof inputs and verification work}\label{sec:reduce}
 
@@ -1281,7 +1287,7 @@ nonces calibrate $\nu$ in place.
 
 \paragraph{Coupled costs.} The input length $I$ sets the on-chain cost: an
 input-publication scheme spends a fixed $\gamma$ virtual bytes per input bit,
-so publication costs $\gamma I$. Off-chain, each kept instance stores
+so publication costs $\gamma I$. Off-chain, a challenger stores
 16 bytes per non-free gate and the scheme's translation table, $\tau I$
 bytes. Proving time follows \eqref{eq:provetime}. Shortening $I$ moves cost
 into the other two: the schedule buys fewer queries with exponentially more
@@ -1488,13 +1494,11 @@ funding, 41 reveals, the completion join, and Disprove or Take2. Of these, the
 41 reveals and Disprove are serialized, and the funding size is derived. An
 unchallenged claim needs only Kickoff and Take1.
 
-WOTS translation requires a 953{,}151{,}840-byte off-chain table per
-instance, and the label ciphertexts of \S~\ref{sec:input}, two per
-input bit and instance, occupy 16.67\,MB. A single on-chain key set across all kept instances requires the
-soldering discussed in \S~\ref{sec:input}. Independent publication for seven
-sets multiplies the WOTS, Antichain and Lamport components to 27.53, 41.50
-and 60.47\,MvB, respectively; these arithmetic projections exclude the
-transaction graph and do not enforce cross-instance input consistency.
+WOTS translation requires a 953{,}151{,}840-byte off-chain table, and the
+label ciphertexts of \S~\ref{sec:input}, two per input bit, occupy
+16.67\,MB. The operator garbles one instance, so these figures and the
+on-chain components of Table~\ref{tab:ziren_publication} are not multiplied
+by a number of kept garblings.
 
 \subsection{On-chain and off-chain cost comparison}\label{sec:cost_comparison}
 
@@ -1521,15 +1525,16 @@ Accounted transaction subtotal (kvB) & $\approx2.5$ & --- & 3{,}933.231\\
 Garbled tables per instance (GiB) & 40.5 & 23.3 (estimate) & 2.61\\
 Input-label translation tables (GiB) & --- & 72.7 (ACW) & 0.89 (WOTS)\\
 Total tables per instance (GiB) & --- & $\approx96.0$ & 3.50\\
-Garbled tables, seven instances (GiB; derived) & 283.5 & 163.1 (derived) & 18.30\\\bottomrule
+Garbled instances stored & 7 & --- & 1\\\bottomrule
 \end{tabularx}
 \caption{On-chain data and off-chain storage for Bitcoin proof verification.
 A dash marks an unreported or inapplicable entry. PQ-safe concerns the proof
 verifier and its garbling only (\S~\ref{sec:pq}). The subtotal counts input
 publication and Disprove only; BitVM3 pads its proof to 1{,}024 bits. Garbled
 tables are 16 bytes per non-free gate in every column (\S~\ref{sec:garbling}).
-Seven instances are the garblings kept by cut-and-choose at
-$(N,M)=(181,7)$.}
+BitVM3 keeps seven of 181 garblings after cut-and-choose; this work stores
+the one garbling that the operator proves correct, and the cost of that
+proof is not included.}
 \label{tab:compare}
 \end{table}
 
@@ -1597,7 +1602,7 @@ secure~\cite{bhr12adaptive}.
 circular-correlation-robustness and adaptive-authenticity assumptions stated
 above, and assumes that the circuit compilation is faithful to its reference
 verifier with completeness loss at most $\varepsilon_{\mathrm{guard}}$.
-It does not cover cut-and-choose, input soldering or Bitcoin transaction
+It does not cover the proof of correct garbling or Bitcoin transaction
 enforcement.
 
 \begin{theorem}\label{thm:main}
@@ -1629,32 +1634,33 @@ computations represented through recursion. Applying the theorem to the
 underlying zkVM statement requires the composed soundness error of the entire
 proof chain.
 
-\paragraph{The dispute.} Let $\varepsilon_{\mathrm{cc}}$ bound the probability
-that every kept instance is malformed while every opened one is correct; for
-choosing $N-M$ of $N$ uniformly this is $1/\binom{N}{M}$, which is $2^{-40}$ at
-$(N,M)=(181,7)$~\cite{babe2026}. Let $\varepsilon_{\mathrm{sol}}$ bound a
-failure of the soldering, and let $\varepsilon_{\mathrm{sig}}$ bound the
+\paragraph{The dispute.} Let $\varepsilon_{\mathrm{gp}}$ bound the probability
+that the operator's proof of correct garbling is accepted although its
+commitments do not come from a correct garbling of $C$; it is the soundness
+error of that proof system. Let $\varepsilon_{\mathrm{sig}}$ bound the
 aggregate probability of forging any one-time or transaction-authorization
 signature across the entire dispute, so a reduction from a per-target bound
-must include the number of targets. At these
-parameters, cut-and-choose alone limits the intended malicious-garbler security
-to about 40 bits, irrespective of the higher per-proof classical soundness
-estimates.
+must include the number of targets. Cut-and-choose that keeps $M$ of $N$ instances has error
+$1/\binom{N}{M}$, which is $2^{-40}$ at $(N,M)=(181,7)$~\cite{babe2026}; the
+malicious-garbler term $\varepsilon_{\mathrm{gp}}$ can be set to the
+soundness target of the verified proof.
 
 Subject to an enforced transaction graph, timely confirmation and an
-instantiated soldering bound, Theorem~\ref{thm:main} supports two intended
+instantiated garbling proof, Theorem~\ref{thm:main} supports two intended
 properties of the dispute of \S~\ref{sec:dispute}. \emph{A false claim is
-disproved:} if the operator's statement is false, an honest challenger obtains some $\ell^j_0$ except with probability
-$\varepsilon_{\mathrm{STARK}}(t)+\varepsilon_{\mathrm{cc}}+\varepsilon_{\mathrm{sol}}$,
-since a correctly garbled kept instance exists, its labels are those of the
+disproved:} if the operator's statement is false, an honest challenger obtains $\ell_0$ except with probability
+$\varepsilon_{\mathrm{STARK}}(t)+\varepsilon_{\mathrm{gp}}$,
+since the garbling is then correct, its labels are those of the
 published proof, and Theorem~\ref{thm:main}(i) applies; an operator that
 publishes no proof loses its stake to AssertTimeout. \emph{An honest operator
-keeps its stake:} if the proof is honest, no challenger obtains any $\ell^j_0$
+keeps its stake:} if the proof is honest, no challenger obtains $\ell_0$
 except with probability
-$M(\varepsilon_{\mathrm{guard}}+\varepsilon_{\mathrm{GC}})+\varepsilon_{\mathrm{sol}}+\varepsilon_{\mathrm{sig}}$,
-by Theorem~\ref{thm:main}(ii) and a union bound over the kept instances. This
+$\varepsilon_{\mathrm{guard}}+\varepsilon_{\mathrm{GC}}+\varepsilon_{\mathrm{sig}}$,
+by Theorem~\ref{thm:main}(ii), provided the garbling proof reveals nothing
+about the labels. This
 is conditional accounting, not a protocol theorem in a ledger model:
-$\varepsilon_{\mathrm{sol}}$ has no instantiated bound, and the transaction
+the garbling proof is not constructed, so $\varepsilon_{\mathrm{gp}}$ has no
+instantiated bound, and the transaction
 graph and ledger-timing assumptions have not been implemented or proved.
 BitVM3~\cite{bitvm3paper} and BABE~\cite{babe2026} analyze their own
 instantiations.
@@ -1702,8 +1708,8 @@ transaction-graph authorization. Current bridge graphs use MuSig2/Schnorr
 authorization, which falls to Shor's algorithm. A complete post-quantum bridge
 therefore also depends on a future post-quantum replacement for Bitcoin's
 MuSig2 authorization. Hash-based input keys avoid the adaptor-signature
-dependency, but their one-key-set cost assumes the soldering of
-\S~\ref{sec:input}. The keys themselves are bounded by multi-target preimage
+dependency, and the proof of correct garbling must be hash-based as well.
+The keys themselves are bounded by multi-target preimage
 search over the $T$ alternative Lamport preimages of one input
 (Table~\ref{tab:pq}, Appendix~\ref{app:security}).
 
@@ -1714,8 +1720,8 @@ WHIR and algebraic reductions & composed soundness & -- & -- & instantiate the f
 Merkle hash (200-bit digest) & generic collision search & 100 & $\approx66.7$ & $\gtrsim3\lambda_Q$-bit digest and sufficiently wide internal state\\
 Blake3 transcript (256-bit digest) & generic collision search & 128 & $\approx85.3$ & wider digest and internal state for higher targets\\
 garbling ($\Delta$, output hashlock) & Grover on 128-bit labels & 128 & $\approx64$ & $2\lambda_Q$-bit labels: 256 bits\\
-Lamport input keys & multi-target preimage, $T=520{,}832$ ($7T$ for seven sets) & $\approx109.0$ ($106.2$) & $\approx54.5$ ($53.1$) & at least 219 (222) bits of preimage entropy for 100 quantum bits under a 256-bit hash\\
-cut-and-choose $(181,7)$ & bad kept set & 40 & 40 & increase $(N,M)$ for the target error\\
+Lamport input keys & multi-target preimage, $T=520{,}832$ & $\approx109.0$ & $\approx54.5$ & at least 219 bits of preimage entropy for 100 quantum bits under a 256-bit hash\\
+proof of correct garbling & soundness of its proof system & -- & -- & a hash-based proof at the target error; not constructed\\
 Bitcoin graph authorization (MuSig2/Schnorr) & Shor & -- & broken & post-quantum replacement for MuSig2\\\bottomrule
 \end{tabularx}
 \caption{Component-level estimates for the final Ziren configuration, in
@@ -1736,10 +1742,10 @@ proof-layout and opening reductions and a closing column sumcheck, the final
 verifier for an Ethereum block consumes 520{,}832
 input bits and contains 175.4M non-free gates and
 2.81\,GB of garbled tables.
-For one authenticated input-key set, the measured
+The measured
 publication cost is 3.93\,MvB in 41 standard-size transactions with
 translated Winternitz keys. These results
-show that binary-field verification can reduce the retained garbled verifier,
+show that binary-field verification can reduce the stored garbled verifier,
 while authenticated proof input remains the dominant accounted on-chain cost.
 That cost is linear in the input, so the reductions that shorten the input
 pay for it in grinding or gates: the closing column sumcheck removed 27\% of
@@ -1749,9 +1755,10 @@ and input encoding against these relations is a step toward practical
 post-quantum Bitcoin bridges.
 
 The verifier supports any off-chain computation proved by Ziren, including
-rollup withdrawals. Correlating one published input across the retained
-garblings and evaluating the complete transaction graph remain integration
-tasks beyond the reported component measurements.
+rollup withdrawals. The operator's proof that its single garbling is
+correct, and the complete transaction graph, remain to be constructed; the
+cost of proving the garbling of 175.4M non-free gates and the input label
+ciphertexts is not measured here.
 
 Future work should reduce authenticated input through segmented or locally
 refutable verification and reduce
@@ -1766,7 +1773,7 @@ soundness bound for the recursive WHIR proof and provide a post-quantum
 replacement for the MuSig2/Schnorr authorization used by current Bitcoin
 bridge graphs. All components must ultimately be evaluated at a common security
 target, including recursive-proof soundness, garbling, input authentication,
-cut-and-choose and transaction authorization.
+the proof of correct garbling and transaction authorization.
 
 \bibliographystyle{alpha}
 {\raggedright\bibliography{refs}}
@@ -1810,7 +1817,7 @@ nonce list is public at setup.
 \foreach \x in {\xg,\xc,\xe} \draw[gray] (\x,-0.85) -- (\x,-12.7);
 \draw[dashed,gray] (-1.75,-1.1) -- (13.35,-1.1); \node[phase] at (\xc,-1.1) {setup, off-chain, before funding};
 \draw[msg] (\xg,-2.4) -- (\xe,-2.4) node[lbl,midway,above=1pt,text width=10.6cm] {choice table, for every digit $i$ and value $v<2^k$:\\ $T_{i,v}=t_{i,v}G$,\quad $c_{i,v,j}=\mathrm{KDF}(t_{i,v},j)\oplus\ell^{\,v_j}_{(i,j)}$ for $j<k$};
-\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-2.6) {opens $N-M$ instances and checks their tables};
+\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-2.6) {checks the proof of correct garbling};
 \draw[msg] (\xe,-4.2) -- (\xg,-4.2) node[lbl,midway,above=1pt,text width=10.6cm] {pre-signatures, fresh independent nonce $r_{i,v}$ for every candidate:\\ $R'_v=\sigma_v(r_{i,v}G+T_{i,v})$,\quad $s'_v=\sigma_v r_{i,v}+e_vx$};
 \node[note, anchor=north west, text width=5.0cm] at (\xg-1.75,-4.4) {checks $s'_vG=R'_v-\sigma_vT_{i,v}+e_vX$\\for all $v$, then funds the graph};
 \draw[dashed,gray] (-1.75,-5.7) -- (13.35,-5.7); \node[phase] at (\xc,-5.7) {dispute: Assert};
@@ -1819,14 +1826,14 @@ nonce list is public at setup.
 \node[note, anchor=north, text width=5.4cm] at (\xc,-7.6) {\texttt{<X> CHECKSIG} on $m_i$: $sG=R'_d+e_dX$;\\one \texttt{CHECKSIG} per digit, each after\\an \texttt{OP\_CODESEPARATOR}};
 \draw[msg] (\xc,-9.9) -- (\xe,-9.9) node[lbl,midway,above=1pt,text width=5cm] {matches $\mathrm{x}(R'_d)$ to the public list\\of candidate nonces to identify $d$};
 \node[note, anchor=north east, text width=5.9cm] at (\xe+1.75,-10.1) {$t_{i,d}\gets\sigma_d(s-s'_d)\pmod q$\\$\ell^{\,d_j}_{(i,j)}\gets c_{i,d,j}\oplus\mathrm{KDF}(t_{i,d},j)$\\evaluates the garbled verifier on all labels};
-\draw[msg] (\xe,-12.5) -- (\xc,-12.5) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell^u_0$,\\if the evaluation rejects};
+\draw[msg] (\xe,-12.5) -- (\xc,-12.5) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell_0$,\\if the evaluation rejects};
 \node[note, anchor=north west, fill=gray!5, text width=14.6cm] at (-1.75,-12.9) {\emph{exclusive:} any other label needs $t_{i,v}=\log_G T_{i,v}$. \emph{binding:} $\mathsf{G}$ has no $x$, so the only signatures it can form on $m_i$ are the $2^k$ completions, and one \texttt{CHECKSIG} consumes one. \emph{authorization:} the same signature authorizes the spend.};
 \end{tikzpicture}
 \caption{Schnorr adaptor label selection for one $k$-bit digit position $i$,
 as in BitVM3 and Mosaic~\cite{bitvm3paper,mosaic26}. The same completed
 signature selects the digit's labels and authorizes the transaction. All
 setup messages above the dispute line are generated independently for every
-digit and candidate value; $u$ identifies the kept instance that rejects.}
+digit and candidate value.}
 \label{fig:adaptorseq}
 \end{figure}
 
@@ -1837,8 +1844,7 @@ Figure~\ref{fig:adaptorseq}: the signature completion is replaced by a pair of
 hash-chain openings, the evaluator contributes nothing at setup, and the
 transaction binding must be added as a separate signature.
 Here $H$ is the domain-separated chain hash, $\mathsf{A}$ and $\mathsf{B}$
-distinguish the two chains, $v_j$ is bit $j$ of candidate digit $v$, and $u$
-indexes the kept garbled instance that rejects. The diagram suppresses the
+distinguish the two chains, and $v_j$ is bit $j$ of candidate digit $v$. The diagram suppresses the
 digit index $i$ on $A_j$ and $B_j$.
 
 \begin{figure}[p]\centering
@@ -1856,7 +1862,7 @@ digit index $i$ on $A_j$ and $B_j$.
 \draw[dashed,gray] (-1.75,-1.1) -- (13.35,-1.1); \node[phase] at (\xc,-1.1) {setup, off-chain, before funding};
 \node[note, anchor=north west, text width=9.2cm] at (\xg-1.75,-1.35) {per digit $i$: seeds $a_i,b_i$ and two chains of $L=2^k-1$ steps,\\$A_L\gets a_i$, $A_{j-1}\gets H(i,\mathsf{A},j,A_j)$;\quad $B_L\gets b_i$, $B_{j-1}\gets H(i,\mathsf{B},j,B_j)$};
 \draw[msg] (\xg,-3.6) -- (\xe,-3.6) node[lbl,midway,above=1pt,text width=10.6cm] {endpoints $(A_0,B_0)$ of every digit, or one batch root $\rho$ over them;\\ $c_{i,v,j}=\mathrm{KDF}(A_v\,\|\,B_{L-v},j)\oplus\ell^{\,v_j}_{(i,j)}$ for all $v<2^k$, $j<k$};
-\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-3.8) {opens $N-M$ instances and checks their tables;\\no pre-signature to contribute};
+\node[note, anchor=north east, text width=4.8cm] at (\xe+1.75,-3.8) {checks the proof of correct garbling;\\no pre-signature to contribute};
 \node[note, anchor=north west, text width=5.6cm] at (\xg-1.75,-3.8) {funds the graph; the reveal leaves commit $(A_0,B_0)$ or $\rho$\\and a transaction-signature key,\\hash-based for a post-quantum graph};
 \draw[dashed,gray] (-1.75,-5.6) -- (13.35,-5.6); \node[phase] at (\xc,-5.6) {dispute: Assert};
 \node[note, anchor=north west, text width=5.0cm] at (\xg-1.75,-5.85) {$d\gets$ digit $i$ of $\pi$};
@@ -1864,7 +1870,7 @@ digit index $i$ on $A_j$ and $B_j$.
 \node[note, anchor=north, text width=5.6cm] at (\xc,-7.4) {hash $A_d$ forward $d$ times and $B_{L-d}$ forward $L-d$ times;\\compare with $(A_0,B_0)$ or recompute $\rho$;\\\texttt{CHECKSIG} on the transaction.\\2 bytes of script per hash step today,\\none with a batch opcode};
 \draw[msg] (\xc,-9.9) -- (\xe,-9.9) node[lbl,midway,above=1pt,text width=5cm] {reads $(d,A_d,B_{L-d})$ from the chain};
 \node[note, anchor=north east, text width=5.9cm] at (\xe+1.75,-10.1) {$\ell^{\,d_j}_{(i,j)}\gets c_{i,d,j}\oplus\mathrm{KDF}(A_d\,\|\,B_{L-d},j)$\\evaluates the garbled verifier on all labels};
-\draw[msg] (\xe,-12.2) -- (\xc,-12.2) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell^u_0$,\\if the evaluation rejects};
+\draw[msg] (\xe,-12.2) -- (\xc,-12.2) node[lbl,midway,above=1pt,text width=5cm] {Disprove with the reject label $\ell_0$,\\if the evaluation rejects};
 \node[note, anchor=north west, fill=gray!5, text width=14.6cm] at (-1.75,-12.6) {\emph{exclusive:} from $(A_d,B_{L-d})$ one reaches $A_{d'}$ only for $d'\le d$ and $B_{e'}$ only for $e'\le L-d$, and $d'+e'=L$ forces $(d,L-d)$~\cite{antichain26}; any other value needs a preimage of a published node. \emph{one-time:} two openings $a\le b$ of one pair key reach every value in $[a,b]$. \emph{binding:} the separate transaction signature.};
 \end{tikzpicture}
 \caption{Hash-based label selection for one $k$-bit digit position $i$ with
@@ -1899,9 +1905,8 @@ Table~\ref{tab:pqsel} gives the results together with a projection whose model
 reproduces both serializations within $0.03\%$. The operative row is
 $n=32$, $k=8$, which matches the adaptor's size at the price of 255 hash steps per
 byte inside the opcode, about $3.3\times10^7$ compressions for the input. Its setup is two seeds per digit rather than the adaptor's $2^k$
-secrets, so widening $k$ does not grow the choice table; only the label ciphertexts grow, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
-$k=8$. The delivery and soldering of that table across the $M$ kept
-garblings is the same open item as for every other row.
+secrets, so widening $k$ does not grow the choice table; only the label ciphertexts grow, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB at
+$k=8$. The garbling proof would have to cover that table.
 
 \begin{table}[t!]\centering\footnotesize\setlength{\tabcolsep}{4pt}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{2.5cm}rrrr>{\raggedright\arraybackslash}X}\toprule
@@ -1974,7 +1979,7 @@ final WHIR verifier's 520{,}832-bit input.
     chains, and the authorization, outputs and controls of the Antichain
     variant. With at most 49 chunks per input, its size is the WOTS row of
     Table~\ref{tab:ziren_publication}, again an all-nonzero worst case. The price is the
-    off-chain table, 953{,}151{,}840 bytes per instance at this input size.
+    off-chain table, 953{,}151{,}840 bytes at this input size.
     Plain 4-bit Winternitz, modeled from one executed input at 23.06 weight
     units per bit, would be about 3.00\,MvB, but it cannot deliver garbled
     labels without such a table. The challenger must decode digits as consensus
@@ -2142,8 +2147,7 @@ translated Winternitz keys rest on \texttt{HASH160} preimages. The familiar $2^{
 16-byte preimages is a single-target estimate. One Lamport key set exposes
 $T=520{,}832$ alternative preimages for the final verifier input, so generic
 multi-target search costs about $2^{128}/T\approx2^{109.0}$ classically and
-$\sqrt{2^{128}/T}\approx2^{54.5}$ quantumly. Seven independent sets lower
-these figures to about $2^{106.2}$ and $2^{53.1}$. Hash-chain alternatives have the
+$\sqrt{2^{128}/T}\approx2^{54.5}$ quantumly. Hash-chain alternatives have the
 same multi-target issue; Table~\ref{tab:pqsel} gives the widths that lift the
 selection itself above this bound. Even 20-byte preimages under \texttt{HASH160} are
 capped near 70 quantum bits for one set, rather than 80, once the target count
