@@ -44,10 +44,14 @@ revisions that are not public yet.
 
 ## Scope
 
+The design is BitVM2 with the on-chain verifier replaced by a garbled one. The
+operator garbles the verifier once, proves the garbling correct and commits
+the input keys on Bitcoin. There is no cut-and-choose, so there is one garbled
+instance to store and one key set to reveal.
+
 This is a measured verifier and a cost study, not a complete protocol:
-- it does not solder one hash-key set to the kept garblings;
+- it does not build the proof of correct garbling or measure its proving cost;
 - it does not build the full pre-signed transaction graph;
-- cut-and-choose at (181, 7) is about 40 bits;
 - Bitcoin's transaction signatures are not post-quantum.
 
 ## Running
