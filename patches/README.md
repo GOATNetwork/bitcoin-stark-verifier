@@ -1,7 +1,7 @@
 # Plonky3 and Ziren behind the narrow-recursion GC measurements
 
 The level-4 verifier tape that the garbled verifier (`whir-gc`) measures at
-**564,552 input bits** (`paper/notes.md` §7n) comes from two public commits:
+**564,552 input bits** comes from two public commits:
 
 | repository | branch | commit |
 |---|---|---|
@@ -72,7 +72,7 @@ it, grinding runs on the CPU.
 ## Rebuilding from scratch (no saved tapes)
 
 `ziren-addr26.patch`, now in `80af2779`, raised `ADDR_BITS` and
-`PERMUTATION_ID_BITS` from 24 to 26 (the "26-bit patches" of `paper/notes.md`):
+`PERMUTATION_ID_BITS` from 24 to 26 (the "26-bit patches"):
 at 24 bits `Program::new` panics on the real level-1 tape ("the program fits
 24-bit addresses"). `PERMUTATION_ID_BITS` is also a column width of the binary
 stage, so level 1 is recorded with it. The 64-byte rewire row is not in

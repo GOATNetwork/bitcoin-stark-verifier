@@ -21,7 +21,11 @@
 //!   the rest checked zero (v2);
 //! * `MerkleNode` (v2) orders its two digests by a bit, one 256-wire
 //!   multiplexer (the other order is free), and hashes the 64 bytes;
-//! * `Select` is a 128-wire multiplexer.
+//! * `Select` is a 128-wire multiplexer;
+//! * `Kb` (v3) is KoalaBear addition, subtraction or multiplication of two
+//!   canonical elements held in the low 31 bits, with the [`crate::koala`]
+//!   gadgets; an operand not already canonical by construction is checked to
+//!   have its upper 97 bits zero and to be below `p`.
 //!
 //! The output is the AND of every check. A proof input that must hold a byte
 //! is 8 circuit-input bits: one read as a byte operand, or a data operand of
@@ -29,7 +33,8 @@
 //! serializes its Merkle digests as bytes, and those reach their hashes
 //! through Merkle-order selects and root comparisons; this recognises them,
 //! and the honest value is asserted to be a byte. An input read only as a
-//! selector is 1 bit, and every other is 128.
+//! selector is 1 bit, one read as a KoalaBear operand and not as a byte is
+//! 31, and every other is 128.
 //!
 //! The dump this reads is written by Ziren's `crates/prover/tests/dump_binary_tape.rs`
 //! (Ziren `feat/binary-whir-blake3` `80af2779`).
@@ -38,7 +43,7 @@ use garbled_snark_verifier::circuits::sect233k1::blake3_ckt as blake3;
 use garbled_snark_verifier::circuits::sect233k1::builder::CircuitTrait;
 use garbled_snark_verifier::circuits::sect233k1::stream::ValuedBuilder;
 
-use crate::koala::mux_words;
+use crate::koala::{self, mux_words};
 use crate::tower;
 use crate::ziren::Probe;
 
@@ -70,6 +75,31 @@ pub enum TOp {
     /// Tape v2: the digest of `cur ‖ sib`, or `sib ‖ cur` if the bit is one.
     MerkleNode { bit: Opd, cur: [Opd; 2], sib: [Opd; 2] },
     Square(Opd),
+    /// Tape v3: KoalaBear arithmetic on canonical elements in the low 31 bits.
+    Kb(KbOp, Opd, Opd),
+}
+
+/// An operation of KoalaBear arithmetic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KbOp {
+    Add,
+    Sub,
+    Mul,
+}
+
+/// The KoalaBear modulus.
+pub const KB_PRIME: u128 = 0x7f00_0001;
+
+impl KbOp {
+    /// `a op b` on canonical elements.
+    pub fn apply(self, a: u128, b: u128) -> u128 {
+        let p = KB_PRIME;
+        match self {
+            KbOp::Add => (a + b) % p,
+            KbOp::Sub => (a + p - b) % p,
+            KbOp::Mul => a * b % p,
+        }
+    }
 }
 
 impl TOp {
@@ -82,7 +112,8 @@ impl TOp {
             | TOp::Square(_)
             | TOp::Inv(_)
             | TOp::FromBytes(_)
-            | TOp::Select(..) => 1,
+            | TOp::Select(..)
+            | TOp::Kb(..) => 1,
             TOp::Blake3Slots { .. } | TOp::MerkleNode { .. } => 2,
             TOp::AssertEq(..) | TOp::AssertNonZero(_) => 0,
             TOp::ToBytes(_) => 16,
@@ -95,7 +126,7 @@ impl TOp {
     pub fn operands(&self) -> Vec<Opd> {
         match self {
             TOp::Input(_) => vec![],
-            TOp::Add(a, b) | TOp::Mul(a, b) | TOp::AssertEq(a, b) => vec![*a, *b],
+            TOp::Add(a, b) | TOp::Mul(a, b) | TOp::AssertEq(a, b) | TOp::Kb(_, a, b) => vec![*a, *b],
             TOp::Inv(a) | TOp::AssertNonZero(a) | TOp::ToBytes(a) | TOp::ByteBits(a) | TOp::Square(a) => vec![*a],
             TOp::FromBytes(v) | TOp::Blake3(v) | TOp::Transpose(v) | TOp::Blake3Slots { slots: v, .. } => v.clone(),
             TOp::MerkleNode { bit, cur, sib } => vec![*bit, cur[0], cur[1], sib[0], sib[1]],
@@ -120,10 +151,12 @@ impl TOp {
             TOp::Blake3Slots { .. } => "blake3",
             TOp::MerkleNode { .. } => "merkle_node",
             TOp::Square(_) => "square",
+            TOp::Kb(..) => "koalabear",
         }
     }
 }
 
+#[derive(Clone)]
 pub struct BTape {
     pub ops: Vec<TOp>,
     pub inputs: Vec<u128>,
@@ -168,7 +201,7 @@ pub fn parse(bytes: &[u8]) -> BTape {
     assert_eq!(&bytes[..4], b"ZTAP", "not a binary-stage tape");
     let mut r = Rd { d: bytes, o: 4 };
     let version = r.u32();
-    assert!(version == 1 || version == 2, "tape version {version}");
+    assert!((1..=3).contains(&version), "tape version {version}");
     let n = r.u64() as usize;
     let mut ops = Vec::with_capacity(n);
     for _ in 0..n {
@@ -195,13 +228,23 @@ pub fn parse(bytes: &[u8]) -> BTape {
                 let b = r.opd();
                 TOp::Select(s, a, b)
             }
-            12 if version == 2 => {
+            12 if version >= 2 => {
                 let bit = r.opd();
                 let cur = [r.opd(), r.opd()];
                 let sib = [r.opd(), r.opd()];
                 TOp::MerkleNode { bit, cur, sib }
             }
-            13 if version == 2 => TOp::Square(r.opd()),
+            13 if version >= 2 => TOp::Square(r.opd()),
+            14 if version >= 3 => {
+                let kind = match r.u8() {
+                    0 => KbOp::Add,
+                    1 => KbOp::Sub,
+                    2 => KbOp::Mul,
+                    k => panic!("KoalaBear operation {k}"),
+                };
+                let a = r.opd();
+                TOp::Kb(kind, a, r.opd())
+            }
             _ => panic!("op tag {t} in tape v{version}"),
         });
     }
@@ -213,11 +256,43 @@ pub fn parse(bytes: &[u8]) -> BTape {
     BTape { ops, inputs, values }
 }
 
-/// Whether each proof input is read by any operation.
+/// Which operations the verdict depends on.
+///
+/// The output is the AND of every check, so an operation matters when it checks something
+/// (an assertion, an inverse, a byte, bit or KoalaBear operand, a hash), or when a live
+/// operation reads what it defines.  The rest is pure arithmetic or wiring whose result no
+/// live operation reads: an addition, product or square, a byte split or a transpose.  The
+/// translation builds no gates for it, and an input only it reads is not a circuit input.
+pub fn live_ops(t: &BTape) -> Vec<bool> {
+    let total: usize = t.ops.iter().map(TOp::defines).sum();
+    let mut needed = vec![false; total];
+    let mut live = vec![false; t.ops.len()];
+    let mut var = total;
+    for (k, op) in t.ops.iter().enumerate().rev() {
+        let defined = op.defines();
+        var -= defined;
+        let pure = matches!(
+            op,
+            TOp::Input(_) | TOp::Add(..) | TOp::Mul(..) | TOp::Square(_) | TOp::ToBytes(_) | TOp::Transpose(_)
+        );
+        if !pure || needed[var..var + defined].iter().any(|&x| x) {
+            live[k] = true;
+            for o in op.operands() {
+                if let Opd::Var(v) = o {
+                    needed[v as usize] = true;
+                }
+            }
+        }
+    }
+    live
+}
+
+/// Whether each proof input is read by any live operation.
 pub fn input_reads(t: &BTape) -> Vec<bool> {
     let total: usize = t.ops.iter().map(TOp::defines).sum();
+    let live = live_ops(t);
     let mut read = vec![false; total];
-    for op in &t.ops {
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         for o in op.operands() {
             if let Opd::Var(v) = o {
                 read[v as usize] = true;
@@ -241,6 +316,8 @@ pub fn input_reads(t: &BTape) -> Vec<bool> {
 pub enum InputWidth {
     Byte,
     Bit,
+    /// A KoalaBear element: read as an operand of a `Kb` operation.
+    Kb,
     Full,
 }
 
@@ -309,10 +386,23 @@ pub fn input_widths(t: &BTape) -> Vec<InputWidth> {
             }
         }
     }
-    // Selector-only inputs: every use is as a select's selector.
+    // KoalaBear inputs: read as an operand of a KoalaBear operation, so the
+    // circuit checks them canonical and their upper 97 bits are zero.
+    let mut kb_read = vec![false; total];
+    for op in &t.ops {
+        if let TOp::Kb(_, x, y) = op {
+            for o in [x, y] {
+                if let Opd::Var(v) = o {
+                    kb_read[*v as usize] = true;
+                }
+            }
+        }
+    }
+    // Selector-only inputs: every live use is as a select's selector.
     let mut selector_only = vec![true; t.inputs.len()];
     let mut used = vec![false; t.inputs.len()];
-    for op in &t.ops {
+    let live = live_ops(t);
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         let (sel, rest) = match op {
             TOp::Select(s, x, y) => (Some(*s), vec![*x, *y]),
             TOp::MerkleNode { bit, cur, sib } => (Some(*bit), vec![cur[0], cur[1], sib[0], sib[1]]),
@@ -338,6 +428,9 @@ pub fn input_widths(t: &BTape) -> Vec<InputWidth> {
             widths[i] = if forced[v] {
                 assert!(t.inputs[i] < 256, "input {i} is forced to a byte but holds {:#x}", t.inputs[i]);
                 InputWidth::Byte
+            } else if kb_read[v] {
+                assert!(t.inputs[i] < KB_PRIME, "input {i} is a KoalaBear operand but holds {:#x}", t.inputs[i]);
+                InputWidth::Kb
             } else if used[i] && selector_only[i] {
                 assert!(t.inputs[i] < 2, "input {i} is a selector but holds {:#x}", t.inputs[i]);
                 InputWidth::Bit
@@ -448,9 +541,12 @@ impl Profile {
 pub struct Report {
     pub output: usize,
     pub input_bits: usize,
-    pub inputs_by_width: [usize; 3],
+    /// Inputs by width: byte, bit, full element, KoalaBear element.
+    pub inputs_by_width: [usize; 4],
     /// Inputs the circuit never reads: no wires, no labels, nothing to publish.
     pub unread_inputs: usize,
+    /// Operations the verdict does not depend on, which build no gates (see [`live_ops`]).
+    pub dead_ops: usize,
     pub profile: Profile,
     pub mismatches: Vec<u32>,
 }
@@ -462,10 +558,11 @@ fn non_free<T: CircuitTrait>(b: &T) -> usize {
 
 pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128], opts: Options) -> Report {
     let widths = input_widths(t);
-    // Remaining reads per variable, to free wires after their last use.
+    let live = live_ops(t);
+    // Remaining live reads per variable, to free wires after their last use.
     let total_vars: usize = t.ops.iter().map(TOp::defines).sum();
     let mut reads = vec![0u32; total_vars];
-    for op in &t.ops {
+    for (op, _) in t.ops.iter().zip(&live).filter(|(_, &live)| live) {
         for o in op.operands() {
             if let Opd::Var(v) = o {
                 reads[v as usize] += 1;
@@ -478,8 +575,11 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
     let mut mismatches = Vec::new();
     let mut next: u32 = 0;
     let mut input_bits = 0usize;
-    let mut by_width = [0usize; 3];
+    let mut by_width = [0usize; 4];
+    // Variables whose wires are a canonical KoalaBear element by construction.
+    let mut canonical = vec![false; total_vars];
     let mut unread_inputs = 0usize;
+    let mut dead_ops = 0usize;
     let zero = b.zero();
 
     // Read an operand's wires, releasing a variable after its last read.
@@ -502,6 +602,13 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
     for (k, op) in t.ops.iter().enumerate() {
         if opts.limit.is_some_and(|l| k >= l) {
             break;
+        }
+        // A dead operation defines variables no live one reads; an unread input is
+        // counted below.
+        if !live[k] && !matches!(op, TOp::Input(_)) {
+            dead_ops += 1;
+            next += op.defines() as u32;
+            continue;
         }
         let before = non_free(b);
         let mut checks: Vec<usize> = Vec::new();
@@ -544,6 +651,10 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
                         InputWidth::Full => {
                             by_width[2] += 1;
                             W
+                        }
+                        InputWidth::Kb => {
+                            by_width[3] += 1;
+                            koala::BITS
                         }
                     };
                     input_bits += width;
@@ -657,6 +768,42 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
                     }
                     outs.extend(digest_halves(b, &msg));
                 }
+                TOp::Kb(kind, x, y) => {
+                    // A KoalaBear operand: its low 31 wires, checking the rest
+                    // zero and the value below p unless already known canonical.
+                    macro_rules! kb_operand {
+                        ($o:expr) => {{
+                            match $o {
+                                Opd::Const(c) => {
+                                    assert!(*c < KB_PRIME, "op {k}: KoalaBear constant {c:#x} is not canonical");
+                                    koala::constant(b, *c as u32)
+                                }
+                                Opd::Var(v) => {
+                                    let known = canonical[*v as usize];
+                                    let w = get!($o);
+                                    if w[koala::BITS..].iter().any(|&x| x != zero) {
+                                        checks.push(is_zero(b, &w[koala::BITS..]));
+                                    }
+                                    let low = w[..koala::BITS].to_vec();
+                                    if !known {
+                                        checks.push(koala::is_canonical(b, &low));
+                                    }
+                                    low
+                                }
+                            }
+                        }};
+                    }
+                    let x = kb_operand!(x);
+                    let y = kb_operand!(y);
+                    let mut w = match kind {
+                        KbOp::Add => koala::add(b, &x, &y),
+                        KbOp::Sub => koala::sub(b, &x, &y),
+                        KbOp::Mul => koala::mul(b, &x, &y),
+                    };
+                    w.resize(W, zero);
+                    canonical[next as usize] = true;
+                    outs.push(w);
+                }
                 TOp::MerkleNode { bit: s, cur, sib } => {
                     let s = get!(s);
                     let s = bit(b, s, &mut checks);
@@ -695,5 +842,5 @@ pub fn translate<T: ValuedBuilder + Probe>(b: &mut T, t: &BTape, inputs: &[u128]
         let after = non_free(b);
         profile.add(op.kind(), after - before);
     }
-    Report { output: ok, input_bits, inputs_by_width: by_width, unread_inputs, profile, mismatches }
+    Report { output: ok, input_bits, inputs_by_width: by_width, unread_inputs, dead_ops, profile, mismatches }
 }
