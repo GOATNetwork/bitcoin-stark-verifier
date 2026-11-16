@@ -94,9 +94,11 @@ computation is the complete verifier for WHIR-based~\cite{whir25} STARK proofs f
 which we call \emph{WHIR proofs}. These binary-field proofs are generated
 by Ziren's binary stage and narrow recursion. Ziren first compresses a zkVM
 execution proof into a \emph{WHIR proof}. The binary stage proves the
-execution of that WHIR-proof verifier using a binary-field proof system;
-each subsequent \emph{narrow-recursion} proof proves the execution of the preceding proof's verifier in a machine with fewer trace columns, thereby reducing the verifier input consumed by
-the garbled circuit.
+execution of that WHIR-proof verifier using a binary-field proof system.
+Four recursion proofs follow, each proving the execution of the preceding
+proof's verifier. The first two use Ziren's plain recursion machine; the last
+two are \emph{narrow-recursion} proofs, made in a machine with fewer trace
+columns, which reduces the verifier input consumed by the garbled circuit.
 
 A SNARK verifier written in Script takes hundreds of megabytes~\cite{babe2026}. The BitVM line of work therefore verifies \emph{optimistically}: a prover claims
 a result, and a challenger disputes it only if it is wrong.
@@ -229,10 +231,6 @@ Section~\ref{sec:eval} estimates the final WHIR-proof verifier's
 garbling and input-publication costs, and compares the
 results with BitVM3's Groth16-based verification and the post-quantum
 Bitcoin-bridge cost analysis of Tiwari and Feickert~\cite{tf26pq}.
-The circuit compiler and benchmark commands are open source;
-Appendix~\ref{app:artifact} documents the reproduction sources and commands.
-The Blake3 circuit and a label-level evaluator are contributed to
-GOAT's bitvm-gc~\cite{bitvmgc}.
 
 % =====================================================================
 \section{Related Work}\label{sec:related}
@@ -798,7 +796,7 @@ signed chunk's checksum sets.
 Mosaic~\cite{bitvm3paper,mosaic26}, rest on discrete logarithms. Increasing
 the adaptor's digit width reduces the number of on-chain signatures but
 expands the off-chain choice table, the label ciphertexts of every candidate digit value, exponentially; we retain the 8-bit
-construction as the authenticated baseline. Appendix~\ref{app:schemes} gives the four scripts and their fixtures, the signed transactions we serialize and execute.
+construction as the authenticated baseline. Appendix~\ref{app:schemes} gives the four scripts and the signed transactions we serialize and execute for them.
 
 Our labels are free-XOR correlated, so a hash-based preimage $s$ cannot itself
 be a label: a key-derivation function (KDF) maps it to one by a label ciphertext $\mathrm{KDF}(s)\oplus w_b$, two per input bit and instance.
@@ -870,10 +868,18 @@ $q$, $w$ and $E(r,z)$ are verifier-derived weights.
 
 \subsubsection{Narrow recursion and aligned trace layouts}
 
-\paragraph{Recursing over the verification program.} Each narrow-recursion
-level proves its single child's verifier in the machine of
-\S~\ref{sec:tape} through a wrap node, a recursion step over a single child proof, which checks in binary-field arithmetic that the child's shards form one consecutive chain, so the recorded tapes carry no KoalaBear
-operations. The final garbled circuit therefore verifies a proof of a narrow
+\paragraph{Recursing over the verification program.} Every recursion level,
+plain or narrow, records its single child's verifier through a wrap node, a
+recursion step over a single child proof. A compose node over the same child
+checks that the child's shards form one consecutive chain in KoalaBear
+arithmetic, 4{,}298 operations of its tape at each level; the wrap node commits
+to the same public values but makes that check in binary-field arithmetic, so
+no recorded tape carries a KoalaBear operation. A wrap node takes only one
+child, so a node over several children remains a compose node. The compiler
+therefore also translates KoalaBear operations, so a compose node's tape
+compiles too; none of the measured tapes uses that translation.
+Each narrow-recursion level proves that verifier in the machine of
+\S~\ref{sec:tape}. The final garbled circuit therefore verifies a proof of a narrow
 machine rather than exposing the original verification program's trace width
 at its input, which moves work from the final verifier into recursive proof
 generation.
@@ -1291,8 +1297,8 @@ stage and narrow recursion using compiled circuit counts, then account for
 publishing the final verifier input (Table~\ref{tab:ziren_publication}). We
 compare its on-chain data and off-chain storage with BitVM3 and the
 post-quantum Bitcoin-bridge estimates of Tiwari and Feickert~\cite{tf26pq}
-(Table~\ref{tab:compare}). Appendix~\ref{app:eval} gives the artifact
-provenance and recursion details.
+(Table~\ref{tab:compare}). Appendix~\ref{app:eval} gives the recursion
+details.
 
 We report circuit-input lengths in bits and serialized data sizes in bytes.
 The prefixes kB, MB and GB denote powers of $10^3$; KiB, MiB and GiB denote
@@ -1416,7 +1422,7 @@ runs as written, 4-5-4-4 reads the fewest bits at rate $1/1024$, and at
 $1/2048$ every schedule that reads fewer bits than it needs at least 1.8 times
 as much expected grinding.
 
-\paragraph{Independent-proof recorder regression.} On the public reconstruction of an earlier configuration (Appendix~\ref{app:artifact}), with its digests' collision bound corrected, we generated two
+\paragraph{Independent-proof recorder regression.} On an earlier configuration of the recursion, with its digests' collision bound corrected, we generated two
 proofs of one small binary-machine program using different execution
 witnesses. Both recordings contain exactly the same 769{,}910 operations,
 including operands and constants, with 87{,}426 input field values.
@@ -1426,8 +1432,7 @@ public-digest elements separately causes rejection. Boolean evaluation also
 accepts both input vectors using the first tape's operations, constants and
 input encoding, matching all native intermediate values for each proof.
 This tests the recorded program and its Boolean compilation; it does not
-reuse stored garbled tables. Appendix~\ref{app:artifact} gives the
-reconstruction and test commands.
+reuse stored garbled tables.
 
 \subsection{Publishing the final verifier input}\label{sec:publication_eval}
 
@@ -1773,7 +1778,7 @@ cut-and-choose and transaction authorization.
 This appendix details the label-selection mechanisms summarized in
 \S~\ref{sec:protocol}: the Schnorr adaptor baseline, hash-based label
 selection, its post-quantum instantiation and the four input-publication
-schemes as fixtures.
+schemes with the transactions we built for them.
 
 \subsection{Schnorr adaptor baseline}\label{app:adaptor}
 
@@ -1885,13 +1890,13 @@ target: forging a different digit from a published opening is a second-preimage
 search over the roughly $2^{22}$ chain nodes that the whole input makes
 public, so $n$-byte nodes give about $(8n-22)/2$ quantum bits.
 
-We serialized this construction exactly with rust-bitcoin for $n=16$ and
+We serialized this construction exactly for $n=16$ and
 $n=24$ at $k=4$, including the P2MR outputs, 0xC2 leaves, placeholder
 signatures, depth-one control blocks and canonical multi-record stack items,
 and tested the pair code and the batch parser against tampering, reordering,
 cross-batch splicing and padding; nothing in it is executable by Bitcoin Core.
 Table~\ref{tab:pqsel} gives the results together with a projection whose model
-reproduces both serialized fixtures within $0.03\%$. The operative row is
+reproduces both serializations within $0.03\%$. The operative row is
 $n=32$, $k=8$, which matches the adaptor's size at the price of 255 hash steps per
 byte inside the opcode, about $3.3\times10^7$ compressions for the input. Its setup is two seeds per digit rather than the adaptor's $2^k$
 secrets, so widening $k$ does not grow the choice table; only the label ciphertexts grow, to $2^k\cdot k\cdot 16$ bytes per digit, 4.3\,GB per instance at
@@ -1910,11 +1915,11 @@ batched selector, 5-record items & same & 24 & 4 & 3.05 & 3.17\,MvB & $\approx85
 batched selector, projected & same & 32 & 8 & $\approx2.05$ & $\approx2.13$\,MvB & $\approx117$ bits\\\bottomrule
 \end{tabularx}
 \caption{Hash-based label selection against the adaptor baseline for a
-separate 1{,}041{,}024-bit publication fixture, funding plus reveals. This
-fixture evaluates the selector design and is not the final 520{,}832-bit
+separate 1{,}041{,}024-bit input, published as funding plus reveals. This
+input evaluates the selector design and is not the final 520{,}832-bit
 verifier input reported in Table~\ref{tab:ziren_publication}. The first three rows are the
-independent publication fixtures tested in Bitcoin Core at this payload size. The batched-selector rows are
-exact rust-bitcoin serializations of a construction that requires the draft
+independent publication transactions tested in Bitcoin Core at this payload size. The batched-selector rows are
+exact serializations of a construction that requires the draft
 P2MR output, a hash-based transaction signature and a hypothetical batch
 verification opcode; the last row is a model projection. The security column
 is the multi-target second-preimage cost of the chain nodes alone (the
@@ -1936,13 +1941,13 @@ final WHIR verifier's 520{,}832-bit input.
     \begin{center}\ttfamily\small OP\_HASH160 OP\_DUP $h_0$ OP\_EQUAL OP\_SWAP $h_1$ OP\_EQUAL OP\_BOOLOR OP\_VERIFY\end{center}
     uses $h_0,h_1$ for the hashes of the two preimages. It is 49 bytes,
     and the witness 17 bytes. We executed it with 998 bits per
-    input, and it rejected wrong preimages. The transaction-bound fixture
+    input, and it rejected wrong preimages. The transaction-bound variant
     prefixes each leaf with a 32-byte authorization key and
     \texttt{OP\_CHECKSIGVERIFY}, and supplies a 64-byte
     \texttt{SIGHASH\_DEFAULT} signature. Its initial stack has 999 items and
     the measured transient peak is exactly the 1{,}000-item Tapscript
     limit~\cite{bip342}. Its serialized size is the Lamport row of
-    Table~\ref{tab:ziren_publication}. The fixture uses a one-leaf tree with a 33-byte
+    Table~\ref{tab:ziren_publication}. The variant uses a one-leaf tree with a 33-byte
     control block; timeout siblings and their longer control paths belong to
     the missing complete graph.
   \item \emph{Antichain Winternitz.} Plain Winternitz chains are unsafe here: from
@@ -1950,8 +1955,8 @@ final WHIR verifier's 520{,}832-bit input.
     digit values~\cite{antichain26}. Antichain Winternitz closes this and costs
     a cited marginal $11.31$\,vB per bit at parameters $(2,16)$, counting the
     hash-chain opening witness and authentication script but cancelling fixed
-    transaction overhead. Our transaction-bound fixture pins the upstream
-    implementation, prepends a 64-byte Schnorr authorization, and includes two
+    transaction overhead. Our transaction-bound variant follows the upstream
+    construction, prepends a 64-byte Schnorr authorization, and includes two
     pay-to-Taproot (P2TR) outputs, input shells, leaf scripts and depth-zero
     controls. With at most 332 four-bit digits per input, its size is the
     Antichain row of Table~\ref{tab:ziren_publication}, an all-nonzero worst case that
@@ -1964,10 +1969,10 @@ final WHIR verifier's 520{,}832-bit input.
     secret whose threshold is set by the chunk's checksum and the bit value, so
     a signed chunk opens exactly the labels of its bits. In the source, one
     such Winternitz signature over 508 bits, its Assert, is 3{,}748\,vB, or
-    $7.38$\,vB per bit. Our transaction-bound fixture
+    $7.38$\,vB per bit. Our transaction-bound variant
     uses 3-bit digits, eight per chunk, with the checksum split over two
     chains, and the authorization, outputs and controls of the Antichain
-    fixture. With at most 49 chunks per input, its size is the WOTS row of
+    variant. With at most 49 chunks per input, its size is the WOTS row of
     Table~\ref{tab:ziren_publication}, again an all-nonzero worst case. The price is the
     off-chain table, 953{,}151{,}840 bytes per instance at this input size.
     Plain 4-bit Winternitz, modeled from one executed input at 23.06 weight
@@ -1981,7 +1986,7 @@ final WHIR verifier's 520{,}832-bit input.
     $2.37$\,vB per bit at that size. Its printed witness formula instead sums to
     9{,}451 WU once the SegWit marker and flag are included, while the merged
     64-byte-\texttt{SIGHASH\_DEFAULT} implementation implies 9{,}323 WU for
-    that shell. Our executable fixture reproduces 9{,}323 WU, uses the BIP342
+    that shell. Our executed construction reproduces 9{,}323 WU, uses the BIP342
     opcode index rather than a byte offset for every code separator, and reaches
     the exact 998-signature stack capacity. Bitcoin Core 31.1 validates all completed
     signatures. The final-input serialization uses 65{,}104 eight-bit digits;
@@ -1989,30 +1994,13 @@ final WHIR verifier's 520{,}832-bit input.
     of Table~\ref{tab:ziren_publication}. Mosaic's source construction solders all
     kept instances to one set of signatures by polynomial label correlation,
     with an on-chain footprint independent of the number of
-    instances~\cite{mosaic26}. This repository tests only the one-key-set
-    transaction fixture; it does not implement or test Mosaic's polynomial
+    instances~\cite{mosaic26}. We test only the one-key-set
+    transaction; we do not implement or test Mosaic's polynomial
     correlation or setup verification. An evaluator that holds the signing key can spend
     without completing the adaptor~\cite{antichain26}.
 \end{itemize}
 % =====================================================================
 \section{Additional measurements}\label{app:eval}
-
-\subsection{Artifact availability}\label{app:artifact}
-
-\paragraph{Artifact availability.} The source repository includes the locked
-dependencies and benchmark commands; the commands and memory caps are listed in
-\texttt{whir-gc/README.md}. The measurement logs and helper sources are included in
-\texttt{paper/data/}, together with a SHA-256 manifest and a README listing
-the archived logs and reproduction commands. The final measurement uses
-Ziren's binary-field recursion at \texttt{fd2a95c4}, Ziren's GPU prover at
-\texttt{e4394727}, Plonky3 at \texttt{bbeebecb} and this repository's compiler at \texttt{c100153}. The archive contains the final gate-count,
-value-consistency, mutation, streaming-garbling and proving logs. The
-recorder regression of \S~\ref{sec:eval} uses the public reconstruction of
-an earlier configuration, Ziren \texttt{9398469a} with the preserved patch
-series at this repository's revision \texttt{8359bb0} and Plonky3
-\texttt{fb5d0d89}. The script \texttt{patches/reconstruct\_historical.py}
-reconstructs those source trees and emits a file-checksum manifest; \texttt{patches/README.md} documents
-the reconstruction and commands. Gate, wire and input counts are deterministic.
 
 \subsection{Narrow recursion}\label{app:recursion}
 
@@ -2022,8 +2010,6 @@ public values, enough for the public-value digest.
 Section~\ref{sec:reduce} describes the layout, recording, opening and
 commitment optimizations used in the final configuration. Here we give their
 algebraic conditions for a future composed soundness analysis.
-Appendix~\ref{app:artifact} documents the public reconstruction and its
-differences from the measurement version.
 
 \paragraph{Algebraic reductions and their scope.}
 The following arguments concern the interactive algebraic
@@ -2127,13 +2113,12 @@ loss of at most $n_{\mathrm{guard}}/|\F|$ for $n_{\mathrm{guard}}$ such coordina
 This guard contributes to the recursion path's completeness loss.
 
 \paragraph{Collision accounting and composition.}
-The final configuration's machine derives \texttt{collision\_resistance\_bits}
-from the digest width, four bits per byte, so its 25-byte digests are
+The final configuration derives its digests' collision resistance from
+their width, four bits per byte, so its 25-byte digests are
 priced at $2^{100}$ classical collision work, about $2^{200/3}$ quantumly.
-The reconstructed sources of the earlier configuration and its public
-reconstruction returned 128 for the same digests; the accompanying correction
-derives the metadata from the digest width in both native and traced
-configurations. This affects the security report, not the gate counts. A composed analysis will
+The earlier configuration reported 128 bits for the same digests; deriving
+the bound from the width corrects this in both the native and the recorded
+verifier. This affects the security report, not the gate counts. A composed analysis will
 include the corrected cap, candidate-set charges, tensor and paired-opening
 reductions, round-by-round soundness, hash errors and recursive composition.
 Because the circuit checks only the last proof, the
